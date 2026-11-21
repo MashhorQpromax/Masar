@@ -9,7 +9,7 @@ const securityHeaders = [
 
 const config: NextConfig = {
   poweredByHeader: false,
-  outputFileTracingIncludes: { "/**": ["./seed/masar.db"] },
+  outputFileTracingIncludes: { "/**": ["./seed/masar.db", "./seed/.secret"] },
   experimental: { serverActions: { bodySizeLimit: "12mb" } },
   async headers() {
     return [{ source: "/(.*)", headers: securityHeaders }];

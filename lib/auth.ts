@@ -2,6 +2,8 @@ import "server-only";
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import crypto from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
 import bcrypt from "bcryptjs";
 import { get, run } from "./db";
 
@@ -105,8 +107,14 @@ export async function currentUser(): Promise<User | null> {
 }
 
 // جلسة موقعة HMAC (لا تعتمد على حالة الخادم — تعمل مع عدة نسخ على Vercel)
+let cachedSecret: string | undefined;
 function secret() {
-  const s = process.env.MASAR_SECRET;
+  if (cachedSecret) return cachedSecret;
+  let s = process.env.MASAR_SECRET;
+  if (!s) {
+    try { s = fs.readFileSync(path.join(process.cwd(), "seed", ".secret"), "utf8").trim(); } catch {}
+  }
+  if (s) cachedSecret = s;
   if (!s && process.env.NODE_ENV === "production" && process.env.VERCEL) throw new Error("MASAR_SECRET مطلوب");
   return s || "dev-only-secret-change-me";
 }
