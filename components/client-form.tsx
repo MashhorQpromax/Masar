@@ -2,6 +2,7 @@
 import { useActionState, useMemo, useState } from "react";
 import { fmt, type Product, type Profile, type Obligation } from "@/lib/engine";
 import { deepStudy } from "@/lib/advisor";
+import { projectStudy } from "@/lib/project";
 import { BANKS, FINANCE_TYPE, SECTOR, SIMAH, OBLIGATION_KIND, ELIGIBILITY } from "@/lib/labels";
 import type { FormState } from "@/app/actions";
 
@@ -17,7 +18,11 @@ export default function ClientForm({
   isNew?: boolean;
 }) {
   const [state, formAction, pending] = useActionState(action, undefined);
-  const [v, setV] = useState<Values>({ nationality: "saudi", sector: "gov", simah: "unknown", finance_type: "personal", ...initial });
+  const [v, setV] = useState<Values>(() => {
+    const pj: Values = {};
+    try { for (const [k, x] of Object.entries(JSON.parse(String(initial.extra || "{}")) as Record<string, unknown>)) pj["pj_" + k] = typeof x === "boolean" ? (x ? 1 : 0) : (x as string | number | null); } catch {}
+    return { nationality: "saudi", sector: "gov", simah: "unknown", finance_type: "personal", ...initial, ...pj };
+  });
   const [obl, setObl] = useState<{ kind: Obligation["kind"]; lender: string; monthly: number; remaining: number }[]>([]);
   const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
     setV((p) => ({ ...p, [k]: e.target.type === "checkbox" ? ((e.target as HTMLInputElement).checked ? 1 : 0) : e.target.value }));
@@ -46,6 +51,19 @@ export default function ClientForm({
     return deepStudy(p, products);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [v, obl, products, initialObl]);
+
+  const pj = useMemo(() => {
+    if (v.finance_type !== "project") return null;
+    const g = (k: string) => n("pj_" + k);
+    const t = (k: string) => (v["pj_" + k] ? String(v["pj_" + k]) : null);
+    return projectStudy({
+      borrowerType: t("borrowerType") as never, projectType: t("projectType") as never, purpose: t("purpose") as never, deed: t("deed") as never,
+      city: t("city"), district: t("district"), valuer: t("valuer"), valuationDate: t("valuationDate"),
+      landArea: g("landArea"), landValue: g("landValue"), constructionCost: g("constructionCost"), gfa: g("gfa"), keys: g("keys"), adr: g("adr"), occupancy: g("occupancy"), equityCash: g("equityCash"),
+      nearHaram: !!Number(v.pj_nearHaram), hasPermit: !!Number(v.pj_hasPermit), hasFeasibility: !!Number(v.pj_hasFeasibility), existingLien: !!Number(v.pj_existingLien),
+    }, n("requested_amount") ?? 0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [v]);
 
   const F = ({ k, label, type = "text", ph, ltr, req }: { k: string; label: string; type?: string; ph?: string; ltr?: boolean; req?: boolean }) => (
     <div>
@@ -104,6 +122,30 @@ export default function ClientForm({
           <label className="flex items-center gap-2 text-sm mt-6"><input type="checkbox" name="housing_support" checked={!!Number(v.housing_support)} onChange={set("housing_support")} className="size-4 accent-brand-600" /> مستفيد من سكني / الصندوق العقاري</label>
         </Section>
 
+        {v.finance_type === "project" && (
+          <Section title="بيانات المشروع والضمان" n="3ب">
+            {S({ k: "pj_borrowerType", label: "المقترض", opts: { individual: "فرد", company: "شركة / منشأة" } })}
+            {S({ k: "pj_projectType", label: "نوع المشروع", opts: { hotel: "فندق", residential: "سكني", commercial: "تجاري", mixed: "متعدد الاستخدام" } })}
+            {S({ k: "pj_purpose", label: "الغرض", opts: { build: "بناء المشروع", cashout: "سيولة بضمان الأرض", build_cashout: "بناء + سيولة" } })}
+            {F({ k: "pj_city", label: "المدينة" })}
+            {F({ k: "pj_district", label: "الحي" })}
+            {F({ k: "pj_landArea", label: "مساحة الأرض (م²)", type: "number" })}
+            {F({ k: "pj_landValue", label: "قيمة الأرض حسب التقييم", type: "number" })}
+            {F({ k: "pj_valuer", label: "المقيّم" })}
+            {F({ k: "pj_valuationDate", label: "تاريخ التقييم", ph: "2026-11" })}
+            {S({ k: "pj_deed", label: "حالة الصك", opts: { registered: "مسجل (له رقم هوية عقارية)", electronic: "إلكتروني بلا هوية عقارية", paper: "ورقي" } })}
+            {F({ k: "pj_constructionCost", label: "تكلفة البناء التقديرية", type: "number", ph: "إن عُرفت" })}
+            {F({ k: "pj_gfa", label: "مسطحات البناء (م²)", type: "number" })}
+            {F({ k: "pj_keys", label: "عدد الغرف (للفندق)", type: "number" })}
+            {F({ k: "pj_adr", label: "متوسط سعر الليلة", type: "number" })}
+            {F({ k: "pj_occupancy", label: "نسبة الإشغال المتوقعة %", type: "number" })}
+            {F({ k: "pj_equityCash", label: "سيولة يضخها المالك", type: "number" })}
+            {([["pj_nearHaram", "قرب الحرم / المنطقة المركزية"], ["pj_hasPermit", "توجد رخصة بناء"], ["pj_hasFeasibility", "توجد دراسة جدوى"], ["pj_existingLien", "على الأرض رهن قائم"]] as const).map(([k, l]) => (
+              <label key={k} className="flex items-center gap-2 text-sm mt-6"><input type="checkbox" name={k} checked={!!Number(v[k])} onChange={set(k)} className="size-4 accent-brand-600" /> {l}</label>
+            ))}
+          </Section>
+        )}
+
         {isNew && (
           <div className="card p-5">
             <div className="flex items-center justify-between mb-4">
@@ -141,8 +183,20 @@ export default function ClientForm({
       <aside className="xl:sticky xl:top-6 card overflow-hidden">
         <div className="bg-brand-900 text-white p-5">
           <div className="text-xs text-brand-100/70">الدراسة المبدئية — مباشرة</div>
-          <div className="mt-1 text-xl font-bold">{el.emoji} {s.headline}</div>
+          <div className="mt-1 text-xl font-bold">{pj ? "🏗️ دراسة مشروع" : `${el.emoji} ${s.headline}`}</div>
         </div>
+        {pj ? (
+          <div className="p-5 space-y-3 text-sm">
+            <div className="font-bold">{pj.headline}</div>
+            <div className="grid grid-cols-2 gap-3">
+              <Mini label="الطلب ÷ قيمة الأرض" v={pj.ltv != null ? `${pj.ltv}%` : "—"} />
+              <Mini label="الطلب ÷ التكلفة الكلية" v={pj.ltc != null ? `${pj.ltc}%` : "—"} />
+              <Mini label="سعر المتر" v={pj.pricePerM2 ? fmt(pj.pricePerM2) : "—"} />
+              <Mini label="نواقص أساسية" v={String(pj.missing.filter((m) => m.critical).length)} strong />
+            </div>
+            <ul className="space-y-1.5 text-xs">{pj.alerts.slice(0, 5).map((a, i) => <li key={i} className="flex gap-1.5"><span>{a.level === "block" ? "⛔" : a.level === "warn" ? "⚠️" : "ℹ️"}</span>{a.title}</li>)}</ul>
+          </div>
+        ) : (
         <div className="p-5 space-y-4 text-sm">
           <div className="grid grid-cols-2 gap-3">
             <Mini label="الدخل المعتمد" v={fmt(s.capacity.income)} />
@@ -173,6 +227,7 @@ export default function ClientForm({
           {s.scenarios[0] && s.scenarios[0].gain > 0 && <div className="rounded-xl bg-emerald-50 p-3 text-xs text-emerald-900 leading-6">💡 مخرج: {s.scenarios[0].title} ← <span className="num font-bold">{fmt(s.scenarios[0].amount)}</span> ريال</div>}
           {s.missingData.length > 0 && <div className="rounded-xl bg-amber-50 p-3 text-xs text-amber-900 leading-6">ناقص: {s.missingData.join("، ")}</div>}
         </div>
+        )}
       </aside>
     </form>
   );

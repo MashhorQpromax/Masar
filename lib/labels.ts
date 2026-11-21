@@ -23,6 +23,7 @@ export const FINANCE_TYPE = {
   auto: "تمويل تأجيري (سيارة)",
   sme: "تمويل منشآت",
   card: "بطاقة ائتمانية",
+  project: "تمويل مشاريع وتطوير عقاري",
 } as const;
 
 export const SECTOR = {
@@ -119,6 +120,9 @@ export const AUDIT_ACTION: Record<string, string> = {
   outcome_record: "سجّل نتيجة الجهة",
   rule_add: "أضاف خبرة جهة",
   rule_archive: "أرشف خبرة جهة",
+  simah_upload: "رفع وتحليل تقرير سمة",
+  simah_confirm: "تأكيد بيانات سمة",
+  project_update: "تحديث بيانات المشروع",
   user_create: "إنشاء مستخدم",
   user_update: "تعديل مستخدم",
   product_update: "تعديل منتج تمويلي",

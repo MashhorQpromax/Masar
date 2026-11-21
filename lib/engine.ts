@@ -2,7 +2,7 @@
 // المرجع: مبادئ التمويل المسؤول للأفراد (ساما) — الفصل الرابع، الفقرات 13–19، والمادة 14.
 
 export type Sector = "gov" | "semi_gov" | "private_approved" | "private" | "military" | "retired" | "self";
-export type FinanceType = "personal" | "mortgage" | "auto" | "sme" | "card";
+export type FinanceType = "personal" | "mortgage" | "auto" | "sme" | "card" | "project";
 export type Simah = "clean" | "late" | "default" | "unknown";
 
 export interface Obligation {
@@ -521,6 +521,18 @@ export function requiredDocuments(financeType: FinanceType, sector: Sector, nati
     d.push({ code: "valuation", label: "تقييم عقاري معتمد", category: "collateral", required: true });
     d.push({ code: "family", label: "سجل الأسرة", category: "identity", required: false });
     d.push({ code: "sakani", label: "شهادة استحقاق سكني (إن وجدت)", category: "income", required: false });
+  }
+  if (financeType === "project") {
+    d.push({ code: "deed", label: "صك الأرض + رقم الهوية العقارية (السجل العقاري)", category: "collateral", required: true });
+    d.push({ code: "valuation", label: "تقرير التقييم الكامل من مقيّم معتمد (تقييم)", category: "collateral", required: true });
+    d.push({ code: "feasibility", label: "دراسة جدوى من مكتب معتمد", category: "business", required: true });
+    d.push({ code: "permit", label: "رخصة البناء أو خطاب اشتراطات البناء", category: "collateral", required: true });
+    d.push({ code: "boq", label: "تكلفة البناء التقديرية (BOQ) والمخططات", category: "business", required: true });
+    d.push({ code: "sources_uses", label: "خطة استخدام المبلغ (Sources & Uses)", category: "business", required: true });
+    d.push({ code: "bank_12", label: "كشف حساب آخر 12 شهراً", category: "income", required: true });
+    d.push({ code: "cr", label: "السجل التجاري للشركة (إن وجدت) والقوائم المالية", category: "business", required: false });
+    d.push({ code: "lien", label: "خطاب حالة الرهن (إن كان على الأرض رهن)", category: "collateral", required: false });
+    d.push({ code: "zoning", label: "إفادة الأمانة بحالة القطعة (نزع ملكية/اشتراطات)", category: "collateral", required: false });
   }
   if (financeType === "auto") {
     d.push({ code: "quote", label: "عرض سعر السيارة", category: "collateral", required: true });

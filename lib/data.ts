@@ -1,6 +1,8 @@
 import "server-only";
 import { all, get } from "./db";
 import { deepStudy } from "./advisor";
+import { analyzeCredit, type CreditReport } from "./simah";
+import { projectStudy, type ProjectInput } from "./project";
 import { type Product, type Profile, type Sector, type FinanceType, type Simah, type Obligation } from "./engine";
 
 export interface ClientRow {
@@ -28,6 +30,7 @@ export interface ClientRow {
   housing_support: number;
   property_value: number | null;
   co_income: number | null;
+  extra: string | null;
   finance_type: FinanceType;
   requested_amount: number | null;
   requested_tenor: number | null;
@@ -141,8 +144,31 @@ export async function profileOf(c: ClientRow): Promise<Profile> {
   };
 }
 
+export async function latestCredit(clientId: number) {
+  const r = await get<{ id: number; report: string; created_at: string; doc_id: number | null; author: string | null }>(
+    "SELECT r.id, r.report, r.created_at, r.doc_id, u.name author FROM credit_reports r LEFT JOIN users u ON u.id = r.user_id WHERE r.client_id = ? ORDER BY r.id DESC LIMIT 1",
+    clientId,
+  );
+  if (!r) return null;
+  const report = JSON.parse(r.report) as CreditReport & { warnings?: string[]; confidence?: string };
+  return { id: r.id, createdAt: r.created_at, author: r.author, docId: r.doc_id, report, analysis: analyzeCredit(report) };
+}
+
+export function projectFor(c: ClientRow) {
+  if (c.finance_type !== "project") return null;
+  let x: ProjectInput = {};
+  try { x = c.extra ? JSON.parse(c.extra) : {}; } catch {}
+  return { input: x, study: projectStudy(x, c.requested_amount ?? 0) };
+}
+
+const PJ_VERDICT = { feasible: "eligible", feasible_restructure: "conditional", needs_info: "pending", weak: "not_eligible" } as const;
+
 export async function studyFor(c: ClientRow) {
-  return deepStudy(await profileOf(c), await products());
+  const cr = await latestCredit(c.id);
+  const s = deepStudy(await profileOf(c), await products(), cr?.analysis ?? null);
+  const pj = projectFor(c);
+  if (pj && s.verdict !== "not_eligible") return { ...s, verdict: PJ_VERDICT[pj.study.verdict], headline: pj.study.headline };
+  return s;
 }
 
 export async function docProgress(clientId: number) {

@@ -7,6 +7,8 @@ import { all, get, run, tx } from "@/lib/db";
 import { audit, can, hashPassword, login, logout, requireUser } from "@/lib/auth";
 import { getClient, nextFileNo, studyFor, profileOf } from "@/lib/data";
 import { requiredDocuments } from "@/lib/engine";
+import { analyzeCredit } from "@/lib/simah";
+import { parseSimahPages, type ParsedSimah } from "@/lib/simah-parse";
 
 export type FormState = { error?: string; ok?: string } | undefined;
 
@@ -39,7 +41,7 @@ const clientSchema = z.object({
   national_id: z.string().regex(/^[12]\d{9}$/, "رقم الهوية/الإقامة 10 أرقام يبدأ بـ 1 أو 2").nullable(),
   phone: z.string().regex(/^(05\d{8}|\+9665\d{8})$/, "رقم الجوال بصيغة 05XXXXXXXX").nullable(),
   sector: z.enum(["gov", "semi_gov", "private_approved", "private", "military", "retired", "self"]),
-  finance_type: z.enum(["personal", "mortgage", "auto", "sme", "card"]),
+  finance_type: z.enum(["personal", "mortgage", "auto", "sme", "card", "project"]),
   nationality: z.enum(["saudi", "non_saudi"]),
   simah: z.enum(["clean", "late", "default", "unknown"]),
   birth_year: z.number().int().min(1930).max(new Date().getFullYear() - 18).nullable(),
@@ -75,7 +77,21 @@ function readClient(fd: FormData) {
     purpose: str(fd.get("purpose")),
     priority: str(fd.get("priority")),
     source: str(fd.get("source")),
+    extra: readProject(fd),
   };
+}
+
+// بيانات مسار تمويل المشاريع (تُحفظ JSON في clients.extra)
+const PJ_NUM = ["landArea", "landValue", "constructionCost", "gfa", "keys", "adr", "occupancy", "equityCash"];
+const PJ_STR = ["borrowerType", "city", "district", "valuer", "valuationDate", "deed", "projectType", "purpose"];
+const PJ_BOOL = ["nearHaram", "hasPermit", "hasFeasibility", "existingLien"];
+function readProject(fd: FormData) {
+  if (str(fd.get("finance_type")) !== "project") return null;
+  const o: Record<string, unknown> = {};
+  for (const k of PJ_NUM) o[k] = num(fd.get("pj_" + k));
+  for (const k of PJ_STR) o[k] = str(fd.get("pj_" + k));
+  for (const k of PJ_BOOL) o[k] = !!fd.get("pj_" + k);
+  return JSON.stringify(o);
 }
 
 async function syncDocuments(clientId: number) {
@@ -417,4 +433,82 @@ export async function saveProduct(fd: FormData) {
 
 export async function canDo(perm: Parameters<typeof can>[1]) {
   return can(await requireUser(), perm);
+}
+
+// ===== تقرير سمة =====
+const OBL_KIND: [RegExp, string][] = [[/منزلي|عقاري/, "mortgage"], [/شخصي/, "personal"], [/بطاقة/, "card"], [/سيارة|تأجير/, "auto"]];
+
+export async function uploadSimah(clientId: number, _: FormState, fd: FormData): Promise<FormState> {
+  const u = await requireUser("doc.upload");
+  const c = await getClient(clientId);
+  if (!c) return { error: "غير موجود" };
+  const f = fd.get("file");
+  if (!(f instanceof File) || f.size === 0) return { error: "اختر ملف تقرير سمة (PDF)" };
+  if (f.type !== "application/pdf") return { error: "تقرير سمة يُرفع بصيغة PDF كما نزل من سمة" };
+  if (f.size > MAX) return { error: "الحد الأقصى 10 ميجابايت" };
+  const buf = Buffer.from(await f.arrayBuffer());
+  if (!sniff(buf, f.type)) return { error: "الملف ليس PDF صالحاً" };
+
+  let parsed: ParsedSimah;
+  try {
+    const { extractText, getDocumentProxy } = await import("unpdf");
+    const pdf = await getDocumentProxy(new Uint8Array(buf));
+    const { text } = await extractText(pdf, { mergePages: false });
+    parsed = parseSimahPages(text as string[]);
+  } catch (e) {
+    console.error("simah parse", e);
+    return { error: "تعذرت قراءة الملف. تأكد أنه تقرير سمة الأصلي (PDF نصي وليس صورة)." };
+  }
+  if (!parsed.report.facilities.length && !parsed.report.judgments.length && parsed.summary.activeCount == null)
+    return { error: "لم نجد بيانات سمة في الملف. هل هو تقرير سمة الأساسي؟ يمكنك إدخال البيانات يدوياً." };
+
+  // حفظ الملف في مستندات العميل (خانة تقرير سمة)
+  let doc = await get<{ id: number }>("SELECT id FROM documents WHERE client_id = ? AND code = 'simah'", clientId);
+  if (!doc) doc = { id: (await run("INSERT INTO documents (client_id, code, label, category, required) VALUES (?, 'simah', 'تقرير سمة حديث', 'obligations', 1)", clientId)).lastInsertRowid };
+  const sha256 = crypto.createHash("sha256").update(buf).digest("hex");
+  await run("DELETE FROM file_blobs WHERE doc_id = ?", doc.id);
+  await run("INSERT INTO file_blobs (doc_id, data) VALUES (?, ?)", doc.id, buf);
+  await run(
+    "UPDATE documents SET status='received', file_name=?, stored_name=?, mime=?, size=?, sha256=?, uploaded_by=?, uploaded_at=datetime('now') WHERE id=?",
+    f.name.slice(0, 200), "db:simah.pdf", f.type, f.size, sha256, u.id, doc.id,
+  );
+
+  const analysis = analyzeCredit(parsed.report);
+  const stored = { ...parsed.report, warnings: parsed.warnings, confidence: parsed.confidence };
+  await run("INSERT INTO credit_reports (client_id, report, grade, derived_simah, doc_id, user_id) VALUES (?,?,?,?,?,?)", clientId, JSON.stringify(stored), analysis.grade, analysis.derivedSimah, doc.id, u.id);
+  await run("UPDATE clients SET simah = ?, updated_at = datetime('now') WHERE id = ?", analysis.derivedSimah, clientId);
+
+  // الالتزامات: نستوردها من سمة إن لم تُدخل يدوياً
+  const existing = await get<{ n: number }>("SELECT COUNT(*) n FROM obligations WHERE client_id = ?", clientId);
+  let imported = 0;
+  if (!existing?.n)
+    for (const x of parsed.report.facilities)
+      if ((x.status === "current" || x.status === "late") && (x.installment ?? 0) > 0) {
+        const kind = OBL_KIND.find(([re]) => re.test(x.product))?.[1] ?? "other";
+        await run("INSERT INTO obligations (client_id, kind, lender, monthly, remaining) VALUES (?,?,?,?,?)", clientId, kind, x.lender, x.installment, x.balance ?? null);
+        imported++;
+      }
+  await refreshEligibility(clientId);
+  await audit(u, "simah_upload", "client", clientId, { grade: analysis.grade, facilities: parsed.report.facilities.length, judgments: parsed.report.judgments.length, imported });
+  revalidatePath(`/clients/${clientId}`);
+  return { ok: `تمت قراءة التقرير: ${parsed.report.facilities.length} منتجاً، ${parsed.report.judgments.length} قرار تنفيذ${imported ? `، واستُورد ${imported} التزاماً` : ""}.` };
+}
+
+/** تأكيد/نفي الإيقاف بعد التحقق من أبشر/ناجز + ملاحظة المحلل */
+export async function confirmCredit(clientId: number, reportId: number, fd: FormData) {
+  const u = await requireUser("client.edit");
+  const r = await get<{ report: string }>("SELECT report FROM credit_reports WHERE id = ? AND client_id = ?", reportId, clientId);
+  if (!r) return;
+  const rep = JSON.parse(r.report);
+  const susp = str(fd.get("suspension"));
+  if (susp === "yes" || susp === "no") { rep.serviceSuspension = susp === "yes"; rep.suspensionAssumed = false; }
+  rep.travelBan = fd.get("travel_ban") ? true : rep.travelBan ?? false;
+  const note = str(fd.get("note"));
+  if (note) rep.notes = note;
+  const a = analyzeCredit(rep);
+  await run("UPDATE credit_reports SET report = ?, grade = ?, derived_simah = ? WHERE id = ?", JSON.stringify(rep), a.grade, a.derivedSimah, reportId);
+  await run("UPDATE clients SET simah = ?, updated_at = datetime('now') WHERE id = ?", a.derivedSimah, clientId);
+  await refreshEligibility(clientId);
+  await audit(u, "simah_confirm", "client", clientId, { suspension: susp, note: !!note });
+  revalidatePath(`/clients/${clientId}`);
 }

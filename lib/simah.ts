@@ -6,6 +6,14 @@ export type CreditorType = "bank" | "finance_company" | "telecom" | "other";
 export type FacilityStatus = "current" | "late" | "default" | "settled" | "closed";
 
 export interface Facility {
+  overdue?: number | null;
+  openedAt?: string | null;
+  endAt?: string | null;
+  lastUpdate?: string | null;
+  lastPayDate?: string | null;
+  defaultListedAt?: string | null;
+  defaultNow?: number | null;
+  defaultState?: string | null;
   lender: string;
   creditorType: CreditorType;
   product: string; // شخصي، بطاقة، سيارة، عقاري، اتصالات…
@@ -21,14 +29,22 @@ export interface Facility {
 }
 
 export interface Judgment {
+  remaining?: number | null;
+  date?: string | null;
+  state?: string | null;
+  decisionNo?: string | null;
   kind: "judgment" | "enforcement" | "bounced_cheque";
-  creditor?: string;
+  creditor?: string | null;
   amount?: number | null;
   active: boolean;
   monthsAgo?: number | null;
 }
 
 export interface CreditReport {
+  reportDate?: string | null;
+  suspensionAssumed?: boolean;
+  inquiries?: { date: string; lender: string; product: string; amount: number | null }[];
+  summary?: Record<string, number | string | undefined>;
   reportMonthsAgo?: number | null;
   score?: number | null;
   facilities: Facility[];
@@ -79,6 +95,9 @@ export interface CreditAnalysis {
     worstDelay: number;
     recentDelays: number;
     inquiries6m: number;
+    inquiries12m: number;
+    activeJudgmentsAmount: number;
+    totalToClear: number;
   };
   blockers: string[];
   findings: { level: "block" | "warn" | "info" | "good"; text: string }[];
@@ -113,7 +132,7 @@ export function analyzeCredit(r: CreditReport): CreditAnalysis {
     defaults: defaults.length,
     activeDefaults: activeDefaults.length,
     defaultsAmount: defaults.reduce((s, x) => s + (x.defaultAmount ?? x.balance ?? 0), 0),
-    activeDefaultsAmount: activeDefaults.reduce((s, x) => s + (x.defaultAmount ?? x.balance ?? 0), 0),
+    activeDefaultsAmount: activeDefaults.reduce((s, x) => s + (x.defaultNow ?? x.defaultAmount ?? x.balance ?? 0), 0),
     bankDefaults: by("bank"),
     financeCoDefaults: by("finance_company"),
     telecomDefaults: by("telecom"),
@@ -124,7 +143,18 @@ export function analyzeCredit(r: CreditReport): CreditAnalysis {
     worstDelay,
     recentDelays,
     inquiries6m: r.inquiries6m ?? 0,
+    inquiries12m: r.inquiries12m ?? 0,
+    activeJudgmentsAmount: jActive.reduce((s, x) => s + (x.remaining ?? x.amount ?? 0), 0),
+    totalToClear: 0,
   };
+  // قرار التنفيذ غالباً هو نفس دين التعثر (الدائن رفعه للمحكمة) — لا نحسبه مرتين
+  const linked = new Set<Facility>();
+  for (const x of jActive) {
+    const amt = x.remaining ?? x.amount ?? 0;
+    const f = activeDefaults.find((d) => !linked.has(d) && Math.abs((d.defaultNow ?? d.defaultAmount ?? 0) - amt) <= Math.max(1500, amt * 0.02));
+    if (f) { linked.add(f); x.creditor = x.creditor ?? f.lender; }
+  }
+  stats.totalToClear = Math.round(stats.activeJudgmentsAmount + activeDefaults.filter((d) => !linked.has(d)).reduce((s, d) => s + (d.defaultNow ?? d.defaultAmount ?? d.balance ?? 0), 0));
 
   // ===== الشدة الموزونة =====
   let sev = 0;
@@ -146,11 +176,12 @@ export function analyzeCredit(r: CreditReport): CreditAnalysis {
   const actions: string[] = [];
 
   // ===== الموانع =====
-  if (r.serviceSuspension) blockers.push("إيقاف خدمات قائم (نظام التنفيذ) — لا تقبل أي جهة قبل رفعه.");
+  if (r.serviceSuspension) blockers.push(r.suspensionAssumed ? "إيقاف خدمات مرجّح (قرارات تنفيذ بحالة «عدم تنفيذ» — المادة 46) — تحقق من أبشر/ناجز. لا تقبل أي جهة قبل رفعه." : "إيقاف خدمات قائم (نظام التنفيذ) — لا تقبل أي جهة قبل رفعه.");
   if (r.travelBan) blockers.push("منع سفر مرتبط بقضية تنفيذ.");
-  for (const x of jActive) blockers.push(`${x.kind === "enforcement" ? "طلب تنفيذ" : "حكم"} قائم${x.creditor ? ` لصالح ${x.creditor}` : ""}${x.amount ? ` بمبلغ ${fmt(x.amount)}` : ""}.`);
+  for (const x of jActive) blockers.push(`${x.kind === "enforcement" ? "قرار تنفيذ" : "حكم"} قائم${x.creditor ? ` (غالباً لصالح ${x.creditor})` : ""}${x.amount ? ` بمبلغ ${fmt(x.remaining ?? x.amount)}` : ""}${x.date ? ` — ${x.date}` : ""}${x.state ? ` — ${x.state}` : ""}.`);
   for (const x of bounced.filter((b) => b.active)) blockers.push(`شيك مرتجع غير مسوّى${x.amount ? ` (${fmt(x.amount)})` : ""}.`);
-  for (const d of activeDefaults) blockers.push(`تعثر قائم لدى ${d.lender} (${typeLabel(d.creditorType)})${d.defaultAmount || d.balance ? ` بمبلغ ${fmt(d.defaultAmount ?? d.balance ?? 0)}` : ""}.`);
+  for (const d of activeDefaults) blockers.push(`تعثر قائم لدى ${d.lender} (${typeLabel(d.creditorType)})${d.defaultAmount || d.balance ? ` — المتبقي ${fmt(d.defaultNow ?? d.defaultAmount ?? d.balance ?? 0)}` : ""}${d.defaultListedAt ? ` — مُدرج منذ ${d.defaultListedAt}` : ""}${d.defaultState ? ` (${d.defaultState})` : ""}${linked.has(d) ? " — مرفوع عليه قرار تنفيذ" : ""}.`);
+  if (stats.totalToClear > 0) findings.push({ level: "block", text: `المطلوب سداده/تسويته لفتح الأبواب ≈ ${fmt(stats.totalToClear)} ريال (قرارات التنفيذ + التعثرات غير المرتبطة بها، دون احتساب الدين مرتين).` });
 
   // ===== الملاحظات =====
   if (stats.financeCoDefaults > 0)
@@ -190,8 +221,9 @@ export function analyzeCredit(r: CreditReport): CreditAnalysis {
 
   // ===== خطة العمل =====
   if (r.serviceSuspension) actions.push("حصر طلبات التنفيذ في ناجز، السداد أو التسوية مع الدائن، ثم طلب رفع الإيقاف من محكمة التنفيذ (قد يستغرق أياماً بعد السداد).");
-  for (const x of jActive) actions.push(`تسوية ${x.kind === "enforcement" ? "طلب التنفيذ" : "الحكم"}${x.creditor ? ` مع ${x.creditor}` : ""} والحصول على ما يثبت انقضاءه.`);
-  for (const d of activeDefaults) actions.push(`سداد/تسوية تعثر ${d.lender} وطلب خطاب مخالصة + طلب تحديث سمة (التحديث عادة خلال 30 يوماً).`);
+  if (jActive.length) actions.push(`سداد أو تسوية ${jActive.length === 1 ? "قرار التنفيذ" : `قرارات التنفيذ (${jActive.length})`} بمجموع ${fmt(stats.activeJudgmentsAmount)} ريال — التفاوض على خصم مقابل سداد فوري ممكن غالباً — ثم طلب إثبات الانقضاء من ناجز.`);
+  for (const d of activeDefaults.filter((x) => !linked.has(x))) actions.push(`سداد تعثر ${d.lender} (${fmt(d.defaultNow ?? d.defaultAmount ?? d.balance ?? 0)}) وطلب خطاب مخالصة.`);
+  if (activeDefaults.length) actions.push("طلب تحديث سمة من كل دائن بعد السداد (عادة خلال 30 يوماً)، ثم استخراج تقرير جديد ورفعه هنا لإعادة الدراسة.");
   if (recentDelays) actions.push("انتظام كامل في كل الأقساط 6–12 شهراً قبل التقديم للبنوك.");
   if ((r.inquiries6m ?? 0) >= R.manyInquiries6m) actions.push("إيقاف أي تقديم جديد حتى تقل الاستعلامات؛ ثم تقديم متتابع لجهة واحدة في كل مرة.");
   if (stats.cardUtilization != null && stats.cardUtilization > 70) actions.push("خفض رصيد البطاقات تحت 30–50% من الحد أو إلغاء غير المستخدم.");

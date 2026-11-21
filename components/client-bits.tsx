@@ -1,6 +1,6 @@
 "use client";
 import { useActionState, useRef, useState, useTransition } from "react";
-import { uploadDocument, revealId } from "@/app/actions";
+import { uploadDocument, revealId, uploadSimah } from "@/app/actions";
 
 export function UploadButton({ clientId, docId, hasFile }: { clientId: number; docId: number; hasFile: boolean }) {
   const [state, action, pending] = useActionState(uploadDocument.bind(null, clientId, docId), undefined);
@@ -24,5 +24,20 @@ export function RevealId({ clientId, masked }: { clientId: number; masked: strin
       <span className="num">{v ?? masked}</span>
       {!v && <button type="button" disabled={p} onClick={() => start(async () => setV(await revealId(clientId)))} className="text-xs text-brand-700 hover:underline">إظهار</button>}
     </span>
+  );
+}
+
+export function SimahUpload({ clientId, label = "⬆ رفع تقرير سمة (PDF)" }: { clientId: number; label?: string }) {
+  const [state, action, pending] = useActionState(uploadSimah.bind(null, clientId), undefined);
+  const ref = useRef<HTMLFormElement>(null);
+  return (
+    <form ref={ref} action={action} className="flex flex-wrap items-center gap-3">
+      <label className={`btn-primary cursor-pointer ${pending ? "opacity-60" : ""}`}>
+        {pending ? "جارٍ قراءة التقرير وتحليله…" : label}
+        <input type="file" name="file" accept="application/pdf" className="hidden" disabled={pending} onChange={() => ref.current?.requestSubmit()} />
+      </label>
+      {state?.error && <span className="text-sm text-rose-600">{state.error}</span>}
+      {state?.ok && <span className="text-sm text-emerald-700">{state.ok}</span>}
+    </form>
   );
 }

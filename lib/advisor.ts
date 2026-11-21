@@ -1,5 +1,6 @@
 // المستشار: ما لا تقوله المعادلة — الاشتراطات الخفية، الاستثناءات، والمخارج.
 // دوال نقية فوق المحرك. القواعد هنا «ممارسة سوق» عامة ويكمّلها الفريق من صفحة خبرة الجهات.
+import type { CreditAnalysis } from "./simah.ts";
 import { study, fmt, capacity, SAMA, type Profile, type Product, type Study, type Match } from "./engine.ts";
 
 export type AlertLevel = "block" | "warn" | "info";
@@ -9,7 +10,7 @@ export interface Alert {
   title: string;
   detail: string;
   exit?: string; // المخرج المقترح
-  source: "ساما" | "ممارسة سوق" | "خبرة الفريق";
+  source: "ساما" | "ممارسة سوق" | "خبرة الفريق" | "تحليل تقرير سمة";
 }
 
 export interface Scenario {
@@ -27,6 +28,7 @@ export interface DeepStudy extends Study {
   alerts: Alert[];
   scenarios: Scenario[];
   baseAmount: number;
+  credit?: CreditAnalysis | null;
 }
 
 const yrs = (m: number) => Math.round((m / 12) * 10) / 10;
@@ -232,16 +234,31 @@ function rankV(v: Study["verdict"]) {
   return { not_eligible: 0, pending: 1, conditional: 2, eligible: 3 }[v];
 }
 
-export function deepStudy(p: Profile, products: Product[]): DeepStudy {
+export function deepStudy(p: Profile, products: Product[], credit?: CreditAnalysis | null): DeepStudy {
   const s = study(p, products);
-  const alerts = hiddenConditions(p, s);
+  let alerts = hiddenConditions(p, s);
+  if (credit) {
+    // تحليل سمة الفعلي يحل محل التنبيه العام
+    alerts = alerts.filter((a) => !a.id.startsWith("simah_"));
+    const fmtN = (n: number) => Math.round(n).toLocaleString("en-US");
+    if (credit.blockers.length)
+      alerts.unshift({ id: "credit_block", level: "block", title: `سمة: ${credit.gradeLabel}`, detail: credit.blockers.join(" • "), exit: credit.actions.slice(0, 3).join(" ثم "), source: "تحليل تقرير سمة" });
+    else if (credit.grade !== "A")
+      alerts.unshift({ id: "credit_warn", level: "warn", title: `سمة: ${credit.gradeLabel}`, detail: credit.findings.filter((f) => f.level === "warn").map((f) => f.text).join(" • ") || "ملاحظات على السجل", exit: credit.actions[0], source: "تحليل تقرير سمة" });
+    if (credit.stats.financeCoDefaults > 0)
+      alerts.push({ id: "credit_fc", level: "warn", title: "تعثر لدى شركة تمويل", detail: "البنوك تقرأ تعثر شركات التمويل أسوأ من تعثر البنك وتطلب مهلة أطول بعد السداد.", exit: "سدّد واحصل على مخالصة، ثم ابدأ بالجهات الأكثر مرونة.", source: "ممارسة سوق" });
+    if (credit.stats.totalToClear > 0)
+      alerts.push({ id: "credit_clear", level: "info", title: `المطلوب لتنظيف السجل ≈ ${fmtN(credit.stats.totalToClear)} ريال`, detail: "مجموع قرارات التنفيذ والتعثرات القائمة دون احتساب الدين مرتين.", source: "تحليل تقرير سمة" });
+  }
   const sc = scenarios(p, products, s);
   const baseAmount = bestOf(s);
   // المخارج تُضاف للتوصيات بصيغة مختصرة
   const recs = [...s.recommendations];
   if (sc[0] && sc[0].gain > 0) recs.splice(1, 0, `أقوى مخرج لرفع المبلغ: ${sc[0].title} (+${fmt(sc[0].gain)} ريال).`);
   if (alerts.some((x) => x.level === "block")) recs.unshift("⛔ يوجد مانع يجب معالجته قبل أي تقديم — راجع التنبيهات.");
-  return { ...s, recommendations: recs, alerts, scenarios: sc, baseAmount };
+  const blocked = !!credit && credit.grade === "E";
+  if (blocked) recs.unshift("المبالغ أدناه هي قدرة العميل بعد رفع الموانع الائتمانية، لا قبلها.");
+  return { ...s, verdict: blocked ? "not_eligible" : s.verdict, headline: blocked ? "متوقف حالياً — موانع ائتمانية يجب رفعها أولاً" : s.headline, recommendations: recs, alerts, scenarios: sc, baseAmount, credit: credit ?? null };
 }
 
 export type { Match };

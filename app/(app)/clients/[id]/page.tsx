@@ -2,7 +2,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { all } from "@/lib/db";
 import { requireUser, can, maskId } from "@/lib/auth";
-import { getClient, getObligations, studyFor, docProgress, products, lenderExperience, lenderRules } from "@/lib/data";
+import { getClient, getObligations, studyFor, docProgress, products, lenderExperience, lenderRules, latestCredit, projectFor } from "@/lib/data";
+import CreditView from "@/components/credit-view";
+import ProjectView from "@/components/project-view";
 import StudyView from "@/components/study-view";
 import OutcomeForm from "@/components/outcome-form";
 import { fmt } from "@/lib/engine";
@@ -11,7 +13,7 @@ import {
 } from "@/lib/labels";
 import { Badge, EligBadge, PageHeader, Progress, StatusBadge, sar, dateAr, dateTimeAr, Empty } from "@/components/ui";
 import ClientForm from "@/components/client-form";
-import { UploadButton, RevealId } from "@/components/client-bits";
+import { UploadButton, RevealId, SimahUpload } from "@/components/client-bits";
 import {
   setStatus, setNextStep, recordOutcome, addObligation, deleteObligation, setDocStatus, addCustomDoc, createApplication, updateApplication, addNote, saveStudy, updateClient, deleteClient,
 } from "@/app/actions";
@@ -21,6 +23,7 @@ export const dynamic = "force-dynamic";
 const TABS = [
   ["overview", "نظرة عامة"],
   ["study", "دراسة الأهلية"],
+  ["credit", "سمة"],
   ["docs", "المستندات"],
   ["apps", "الطلبات لدى الجهات"],
   ["notes", "المراسلات والسجل"],
@@ -34,6 +37,8 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
   if (!c) notFound();
   const tab = (await searchParams).tab ?? "overview";
   const s = await studyFor(c);
+  const cr = await latestCredit(id);
+  const pj = projectFor(c);
   const exp = await lenderExperience(c.finance_type, c.sector, c.total_salary ?? c.basic_salary);
   const rules = await lenderRules(c.finance_type);
   const obligations = await getObligations(id);
@@ -157,12 +162,12 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
 
       {tab === "study" && (
         <div className="space-y-4">
-          <StudyView s={s} exp={exp} rules={rules} requested={c.requested_amount} />
-          <div className="grid lg:grid-cols-3 gap-4">
+          {pj ? <ProjectView p={pj.study} x={pj.input} /> : <StudyView s={s} exp={exp} rules={rules} requested={c.requested_amount} />}
+          {!pj && <div className="grid lg:grid-cols-3 gap-4">
             <ListCard title="نقاط القوة" items={s.strengths} icon="✅" />
             <ListCard title="المخاطر ونقاط الضعف" items={s.risks} icon="⚠️" />
             <ListCard title="التوصيات" items={s.recommendations} icon="💡" />
-          </div>
+          </div>}
 
           <div className="card p-5">
             <h3 className="font-bold mb-3">رأي المحلل واعتماد الدراسة</h3>
@@ -177,6 +182,19 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
               </form>
             ) : <p className="text-sm text-slate-500">اعتماد الدراسة متاح للمحلل الائتماني والمدير.</p>}
           </div>
+        </div>
+      )}
+
+      {tab === "credit" && (
+        <div className="space-y-4">
+          <div className="card p-5 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h3 className="font-bold">تقرير سمة</h3>
+              <p className="text-sm text-slate-500">ارفع التقرير الأساسي (PDF) كما نزل من سمة: نقرأ الالتزامات والتعثرات وقرارات التنفيذ والاستعلامات، ونحدّث الدراسة تلقائياً.</p>
+            </div>
+            {can(u, "doc.upload") && <SimahUpload clientId={id} label={cr ? "⬆ رفع تقرير أحدث" : undefined} />}
+          </div>
+          {cr ? <CreditView clientId={id} reportId={cr.id} r={cr.report} a={cr.analysis} createdAt={cr.createdAt} author={cr.author} canEdit={can(u, "client.edit")} /> : <Empty>لم يُرفع تقرير سمة بعد</Empty>}
         </div>
       )}
 
