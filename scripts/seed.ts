@@ -1,162 +1,35 @@
-// تهيئة قاعدة بيانات تجريبية: مستخدمون، جهات تمويل ومنتجات (معايير تقديرية)، وعملاء وهميون للعرض.
-// الاستخدام: npm run seed   (يحذف قاعدة البيانات الحالية!)
+// تهيئة قاعدة بيانات محلية (SQLite) نظيفة: الجهات والمنتجات وقواعد السوق + حساب مدير واحد. بلا عملاء وهميين.
+// الاستخدام: npm run seed   (يحذف قاعدة البيانات المحلية الحالية!)
+// كلمة المرور: MASAR_ADMIN_PASSWORD أو تُولّد عشوائياً وتُطبع مرة واحدة.
 import { DatabaseSync } from "node:sqlite";
 import fs from "node:fs";
 import path from "node:path";
+import crypto from "node:crypto";
 import bcrypt from "bcryptjs";
 import { SCHEMA } from "../lib/schema.ts";
-import { requiredDocuments, study, type FinanceType, type Sector, type Product } from "../lib/engine.ts";
+import { LENDERS, PRODUCTS, RULES } from "../lib/base-data.ts";
 
 const dir = process.env.MASAR_DATA_DIR || path.join(process.cwd(), "data");
-fs.mkdirSync(path.join(dir, "uploads"), { recursive: true });
+fs.mkdirSync(dir, { recursive: true });
 for (const f of ["masar.db", "masar.db-wal", "masar.db-shm"]) fs.rmSync(path.join(dir, f), { force: true });
 const db = new DatabaseSync(path.join(dir, "masar.db"));
 db.exec("PRAGMA foreign_keys = ON;");
 db.exec(SCHEMA);
 
-const pw = process.env.MASAR_DEMO_PASSWORD || "Masar@2026";
-const hash = bcrypt.hashSync(pw, 12);
-const users = [
-  ["مشهور (مدير)", "admin@masar.local", "admin"],
-  ["نورة — محللة ائتمان", "analyst@masar.local", "analyst"],
-  ["فهد — مسؤول علاقة", "officer@masar.local", "officer"],
-  ["مطّلع", "viewer@masar.local", "viewer"],
-];
-const insUser = db.prepare("INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, ?)");
-for (const u of users) insUser.run(u[0], u[1], hash, u[2]);
+const email = (process.env.MASAR_ADMIN_EMAIL || "admin@masar.local").toLowerCase();
+const pw = process.env.MASAR_ADMIN_PASSWORD || crypto.randomBytes(9).toString("base64url");
+db.prepare("INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, 'admin')").run(process.env.MASAR_ADMIN_NAME || "مدير النظام", email, bcrypt.hashSync(pw, 12));
 
-const ALL_SALARIED = ["gov", "military", "semi_gov", "private_approved", "retired"];
-const WIDE = [...ALL_SALARIED, "private"];
-const lenders: [string, "bank" | "finance_company", string | null][] = [
-  ["مصرف الراجحي", "bank", "rajhi"],
-  ["البنك الأهلي السعودي", "bank", "snb"],
-  ["بنك الرياض", "bank", "riyad"],
-  ["مصرف الإنماء", "bank", "alinma"],
-  ["بنك البلاد", "bank", "albilad"],
-  ["البنك السعودي للاستثمار", "bank", "saib"],
-  ["إمكان للتمويل", "finance_company", null],
-  ["النايفات للتمويل", "finance_company", null],
-  ["دار التمليك", "finance_company", null],
-  ["عبداللطيف جميل للتمويل", "finance_company", null],
-];
 const lid: Record<string, number> = {};
 const insL = db.prepare("INSERT INTO lenders (name, type, bank_code) VALUES (?, ?, ?)");
-for (const [n, t, c] of lenders) lid[n] = Number(insL.run(n, t, c).lastInsertRowid);
-
-type P = {
-  l: string; t: FinanceType; n: string; minSal: number; maxAge: number; svc: number; sectors: string[]; tenor: number;
-  max: number; rate: number; rt?: "flat" | "reducing"; transfer?: boolean; late?: boolean; ltv?: number; nat?: string[]; minAge?: number;
-};
-const prods: P[] = [
-  { l: "مصرف الراجحي", t: "personal", n: "التمويل الشخصي", minSal: 4000, maxAge: 65, svc: 3, sectors: ALL_SALARIED, tenor: 60, max: 2_000_000, rate: 3.4 },
-  { l: "البنك الأهلي السعودي", t: "personal", n: "التمويل الشخصي", minSal: 5000, maxAge: 65, svc: 3, sectors: ALL_SALARIED, tenor: 60, max: 2_500_000, rate: 3.2 },
-  { l: "بنك الرياض", t: "personal", n: "التمويل الشخصي", minSal: 5000, maxAge: 65, svc: 6, sectors: ALL_SALARIED, tenor: 60, max: 1_500_000, rate: 3.6 },
-  { l: "مصرف الإنماء", t: "personal", n: "التمويل الشخصي", minSal: 4000, maxAge: 65, svc: 3, sectors: ALL_SALARIED, tenor: 60, max: 1_500_000, rate: 3.5 },
-  { l: "بنك البلاد", t: "personal", n: "تمويل البلاد الشخصي", minSal: 3000, maxAge: 65, svc: 3, sectors: WIDE, tenor: 60, max: 1_000_000, rate: 3.9 },
-  { l: "إمكان للتمويل", t: "personal", n: "تمويل نقدي", minSal: 3000, maxAge: 65, svc: 3, sectors: WIDE, tenor: 60, max: 250_000, rate: 6.5, transfer: false, late: true },
-  { l: "النايفات للتمويل", t: "personal", n: "تمويل شخصي", minSal: 3000, maxAge: 65, svc: 6, sectors: WIDE, tenor: 60, max: 300_000, rate: 7.5, transfer: false, late: true, nat: ["saudi", "non_saudi"] },
-  { l: "مصرف الراجحي", t: "mortgage", n: "التمويل العقاري", minSal: 5000, maxAge: 70, svc: 3, sectors: ALL_SALARIED, tenor: 300, max: 5_000_000, rate: 5.2, rt: "reducing", ltv: 90 },
-  { l: "البنك الأهلي السعودي", t: "mortgage", n: "التمويل العقاري", minSal: 6000, maxAge: 70, svc: 6, sectors: ALL_SALARIED, tenor: 300, max: 5_000_000, rate: 5.0, rt: "reducing", ltv: 90 },
-  { l: "البنك السعودي للاستثمار", t: "mortgage", n: "سكني المدعوم — وحدة جاهزة", minSal: 4000, maxAge: 75, svc: 3, sectors: ALL_SALARIED, tenor: 300, max: 7_000_000, rate: 4.9, rt: "reducing", ltv: 90 },
-  { l: "دار التمليك", t: "mortgage", n: "تمويل المسكن", minSal: 5000, maxAge: 70, svc: 6, sectors: WIDE, tenor: 300, max: 3_000_000, rate: 6.4, rt: "reducing", ltv: 85, transfer: false },
-  { l: "مصرف الراجحي", t: "auto", n: "التأجير التمويلي للسيارات", minSal: 4000, maxAge: 65, svc: 3, sectors: ALL_SALARIED, tenor: 60, max: 400_000, rate: 4.2 },
-  { l: "عبداللطيف جميل للتمويل", t: "auto", n: "تأجير السيارات", minSal: 3000, maxAge: 65, svc: 3, sectors: WIDE, tenor: 60, max: 400_000, rate: 5.5, transfer: false, late: true, nat: ["saudi", "non_saudi"] },
-  { l: "بنك البلاد", t: "sme", n: "تمويل المنشآت الصغيرة", minSal: 0, maxAge: 70, svc: 24, sectors: ["self"], tenor: 60, max: 2_000_000, rate: 6.0, transfer: false },
-];
+for (const [n, t, c] of LENDERS) lid[n] = Number(insL.run(n, t, c).lastInsertRowid);
 const insP = db.prepare(`INSERT INTO products (lender_id, finance_type, name, min_salary, min_age, max_age_at_maturity, min_service_months, sectors, nationalities,
   max_tenor, max_amount, rate, rate_type, requires_salary_transfer, accepts_late_simah, max_ltv, notes) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
-for (const p of prods)
+for (const p of PRODUCTS)
   insP.run(lid[p.l], p.t, p.n, p.minSal, p.minAge ?? 21, p.maxAge, p.svc, JSON.stringify(p.sectors), JSON.stringify(p.nat ?? ["saudi"]), p.tenor, p.max, p.rate,
-    p.rt ?? "flat", p.transfer === false ? 0 : 1, p.late ? 1 : 0, p.ltv ?? null, "معايير تقديرية للعرض — يجب تحديثها من سياسة الجهة الفعلية");
-
-// ===== عملاء تجريبيون (أسماء وهمية) =====
-type C = { name: string; by: number; sector: Sector; svc: number; basic: number; total: number; bank: string; simah: string; ft: FinanceType; amt: number; tenor: number;
-  status: string; employer: string; obligations: [string, string, number, number][]; housing?: number; next: string; owner: number; purpose: string };
-const clients: C[] = [
-  { name: "عميل تجريبي — أحمد س.", by: 1991, sector: "gov", svc: 96, basic: 11000, total: 14500, bank: "rajhi", simah: "clean", ft: "personal", amt: 200000, tenor: 60,
-    status: "awaiting_docs", employer: "وزارة التعليم", obligations: [["card", "مصرف الراجحي", 500, 10000]], next: "استلام كشف الحساب وتقرير سمة", owner: 3, purpose: "ترميم المنزل" },
-  { name: "عميلة تجريبية — سارة م.", by: 1985, sector: "private_approved", svc: 60, basic: 15000, total: 22000, bank: "snb", simah: "clean", ft: "mortgage", amt: 950000, tenor: 300,
-    status: "study", employer: "شركة اتصالات كبرى", obligations: [["personal", "البنك الأهلي السعودي", 3000, 90000]], housing: 1, next: "تقييم عقاري للفيلا المختارة", owner: 2, purpose: "شراء مسكن أول" },
-  { name: "عميل تجريبي — عبدالله ع.", by: 1962, sector: "retired", svc: 0, basic: 9000, total: 9000, bank: "riyad", simah: "late", ft: "personal", amt: 80000, tenor: 48,
-    status: "submitted", employer: "متقاعد — المؤسسة العامة للتأمينات", obligations: [], next: "متابعة طلب إمكان", owner: 3, purpose: "زواج ابن" },
-  { name: "عميل تجريبي — خالد ر.", by: 1996, sector: "private", svc: 14, basic: 5000, total: 6500, bank: "albilad", simah: "clean", ft: "auto", amt: 90000, tenor: 60,
-    status: "study", employer: "مؤسسة مقاولات", obligations: [["other", "قرض من صاحب العمل", 400, 4000]], next: "طلب برنت التأمينات", owner: 3, purpose: "سيارة للعمل" },
-  { name: "عميلة تجريبية — ريم ح.", by: 1988, sector: "semi_gov", svc: 120, basic: 18000, total: 26000, bank: "snb", simah: "clean", ft: "personal", amt: 400000, tenor: 60,
-    status: "approved", employer: "شركة شبه حكومية", obligations: [], next: "تسليم الشيك للعميلة", owner: 2, purpose: "سداد مديونيات" },
-  { name: "عميل تجريبي — فهد ن.", by: 1972, sector: "gov", svc: 300, basic: 16000, total: 21000, bank: "rajhi", simah: "clean", ft: "mortgage", amt: 1400000, tenor: 300,
-    status: "study", employer: "وزارة الصحة", obligations: [["personal", "مصرف الراجحي", 2600, 70000], ["card", "البنك الأهلي السعودي", 450, 12000]], next: "تحديد العقار وطلب تقييم", owner: 2, purpose: "شراء فيلا — مسكن أول" },
-];
-const EXTRA: Record<number, { property_value?: number; owns_home?: number; co_income?: number }> = { 1: { property_value: 1100000, owns_home: 0 }, 5: { property_value: 1600000, owns_home: 0 } };
-const insC = db.prepare(`INSERT INTO clients (file_no, full_name, national_id, phone, birth_year, nationality, employer, sector, service_months, basic_salary, total_salary,
-  salary_bank, simah, housing_support, finance_type, requested_amount, requested_tenor, purpose, status, next_step, next_step_due, owner_id, source, consent_at, created_at, updated_at)
-  VALUES (?,?,?,?,?,'saudi',?,?,?,?,?,?,?,?,?,?,?,?,?,?,date('now', ?),?, 'إحالة', datetime('now','-20 days'), datetime('now', ?), datetime('now', ?))`);
-const insO = db.prepare("INSERT INTO obligations (client_id, kind, lender, monthly, remaining) VALUES (?,?,?,?,?)");
-const insD = db.prepare("INSERT INTO documents (client_id, code, label, category, required, status, uploaded_at) VALUES (?,?,?,?,?,?,?)");
-const insN = db.prepare("INSERT INTO notes (client_id, kind, body, user_id, created_at) VALUES (?,?,?,?, datetime('now', ?))");
-const insA = db.prepare("INSERT INTO applications (client_id, lender_id, product_name, amount, tenor, installment, ref_no, status, submitted_at, note, created_by) VALUES (?,?,?,?,?,?,?,?, date('now', ?),?,?)");
-const insAudit = db.prepare("INSERT INTO audit_log (user_id, action, entity, entity_id, details, created_at) VALUES (?,?,?,?,?, datetime('now', ?))");
-
-clients.forEach((c, i) => {
-  const age = `-${(5 - i) * 3} days`;
-  const id = Number(
-    insC.run(`C-${String(i + 1).padStart(3, "0")}`, c.name, `10${String(23456789 + i * 1111111).slice(0, 8)}`, `05${String(51234567 + i * 7).slice(0, 8)}`, c.by,
-      c.employer, c.sector, c.svc, c.basic, c.total, c.bank, c.simah, c.housing ?? 0, c.ft, c.amt, c.tenor, c.purpose, c.status, c.next, `+${i + 1} days`, c.owner, age, `-${i} days`).lastInsertRowid,
-  );
-  for (const o of c.obligations) insO.run(id, o[0], o[1], o[2], o[3]);
-  const ex = EXTRA[i];
-  if (ex) db.prepare("UPDATE clients SET property_value = ?, owns_home = ?, co_income = ? WHERE id = ?").run(ex.property_value ?? null, ex.owns_home ?? null, ex.co_income ?? null, id);
-  const docs = requiredDocuments(c.ft, c.sector, "saudi");
-  docs.forEach((d, j) => {
-    const st = c.status === "approved" ? "verified" : j < Math.ceil(docs.length * (c.status === "submitted" ? 1 : 0.5)) ? (j % 2 ? "received" : "verified") : "missing";
-    insD.run(id, d.code, d.label, d.category, d.required ? 1 : 0, st, st === "missing" ? null : new Date().toISOString());
-  });
-  insN.run(id, "call", `مكالمة أولى مع العميل: يرغب في ${c.purpose}. شُرحت له المستندات المطلوبة.`, c.owner, age);
-  insAudit.run(c.owner, "client_create", "client", id, c.name, age);
-  if (c.status === "submitted") insA.run(id, lid["إمكان للتمويل"], "تمويل نقدي", 70000, 48, 1840, "EMK-88213", "under_review", "-2 days", "قُدم بعد رفض مبدئي من البنك بسبب سمة", c.owner);
-  if (c.status === "approved") {
-    insA.run(id, lid["البنك الأهلي السعودي"], "التمويل الشخصي", 400000, 60, 7733, "SNB-55120", "disbursed", "-9 days", "موافقة نهائية وتم الصرف", c.owner);
-    insN.run(id, "note", "تمت الموافقة بنسبة 3.2% ثابتة، وصُرف المبلغ.", c.owner, "-1 days");
-  }
-});
-
-// ===== خبرة الجهات: قواعد سوق عامة (تقديرية) يكملها الفريق =====
+    p.rt ?? "flat", p.transfer === false ? 0 : 1, p.late ? 1 : 0, p.ltv ?? null, "معايير تقديرية من المصادر العامة — حدّثها من سياسة الجهة الفعلية");
 const insR = db.prepare("INSERT INTO lender_rules (lender_id, finance_type, kind, title, body, user_id) VALUES (?,?,?,?,?,1)");
-const R: [string | null, string | null, string, string, string][] = [
-  [null, "mortgage", "tip", "اطلب تقييماً مبدئياً قبل العربون", "التمويل يُحسب على الأقل من السعر والتقييم؛ فرق التقييم يدفعه العميل نقداً."],
-  [null, "personal", "tip", "التمويل الإضافي لدى بنك الراتب", "إن كان على العميل قرض قائم، بنك الراتب يعطي غالباً تمويلاً إضافياً دون نقل الراتب أو شراء مديونية."],
-  ["مصرف الراجحي", "personal", "condition", "منتج قرب التقاعد", "خدمة 20 سنة مدني / 17 عسكري / 25 تأمينات، وحتى 60 للموظف و75 للمتقاعد عند آخر قسط (من موقع الجهة — للتحقق)."],
-  ["البنك السعودي للاستثمار", "mortgage", "exception", "لا فحص طبي حتى 2.5 مليون", "التكافل على الحياة مجاني ودون فحص طبي للتمويل حتى 2,500,000 في منتج سكني المدعوم (من موقع الجهة — للتحقق)."],
-  ["إمكان للتمويل", "personal", "exception", "يقبل تأخراً بسيطاً في سمة", "مع خطاب تسوية ومرور 3 أشهر انتظام (تجريبي — للتحقق)."],
-];
-for (const r of R) if (!r[0] || lid[r[0]]) insR.run(r[0] ? lid[r[0]] : null, r[1], r[2], r[3], r[4]);
+for (const r of RULES) if (!r[0] || lid[r[0]]) insR.run(r[0] ? lid[r[0]] : null, r[1], r[2], r[3], r[4]);
 
-// نتائج تجريبية توضح كيف تتعلم المنصة من الواقع (بيانات وهمية)
-const insOut = db.prepare(`INSERT INTO outcomes (lender_id, finance_type, sector, salary, age, simah, decision, requested_amount, estimated_amount, approved_amount, approved_rate, approved_tenor, conditions, reason, note, user_id, created_at)
-  VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,2, datetime('now', ?))`);
-const O: [string, string, string, number, number, string, number, number, number | null, string[], string | null, string][] = [
-  ["البنك الأهلي السعودي", "personal", "semi_gov", 26000, 36, "approved", 400000, 410000, 400000, ["salary_transfer"], null, "تجريبي"],
-  ["البنك الأهلي السعودي", "personal", "gov", 14000, 41, "approved_modified", 200000, 215000, 190000, ["salary_transfer", "lower_amount"], null, "خفضوا المبلغ بسبب بطاقة لم تُذكر — تجريبي"],
-  ["مصرف الراجحي", "personal", "gov", 13500, 33, "approved", 180000, 185000, 180000, [], null, "تجريبي"],
-  ["مصرف الراجحي", "mortgage", "gov", 21000, 53, "approved_modified", 1300000, 1250000, 1100000, ["medical", "down_payment"], null, "طلبوا تقريراً طبياً لعمر 53 ورفعوا الدفعة — تجريبي"],
-  ["إمكان للتمويل", "personal", "retired", 9000, 63, "approved", 70000, 72000, 70000, ["simah_letter"], null, "قبلوا مع خطاب تسوية — تجريبي"],
-  ["بنك الرياض", "personal", "private", 7000, 29, "rejected", 120000, 110000, null, [], "employer", "الشركة غير مصنفة لديهم — تجريبي"],
-];
-O.forEach((o, i) => insOut.run(lid[o[0]] ?? 1, o[1], o[2], o[3], o[4], "clean", o[5], o[6], o[7], o[8], null, null, JSON.stringify(o[9]), o[10], o[11], `-${(i + 1) * 4} days`));
-
-// حساب الأهلية الأولية لكل عميل بنفس المحرك
-const prodObjs: Product[] = (db.prepare("SELECT p.*, l.name lender_name, l.type lender_type, l.bank_code FROM products p JOIN lenders l ON l.id = p.lender_id").all() as any[]).map((r) => ({
-  id: String(r.id), lenderId: String(r.lender_id), lenderName: r.lender_name, lenderType: r.lender_type, bankCode: r.bank_code, financeType: r.finance_type, name: r.name,
-  minSalary: r.min_salary, minAge: r.min_age, maxAgeAtMaturity: r.max_age_at_maturity, minServiceMonths: r.min_service_months, sectors: JSON.parse(r.sectors),
-  nationalities: JSON.parse(r.nationalities), maxTenor: r.max_tenor, maxAmount: r.max_amount, rate: r.rate, rateType: r.rate_type,
-  requiresSalaryTransfer: !!r.requires_salary_transfer, acceptsLateSimah: !!r.accepts_late_simah, maxLtv: r.max_ltv,
-}));
-for (const c of db.prepare("SELECT * FROM clients").all() as any[]) {
-  const obl = db.prepare("SELECT kind, monthly FROM obligations WHERE client_id = ?").all(c.id) as any[];
-  const s = study({ age: new Date().getFullYear() - c.birth_year, nationality: c.nationality, sector: c.sector, serviceMonths: c.service_months, basicSalary: c.basic_salary,
-    totalSalary: c.total_salary, salaryBank: c.salary_bank, simah: c.simah, housingSupport: !!c.housing_support, financeType: c.finance_type, requestedAmount: c.requested_amount,
-    requestedTenor: c.requested_tenor, obligations: obl, propertyValue: c.property_value, coIncome: c.co_income, firstHome: c.owns_home == null ? null : !c.owns_home }, prodObjs);
-  db.prepare("UPDATE clients SET eligibility = ? WHERE id = ?").run(c.status === "approved" ? "eligible" : s.verdict, c.id);
-}
-
-console.log(`✓ تمت التهيئة: ${users.length} مستخدمين، ${lenders.length} جهات، ${prods.length} منتجاً، ${clients.length} عملاء تجريبيين.`);
-console.log(`  الدخول: admin@masar.local / ${pw}`);
+console.log(`✓ قاعدة نظيفة: ${LENDERS.length} جهات، ${PRODUCTS.length} منتجاً، ${RULES.length} قاعدة سوق. بلا عملاء.`);
+if (!process.env.VERCEL) console.log(`  الدخول: ${email} / ${pw}`);

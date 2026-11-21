@@ -56,14 +56,14 @@ export async function clientIp() {
 }
 
 export async function login(email: string, password: string): Promise<{ ok: true } | { ok: false; error: string }> {
-  const u = get<{ id: number; password_hash: string; active: number; failed_logins: number; locked_until: string | null }>(
+  const u = await get<{ id: number; password_hash: string; active: number; failed_logins: number; locked_until: string | null }>(
     "SELECT id, password_hash, active, failed_logins, locked_until FROM users WHERE email = ?",
     email.trim().toLowerCase(),
   );
   const ip = await clientIp();
   if (!u || !u.active) {
     await bcrypt.compare(password, "$2a$12$0000000000000000000000000000000000000000000000000000"); // توقيت ثابت
-    run("INSERT INTO audit_log (action, details, ip) VALUES ('login_failed', ?, ?)", email, ip);
+    await run("INSERT INTO audit_log (action, details, ip) VALUES ('login_failed', ?, ?)", email, ip);
     return { ok: false, error: "البريد أو كلمة المرور غير صحيحة" };
   }
   if (u.locked_until && new Date(u.locked_until + "Z") > new Date()) {
@@ -72,18 +72,18 @@ export async function login(email: string, password: string): Promise<{ ok: true
   const ok = await bcrypt.compare(password, u.password_hash);
   if (!ok) {
     const fails = u.failed_logins + 1;
-    run(
+    await run(
       "UPDATE users SET failed_logins = ?, locked_until = CASE WHEN ? >= 5 THEN datetime('now','+15 minutes') ELSE NULL END WHERE id = ?",
       fails >= 5 ? 0 : fails,
       fails,
       u.id,
     );
-    run("INSERT INTO audit_log (user_id, action, ip) VALUES (?, 'login_failed', ?)", u.id, ip);
+    await run("INSERT INTO audit_log (user_id, action, ip) VALUES (?, 'login_failed', ?)", u.id, ip);
     return { ok: false, error: "البريد أو كلمة المرور غير صحيحة" };
   }
   const token = signSession(u.id);
-  run("UPDATE users SET failed_logins = 0, locked_until = NULL, last_login_at = datetime('now') WHERE id = ?", u.id);
-  run("INSERT INTO audit_log (user_id, action, ip) VALUES (?, 'login', ?)", u.id, ip);
+  await run("UPDATE users SET failed_logins = 0, locked_until = NULL, last_login_at = datetime('now') WHERE id = ?", u.id);
+  await run("INSERT INTO audit_log (user_id, action, ip) VALUES (?, 'login', ?)", u.id, ip);
   (await cookies()).set(COOKIE, token, {
     httpOnly: true,
     sameSite: "lax",
@@ -103,7 +103,7 @@ export async function currentUser(): Promise<User | null> {
   const t = (await cookies()).get(COOKIE)?.value;
   const uid = t ? verifySession(t) : null;
   if (!uid) return null;
-  return get<User>("SELECT id, name, email, role FROM users WHERE id = ? AND active = 1", uid) ?? null;
+  return await get<User>("SELECT id, name, email, role FROM users WHERE id = ? AND active = 1", uid) ?? null;
 }
 
 // جلسة موقعة HMAC (لا تعتمد على حالة الخادم — تعمل مع عدة نسخ على Vercel)
@@ -151,7 +151,7 @@ export async function requirePage(perm: Perm): Promise<User> {
 }
 
 export async function audit(user: User | null, action: string, entity?: string, entityId?: number | bigint | null, details?: unknown) {
-  run(
+  await run(
     "INSERT INTO audit_log (user_id, action, entity, entity_id, details, ip) VALUES (?, ?, ?, ?, ?, ?)",
     user?.id ?? null,
     action,

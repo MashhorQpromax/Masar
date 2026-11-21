@@ -2,10 +2,8 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import crypto from "node:crypto";
-import fs from "node:fs/promises";
-import path from "node:path";
 import { z } from "zod";
-import { all, get, run, tx, UPLOAD_DIR } from "@/lib/db";
+import { all, get, run, tx } from "@/lib/db";
 import { audit, can, hashPassword, login, logout, requireUser } from "@/lib/auth";
 import { getClient, nextFileNo, studyFor, profileOf } from "@/lib/data";
 import { requiredDocuments } from "@/lib/engine";
@@ -80,19 +78,19 @@ function readClient(fd: FormData) {
   };
 }
 
-function syncDocuments(clientId: number) {
-  const c = getClient(clientId)!;
+async function syncDocuments(clientId: number) {
+  const c = (await getClient(clientId))!;
   const reqs = requiredDocuments(c.finance_type, c.sector, c.nationality);
-  const existing = new Set(all<{ code: string }>("SELECT code FROM documents WHERE client_id = ?", clientId).map((r) => r.code));
+  const existing = new Set((await all<{ code: string }>("SELECT code FROM documents WHERE client_id = ?", clientId)).map((r) => r.code));
   for (const d of reqs)
-    if (!existing.has(d.code)) run("INSERT INTO documents (client_id, code, label, category, required) VALUES (?,?,?,?,?)", clientId, d.code, d.label, d.category, d.required ? 1 : 0);
+    if (!existing.has(d.code)) await run("INSERT INTO documents (client_id, code, label, category, required) VALUES (?,?,?,?,?)", clientId, d.code, d.label, d.category, d.required ? 1 : 0);
 }
 
-function refreshEligibility(clientId: number) {
-  const c = getClient(clientId);
+async function refreshEligibility(clientId: number) {
+  const c = await getClient(clientId);
   if (!c) return;
-  const s = studyFor(c);
-  run("UPDATE clients SET eligibility = ?, updated_at = datetime('now') WHERE id = ?", s.verdict, clientId);
+  const s = await studyFor(c);
+  await run("UPDATE clients SET eligibility = ?, updated_at = datetime('now') WHERE id = ?", s.verdict, clientId);
 }
 
 export async function createClient(_: FormState, fd: FormData): Promise<FormState> {
@@ -101,39 +99,40 @@ export async function createClient(_: FormState, fd: FormData): Promise<FormStat
   const v = clientSchema.safeParse(data);
   if (!v.success) return { error: v.error.issues[0].message };
   if (!fd.get("consent")) return { error: "يلزم تأكيد موافقة العميل على جمع بياناته ومعالجتها (نظام حماية البيانات الشخصية)." };
-  if (data.national_id && get("SELECT id FROM clients WHERE national_id = ?", data.national_id)) return { error: "يوجد ملف بنفس رقم الهوية." };
-  const id = tx(() => {
+  if (data.national_id && await get("SELECT id FROM clients WHERE national_id = ?", data.national_id)) return { error: "يوجد ملف بنفس رقم الهوية." };
+  const fileNo = await nextFileNo();
+  const id = await tx(async (q) => {
     const cols = Object.keys(data);
-    const r = run(
+    const r = await q.run(
       `INSERT INTO clients (file_no, ${cols.join(",")}, owner_id, consent_at) VALUES (?, ${cols.map(() => "?").join(",")}, ?, datetime('now'))`,
-      nextFileNo(),
+      fileNo,
       ...Object.values(data),
       u.id,
     );
     const id = Number(r.lastInsertRowid);
     const obls = String(fd.get("obligations_json") || "[]");
     for (const o of JSON.parse(obls) as { kind: string; lender: string; monthly: number; remaining: number }[])
-      if (o.monthly > 0) run("INSERT INTO obligations (client_id, kind, lender, monthly, remaining) VALUES (?,?,?,?,?)", id, o.kind, o.lender || null, o.monthly, o.remaining || null);
+      if (o.monthly > 0) await q.run("INSERT INTO obligations (client_id, kind, lender, monthly, remaining) VALUES (?,?,?,?,?)", id, o.kind, o.lender || null, o.monthly, o.remaining || null);
     return id;
   });
-  syncDocuments(id);
-  refreshEligibility(id);
+  await syncDocuments(id);
+  await refreshEligibility(id);
   await audit(u, "client_create", "client", id, data.full_name);
   redirect(`/clients/${id}?tab=study`);
 }
 
 export async function updateClient(id: number, _: FormState, fd: FormData): Promise<FormState> {
   const u = await requireUser("client.edit");
-  const before = getClient(id);
+  const before = await getClient(id);
   if (!before) return { error: "غير موجود" };
   const data = readClient(fd);
   const v = clientSchema.safeParse(data);
   if (!v.success) return { error: v.error.issues[0].message };
   const cols = Object.keys(data);
-  run(`UPDATE clients SET ${cols.map((c) => `${c} = ?`).join(", ")}, updated_at = datetime('now') WHERE id = ?`, ...Object.values(data), id);
+  await run(`UPDATE clients SET ${cols.map((c) => `${c} = ?`).join(", ")}, updated_at = datetime('now') WHERE id = ?`, ...Object.values(data), id);
   const changed = cols.filter((k) => String((before as unknown as Record<string, unknown>)[k] ?? "") !== String((data as Record<string, unknown>)[k] ?? ""));
-  syncDocuments(id);
-  refreshEligibility(id);
+  await syncDocuments(id);
+  await refreshEligibility(id);
   await audit(u, "client_update", "client", id, { changed });
   revalidatePath(`/clients/${id}`);
   return { ok: "تم حفظ التعديلات وتحديث الدراسة" };
@@ -142,8 +141,8 @@ export async function updateClient(id: number, _: FormState, fd: FormData): Prom
 export async function setStatus(id: number, fd: FormData) {
   const u = await requireUser("client.edit");
   const status = String(fd.get("status"));
-  const prev = getClient(id)?.status;
-  run("UPDATE clients SET status = ?, updated_at = datetime('now') WHERE id = ?", status, id);
+  const prev = (await getClient(id))?.status;
+  await run("UPDATE clients SET status = ?, updated_at = datetime('now') WHERE id = ?", status, id);
   await audit(u, "client_status", "client", id, { from: prev, to: status });
   revalidatePath("/");
   revalidatePath(`/clients/${id}`);
@@ -151,7 +150,7 @@ export async function setStatus(id: number, fd: FormData) {
 
 export async function setNextStep(id: number, fd: FormData) {
   const u = await requireUser("client.edit");
-  run("UPDATE clients SET next_step = ?, next_step_due = ?, updated_at = datetime('now') WHERE id = ?", str(fd.get("next_step")), str(fd.get("next_step_due")), id);
+  await run("UPDATE clients SET next_step = ?, next_step_due = ?, updated_at = datetime('now') WHERE id = ?", str(fd.get("next_step")), str(fd.get("next_step_due")), id);
   await audit(u, "client_update", "client", id, { changed: ["next_step"] });
   revalidatePath(`/clients/${id}`);
 }
@@ -159,14 +158,13 @@ export async function setNextStep(id: number, fd: FormData) {
 export async function revealId(id: number) {
   const u = await requireUser("client.view_pii");
   await audit(u, "client_view_pii", "client", id);
-  return getClient(id)?.national_id ?? null;
+  return (await getClient(id))?.national_id ?? null;
 }
 
 export async function deleteClient(id: number) {
   const u = await requireUser("client.delete");
-  const docs = all<{ stored_name: string | null }>("SELECT stored_name FROM documents WHERE client_id = ?", id);
-  run("DELETE FROM clients WHERE id = ?", id);
-  for (const d of docs) if (d.stored_name) await fs.rm(path.join(UPLOAD_DIR, d.stored_name), { force: true });
+  await run("DELETE FROM file_blobs WHERE doc_id IN (SELECT id FROM documents WHERE client_id = ?)", id);
+  await run("DELETE FROM clients WHERE id = ?", id);
   await audit(u, "client_delete", "client", id);
   redirect("/clients");
 }
@@ -176,15 +174,15 @@ export async function addObligation(clientId: number, fd: FormData) {
   const u = await requireUser("client.edit");
   const monthly = num(fd.get("monthly"));
   if (!monthly || monthly <= 0) return;
-  run("INSERT INTO obligations (client_id, kind, lender, monthly, remaining) VALUES (?,?,?,?,?)", clientId, str(fd.get("kind")) || "other", str(fd.get("lender")), monthly, num(fd.get("remaining")));
-  refreshEligibility(clientId);
+  await run("INSERT INTO obligations (client_id, kind, lender, monthly, remaining) VALUES (?,?,?,?,?)", clientId, str(fd.get("kind")) || "other", str(fd.get("lender")), monthly, num(fd.get("remaining")));
+  await refreshEligibility(clientId);
   await audit(u, "obligation_add", "client", clientId, { monthly });
   revalidatePath(`/clients/${clientId}`);
 }
 export async function deleteObligation(clientId: number, oid: number) {
   const u = await requireUser("client.edit");
-  run("DELETE FROM obligations WHERE id = ? AND client_id = ?", oid, clientId);
-  refreshEligibility(clientId);
+  await run("DELETE FROM obligations WHERE id = ? AND client_id = ?", oid, clientId);
+  await refreshEligibility(clientId);
   await audit(u, "obligation_delete", "client", clientId);
   revalidatePath(`/clients/${clientId}`);
 }
@@ -215,32 +213,33 @@ export async function uploadDocument(clientId: number, docId: number, _: FormSta
   if (!ext) return { error: "الأنواع المسموحة: PDF وصور" };
   const buf = Buffer.from(await f.arrayBuffer());
   if (!sniff(buf, f.type)) return { error: "محتوى الملف لا يطابق نوعه" };
-  const doc = get<{ id: number; stored_name: string | null }>("SELECT id, stored_name FROM documents WHERE id = ? AND client_id = ?", docId, clientId);
+  const doc = await get<{ id: number; stored_name: string | null }>("SELECT id, stored_name FROM documents WHERE id = ? AND client_id = ?", docId, clientId);
   if (!doc) return { error: "غير موجود" };
-  const stored = crypto.randomUUID() + ext;
-  await fs.writeFile(path.join(UPLOAD_DIR, stored), buf, { mode: 0o600 });
-  if (doc.stored_name) await fs.rm(path.join(UPLOAD_DIR, doc.stored_name), { force: true });
+  // الملفات تُحفظ داخل قاعدة البيانات (دائمة ومشمولة بالنسخ الاحتياطي)
+  const stored = "db:" + crypto.randomUUID() + ext;
+  await run("DELETE FROM file_blobs WHERE doc_id = ?", docId);
+  await run("INSERT INTO file_blobs (doc_id, data) VALUES (?, ?)", docId, buf);
   const sha256 = crypto.createHash("sha256").update(buf).digest("hex");
-  run(
+  await run(
     "UPDATE documents SET status='received', file_name=?, stored_name=?, mime=?, size=?, sha256=?, uploaded_by=?, uploaded_at=datetime('now') WHERE id=?",
     f.name.slice(0, 200), stored, f.type, f.size, sha256, u.id, docId,
   );
-  maybeAdvance(clientId);
+  await maybeAdvance(clientId);
   await audit(u, "doc_upload", "client", clientId, { doc: docId, name: f.name, size: f.size });
   revalidatePath(`/clients/${clientId}`);
   return { ok: "تم الرفع" };
 }
 
-function maybeAdvance(clientId: number) {
-  const c = getClient(clientId);
-  const missing = get<{ n: number }>("SELECT COUNT(*) n FROM documents WHERE client_id = ? AND required = 1 AND status IN ('missing','rejected')", clientId)?.n ?? 0;
-  if (c?.status === "awaiting_docs" && missing === 0) run("UPDATE clients SET status = 'study' WHERE id = ?", clientId);
+async function maybeAdvance(clientId: number) {
+  const c = await getClient(clientId);
+  const missing = (await get<{ n: number }>("SELECT COUNT(*) n FROM documents WHERE client_id = ? AND required = 1 AND status IN ('missing','rejected')", clientId))?.n ?? 0;
+  if (c?.status === "awaiting_docs" && missing === 0) await run("UPDATE clients SET status = 'study' WHERE id = ?", clientId);
 }
 
 export async function setDocStatus(clientId: number, docId: number, status: string) {
   const u = await requireUser(status === "verified" || status === "rejected" ? "doc.verify" : "doc.upload");
-  run("UPDATE documents SET status = ? WHERE id = ? AND client_id = ?", status, docId, clientId);
-  maybeAdvance(clientId);
+  await run("UPDATE documents SET status = ? WHERE id = ? AND client_id = ?", status, docId, clientId);
+  await maybeAdvance(clientId);
   await audit(u, "doc_status", "client", clientId, { doc: docId, status });
   revalidatePath(`/clients/${clientId}`);
 }
@@ -249,7 +248,7 @@ export async function addCustomDoc(clientId: number, fd: FormData) {
   const u = await requireUser("doc.upload");
   const label = str(fd.get("label"));
   if (!label) return;
-  run("INSERT INTO documents (client_id, code, label, category, required) VALUES (?,?,?,?,0)", clientId, "custom:" + crypto.randomUUID().slice(0, 8), label, str(fd.get("category")) || "identity");
+  await run("INSERT INTO documents (client_id, code, label, category, required) VALUES (?,?,?,?,0)", clientId, "custom:" + crypto.randomUUID().slice(0, 8), label, str(fd.get("category")) || "identity");
   await audit(u, "doc_status", "client", clientId, { added: label });
   revalidatePath(`/clients/${clientId}`);
 }
@@ -258,13 +257,13 @@ export async function addCustomDoc(clientId: number, fd: FormData) {
 export async function createApplication(clientId: number, fd: FormData) {
   const u = await requireUser("app.manage");
   const status = str(fd.get("status")) || "draft";
-  const r = run(
+  const r = await run(
     `INSERT INTO applications (client_id, lender_id, product_name, amount, tenor, installment, ref_no, status, submitted_at, note, created_by)
      VALUES (?,?,?,?,?,?,?,?, CASE WHEN ? != 'draft' THEN date('now') END, ?, ?)`,
     clientId, num(fd.get("lender_id")), str(fd.get("product_name")), num(fd.get("amount")), num(fd.get("tenor")), num(fd.get("installment")),
     str(fd.get("ref_no")), status, status, str(fd.get("note")), u.id,
   );
-  if (status !== "draft") run("UPDATE clients SET status = 'submitted', updated_at = datetime('now') WHERE id = ? AND status IN ('study','awaiting_docs')", clientId);
+  if (status !== "draft") await run("UPDATE clients SET status = 'submitted', updated_at = datetime('now') WHERE id = ? AND status IN ('study','awaiting_docs')", clientId);
   await audit(u, "app_create", "client", clientId, { app: Number(r.lastInsertRowid) });
   revalidatePath(`/clients/${clientId}`);
 }
@@ -272,14 +271,14 @@ export async function createApplication(clientId: number, fd: FormData) {
 export async function updateApplication(clientId: number, appId: number, fd: FormData) {
   const u = await requireUser("app.manage");
   const status = String(fd.get("status"));
-  run(
+  await run(
     `UPDATE applications SET status = ?, ref_no = COALESCE(?, ref_no), note = COALESCE(?, note), updated_at = datetime('now'),
        submitted_at = CASE WHEN submitted_at IS NULL AND ? != 'draft' THEN date('now') ELSE submitted_at END,
        decided_at = CASE WHEN ? IN ('approved','rejected','disbursed') THEN date('now') ELSE decided_at END
      WHERE id = ? AND client_id = ?`,
     status, str(fd.get("ref_no")), str(fd.get("note")), status, status, appId, clientId,
   );
-  if (status === "approved" || status === "disbursed") run("UPDATE clients SET status = 'approved', updated_at = datetime('now') WHERE id = ?", clientId);
+  if (status === "approved" || status === "disbursed") await run("UPDATE clients SET status = 'approved', updated_at = datetime('now') WHERE id = ?", clientId);
   await audit(u, "app_update", "client", clientId, { app: appId, status });
   revalidatePath(`/clients/${clientId}`);
 }
@@ -287,16 +286,16 @@ export async function updateApplication(clientId: number, appId: number, fd: For
 // ===== نتيجة الجهة الفعلية (التعلّم من الواقع) =====
 export async function recordOutcome(clientId: number, appId: number, fd: FormData) {
   const u = await requireUser("app.manage");
-  const c = getClient(clientId);
-  const app = get<{ lender_id: number | null; amount: number | null }>("SELECT lender_id, amount FROM applications WHERE id = ? AND client_id = ?", appId, clientId);
+  const c = await getClient(clientId);
+  const app = await get<{ lender_id: number | null; amount: number | null }>("SELECT lender_id, amount FROM applications WHERE id = ? AND client_id = ?", appId, clientId);
   if (!c || !app?.lender_id) return;
   const decision = String(fd.get("decision"));
   if (!["approved", "approved_modified", "rejected"].includes(decision)) return;
-  const s = studyFor(c);
+  const s = await studyFor(c);
   const m = s.matches.filter((x) => x.product.lenderId === String(app.lender_id)).sort((a, b) => b.maxPrincipal - a.maxPrincipal)[0];
-  const p = profileOf(c);
+  const p = await profileOf(c);
   const conditions = fd.getAll("conditions").map(String).slice(0, 20);
-  run(
+  await run(
     `INSERT INTO outcomes (application_id, client_id, lender_id, finance_type, sector, salary, age, simah, decision, requested_amount, estimated_amount, approved_amount, approved_rate, approved_tenor, conditions, reason, note, user_id)
      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     appId, clientId, app.lender_id, c.finance_type, c.sector, c.total_salary ?? c.basic_salary, p.age, c.simah, decision,
@@ -304,8 +303,8 @@ export async function recordOutcome(clientId: number, appId: number, fd: FormDat
     num(fd.get("approved_rate")), num(fd.get("approved_tenor")), JSON.stringify(conditions), str(fd.get("reason")), str(fd.get("note")), u.id,
   );
   const st = decision === "rejected" ? "rejected" : "approved";
-  run("UPDATE applications SET status = ?, decided_at = date('now'), updated_at = datetime('now') WHERE id = ?", st, appId);
-  if (st === "approved") run("UPDATE clients SET status = 'approved', updated_at = datetime('now') WHERE id = ?", clientId);
+  await run("UPDATE applications SET status = ?, decided_at = date('now'), updated_at = datetime('now') WHERE id = ?", st, appId);
+  if (st === "approved") await run("UPDATE clients SET status = 'approved', updated_at = datetime('now') WHERE id = ?", clientId);
   await audit(u, "outcome_record", "client", clientId, { app: appId, decision, conditions });
   revalidatePath(`/clients/${clientId}`);
   revalidatePath("/lenders");
@@ -317,14 +316,14 @@ export async function addLenderRule(fd: FormData) {
   const title = str(fd.get("title"));
   const kind = String(fd.get("kind"));
   if (!title || !["condition", "exception", "tip", "warning"].includes(kind)) return;
-  run("INSERT INTO lender_rules (lender_id, finance_type, kind, title, body, user_id) VALUES (?,?,?,?,?,?)", num(fd.get("lender_id")), str(fd.get("finance_type")), kind, title, str(fd.get("body")), u.id);
+  await run("INSERT INTO lender_rules (lender_id, finance_type, kind, title, body, user_id) VALUES (?,?,?,?,?,?)", num(fd.get("lender_id")), str(fd.get("finance_type")), kind, title, str(fd.get("body")), u.id);
   await audit(u, "rule_add", "lender", num(fd.get("lender_id")), title);
   revalidatePath("/lenders");
   revalidatePath("/knowledge");
 }
 export async function archiveLenderRule(id: number) {
   const u = await requireUser("lender.manage");
-  run("UPDATE lender_rules SET active = 0 WHERE id = ?", id);
+  await run("UPDATE lender_rules SET active = 0 WHERE id = ?", id);
   await audit(u, "rule_archive", "lender", null, { id });
   revalidatePath("/knowledge");
 }
@@ -334,7 +333,7 @@ export async function addNote(clientId: number, fd: FormData) {
   const u = await requireUser("client.edit");
   const body = str(fd.get("body"));
   if (!body) return;
-  run("INSERT INTO notes (client_id, kind, body, user_id) VALUES (?,?,?,?)", clientId, str(fd.get("kind")) || "note", body, u.id);
+  await run("INSERT INTO notes (client_id, kind, body, user_id) VALUES (?,?,?,?)", clientId, str(fd.get("kind")) || "note", body, u.id);
   await audit(u, "note_add", "client", clientId);
   revalidatePath(`/clients/${clientId}`);
 }
@@ -342,12 +341,12 @@ export async function addNote(clientId: number, fd: FormData) {
 // ===== اعتماد الدراسة =====
 export async function saveStudy(clientId: number, fd: FormData) {
   const u = await requireUser("study.approve");
-  const c = getClient(clientId);
+  const c = await getClient(clientId);
   if (!c) return;
-  const s = studyFor(c);
+  const s = await studyFor(c);
   const verdict = str(fd.get("verdict")) || s.verdict;
-  run("INSERT INTO studies (client_id, verdict, snapshot, analyst_opinion, user_id) VALUES (?,?,?,?,?)", clientId, verdict, JSON.stringify(s), str(fd.get("opinion")), u.id);
-  run("UPDATE clients SET eligibility = ?, updated_at = datetime('now') WHERE id = ?", verdict, clientId);
+  await run("INSERT INTO studies (client_id, verdict, snapshot, analyst_opinion, user_id) VALUES (?,?,?,?,?)", clientId, verdict, JSON.stringify(s), str(fd.get("opinion")), u.id);
+  await run("UPDATE clients SET eligibility = ?, updated_at = datetime('now') WHERE id = ?", verdict, clientId);
   await audit(u, "study_save", "client", clientId, { verdict });
   revalidatePath(`/clients/${clientId}`);
 }
@@ -361,8 +360,8 @@ export async function createUser(_: FormState, fd: FormData): Promise<FormState>
   const role = String(fd.get("role") || "officer");
   if (!name || !/^\S+@\S+\.\S+$/.test(email)) return { error: "الاسم والبريد مطلوبان" };
   if (password.length < 10 || !/[A-Za-z]/.test(password) || !/\d/.test(password)) return { error: "كلمة المرور 10 خانات على الأقل وتحتوي حروفاً وأرقاماً" };
-  if (get("SELECT id FROM users WHERE email = ?", email)) return { error: "البريد مستخدم" };
-  const r = run("INSERT INTO users (name, email, password_hash, role) VALUES (?,?,?,?)", name, email, await hashPassword(password), role);
+  if (await get("SELECT id FROM users WHERE email = ?", email)) return { error: "البريد مستخدم" };
+  const r = await run("INSERT INTO users (name, email, password_hash, role) VALUES (?,?,?,?)", name, email, await hashPassword(password), role);
   await audit(u, "user_create", "user", r.lastInsertRowid, { email, role });
   revalidatePath("/users");
   return { ok: "تمت إضافة المستخدم" };
@@ -373,10 +372,10 @@ export async function updateUser(id: number, fd: FormData) {
   const role = str(fd.get("role"));
   const active = fd.get("active") === "1" ? 1 : 0;
   if (id === u.id && (active === 0 || role !== "admin")) return; // لا يعطل المدير نفسه
-  run("UPDATE users SET role = COALESCE(?, role), active = ? WHERE id = ?", role, active, id);
-  if (!active) run("DELETE FROM sessions WHERE user_id = ?", id);
+  await run("UPDATE users SET role = COALESCE(?, role), active = ? WHERE id = ?", role, active, id);
+  if (!active) await run("DELETE FROM sessions WHERE user_id = ?", id);
   const pw = String(fd.get("password") || "");
-  if (pw.length >= 10) run("UPDATE users SET password_hash = ? WHERE id = ?", await hashPassword(pw), id);
+  if (pw.length >= 10) await run("UPDATE users SET password_hash = ? WHERE id = ?", await hashPassword(pw), id);
   await audit(u, "user_update", "user", id, { role, active, passwordReset: pw.length >= 10 });
   revalidatePath("/users");
 }
@@ -394,7 +393,7 @@ export async function saveProduct(fd: FormData) {
     fd.get("accepts_late_simah") ? 1 : 0, num(fd.get("max_ltv")), str(fd.get("notes")), fd.get("active") ? 1 : 0,
   ];
   if (id) {
-    run(
+    await run(
       `UPDATE products SET name=?, min_salary=?, min_age=?, max_age_at_maturity=?, min_service_months=?, sectors=?, nationalities=?, max_tenor=?, max_amount=?, rate=?,
        rate_type=?, requires_salary_transfer=?, accepts_late_simah=?, max_ltv=?, notes=?, active=?, verified_at = CASE WHEN ? THEN datetime('now') ELSE verified_at END WHERE id=?`,
       ...vals, fd.get("verified") ? 1 : 0, id,
@@ -403,15 +402,15 @@ export async function saveProduct(fd: FormData) {
   } else {
     let lenderId = num(fd.get("lender_id"));
     const newLender = str(fd.get("new_lender"));
-    if (newLender) lenderId = Number(run("INSERT INTO lenders (name, type) VALUES (?, ?)", newLender, str(fd.get("lender_type")) || "bank").lastInsertRowid);
-    const r = run(
+    if (newLender) lenderId = (await run("INSERT INTO lenders (name, type) VALUES (?, ?)", newLender, str(fd.get("lender_type")) || "bank")).lastInsertRowid;
+    const r = await run(
       `INSERT INTO products (name, min_salary, min_age, max_age_at_maturity, min_service_months, sectors, nationalities, max_tenor, max_amount, rate, rate_type,
        requires_salary_transfer, accepts_late_simah, max_ltv, notes, active, lender_id, finance_type) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       ...vals, lenderId, str(fd.get("finance_type")) || "personal",
     );
     await audit(u, "product_create", "product", r.lastInsertRowid);
   }
-  for (const c of all<{ id: number }>("SELECT id FROM clients WHERE status NOT IN ('approved','rejected')")) refreshEligibility(c.id);
+  for (const c of await all<{ id: number }>("SELECT id FROM clients WHERE status NOT IN ('approved','rejected')")) await refreshEligibility(c.id);
   revalidatePath("/lenders");
   redirect("/lenders");
 }

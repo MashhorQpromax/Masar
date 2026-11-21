@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 export default async function Audit({ searchParams }: { searchParams: Promise<{ action?: string }> }) {
   await requirePage("audit.view");
   const { action } = await searchParams;
-  const rows = all<{ id: number; action: string; entity: string | null; entity_id: number | null; details: string | null; ip: string | null; created_at: string; name: string | null; full_name: string | null }>(
+  const rows = await all<{ id: number; action: string; entity: string | null; entity_id: number | null; details: string | null; ip: string | null; created_at: string; name: string | null; full_name: string | null }>(
     `SELECT a.*, u.name, c.full_name FROM audit_log a LEFT JOIN users u ON u.id = a.user_id LEFT JOIN clients c ON a.entity = 'client' AND c.id = a.entity_id
      ${action ? "WHERE a.action = ?" : ""} ORDER BY a.id DESC LIMIT 300`, ...(action ? [action] : []),
   );

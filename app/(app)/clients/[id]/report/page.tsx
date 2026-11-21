@@ -12,12 +12,12 @@ export const dynamic = "force-dynamic";
 export default async function Report({ params }: { params: Promise<{ id: string }> }) {
   const u = await requireUser();
   const id = Number((await params).id);
-  const c = getClient(id);
+  const c = await getClient(id);
   if (!c) notFound();
-  const s = studyFor(c);
-  const obl = getObligations(id);
-  const docs = all<{ label: string; status: keyof typeof DOC_STATUS; required: number }>("SELECT label, status, required FROM documents WHERE client_id = ? ORDER BY required DESC, id", id);
-  const approved = all<{ verdict: string; analyst_opinion: string | null; name: string; created_at: string }>("SELECT s.*, u.name FROM studies s JOIN users u ON u.id = s.user_id WHERE client_id = ? ORDER BY s.id DESC LIMIT 1", id)[0];
+  const s = await studyFor(c);
+  const obl = await getObligations(id);
+  const docs = await all<{ label: string; status: keyof typeof DOC_STATUS; required: number }>("SELECT label, status, required FROM documents WHERE client_id = ? ORDER BY required DESC, id", id);
+  const approved = (await all<{ verdict: string; analyst_opinion: string | null; name: string; created_at: string }>("SELECT s.*, u.name FROM studies s JOIN users u ON u.id = s.user_id WHERE client_id = ? ORDER BY s.id DESC LIMIT 1", id))[0];
   await audit(u, "export", "client", id, "تقرير الدراسة");
   const top = s.matches.filter((m) => m.verdict !== "fail").slice(0, 5);
   const verdict = (approved?.verdict ?? s.verdict) as keyof typeof ELIGIBILITY;

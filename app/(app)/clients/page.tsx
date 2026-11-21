@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { all } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
-import { docProgress } from "@/lib/data";
+import { docProgressMap } from "@/lib/data";
 import { STATUS, ELIGIBILITY, FINANCE_TYPE, SECTOR } from "@/lib/labels";
 import { EligBadge, PageHeader, Progress, StatusBadge, sar, dateAr, Empty } from "@/components/ui";
 
@@ -16,10 +16,11 @@ export default async function Clients({ searchParams }: { searchParams: Promise<
   if (sp.status) { where.push("c.status = ?"); params.push(sp.status); }
   if (sp.elig) { where.push("c.eligibility = ?"); params.push(sp.elig); }
   if (sp.type) { where.push("c.finance_type = ?"); params.push(sp.type); }
-  const rows = all<{ id: number; file_no: string; full_name: string; phone: string | null; sector: keyof typeof SECTOR; finance_type: keyof typeof FINANCE_TYPE; requested_amount: number | null; status: string; eligibility: string; next_step: string | null; owner_name: string | null; updated_at: string }>(
+  const rows = await all<{ id: number; file_no: string; full_name: string; phone: string | null; sector: keyof typeof SECTOR; finance_type: keyof typeof FINANCE_TYPE; requested_amount: number | null; status: string; eligibility: string; next_step: string | null; owner_name: string | null; updated_at: string }>(
     `SELECT c.*, u.name owner_name FROM clients c LEFT JOIN users u ON u.id = c.owner_id ${where.length ? "WHERE " + where.join(" AND ") : ""} ORDER BY c.updated_at DESC`,
     ...params,
   );
+  const prog = await docProgressMap(rows.map((r) => r.id));
   return (
     <>
       <PageHeader title="العملاء" sub={`${rows.length} ملف`} actions={<Link href="/clients/new" className="btn-primary">+ عميل جديد</Link>} />
@@ -36,7 +37,7 @@ export default async function Clients({ searchParams }: { searchParams: Promise<
             <thead><tr>{["الملف", "العميل", "نوع التمويل", "المبلغ", "الحالة", "الأهلية", "المستندات", "الخطوة القادمة", "المسؤول", "آخر تحديث"].map((h) => <th key={h} className="th">{h}</th>)}</tr></thead>
             <tbody>
               {rows.map((r) => {
-                const d = docProgress(r.id);
+                const d = prog.get(r.id) ?? { pct: 0, required: 0, requiredDone: 0 };
                 return (
                   <tr key={r.id} className="hover:bg-slate-50/60">
                     <td className="td num text-slate-500 text-xs">{r.file_no}</td>

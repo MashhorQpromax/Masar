@@ -8,7 +8,7 @@ export default async function CalcPage() {
   return (
     <>
       <PageHeader title="الحاسبة السريعة" sub="للرد على العميل في المكالمة الأولى — لا تحفظ أي بيانات" />
-      <Calculator products={products()} />
+      <Calculator products={await products()} />
     </>
   );
 }

@@ -30,33 +30,33 @@ const TABS = [
 export default async function ClientPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ tab?: string }> }) {
   const u = await requireUser();
   const id = Number((await params).id);
-  const c = getClient(id);
+  const c = await getClient(id);
   if (!c) notFound();
   const tab = (await searchParams).tab ?? "overview";
-  const s = studyFor(c);
-  const exp = lenderExperience(c.finance_type, c.sector, c.total_salary ?? c.basic_salary);
-  const rules = lenderRules(c.finance_type);
-  const obligations = getObligations(id);
-  const dp = docProgress(id);
-  const docs = all<{ id: number; code: string; label: string; category: keyof typeof DOC_CATEGORY; required: number; status: keyof typeof DOC_STATUS; file_name: string | null; size: number | null; uploaded_at: string | null; uploader: string | null }>(
+  const s = await studyFor(c);
+  const exp = await lenderExperience(c.finance_type, c.sector, c.total_salary ?? c.basic_salary);
+  const rules = await lenderRules(c.finance_type);
+  const obligations = await getObligations(id);
+  const dp = await docProgress(id);
+  const docs = await all<{ id: number; code: string; label: string; category: keyof typeof DOC_CATEGORY; required: number; status: keyof typeof DOC_STATUS; file_name: string | null; size: number | null; uploaded_at: string | null; uploader: string | null }>(
     "SELECT d.*, u.name uploader FROM documents d LEFT JOIN users u ON u.id = d.uploaded_by WHERE client_id = ? ORDER BY required DESC, id", id,
   );
-  const apps = all<{ id: number; lender_name: string | null; product_name: string | null; amount: number | null; tenor: number | null; installment: number | null; ref_no: string | null; status: keyof typeof APP_STATUS; submitted_at: string | null; decided_at: string | null; note: string | null }>(
+  const apps = await all<{ id: number; lender_name: string | null; product_name: string | null; amount: number | null; tenor: number | null; installment: number | null; ref_no: string | null; status: keyof typeof APP_STATUS; submitted_at: string | null; decided_at: string | null; note: string | null }>(
     "SELECT a.*, l.name lender_name FROM applications a LEFT JOIN lenders l ON l.id = a.lender_id WHERE client_id = ? ORDER BY a.id DESC", id,
   );
-  const notes = all<{ id: number; kind: keyof typeof NOTE_KIND; body: string; name: string | null; created_at: string }>(
+  const notes = await all<{ id: number; kind: keyof typeof NOTE_KIND; body: string; name: string | null; created_at: string }>(
     "SELECT n.*, u.name FROM notes n LEFT JOIN users u ON u.id = n.user_id WHERE client_id = ? ORDER BY n.id DESC", id,
   );
-  const history = all<{ action: string; details: string | null; name: string | null; created_at: string }>(
+  const history = await all<{ action: string; details: string | null; name: string | null; created_at: string }>(
     "SELECT a.action, a.details, a.created_at, u.name FROM audit_log a LEFT JOIN users u ON u.id = a.user_id WHERE entity = 'client' AND entity_id = ? ORDER BY a.id DESC LIMIT 60", id,
   );
-  const lastStudy = all<{ verdict: string; analyst_opinion: string | null; name: string; created_at: string }>(
+  const lastStudy = await all<{ verdict: string; analyst_opinion: string | null; name: string; created_at: string }>(
     "SELECT s.verdict, s.analyst_opinion, s.created_at, u.name FROM studies s JOIN users u ON u.id = s.user_id WHERE client_id = ? ORDER BY s.id DESC LIMIT 3", id,
   );
-  const lenders = all<{ id: number; name: string }>("SELECT id, name FROM lenders WHERE active = 1 ORDER BY name");
-  const outcomes = new Map(all<{ application_id: number; decision: keyof typeof OUTCOME_DECISION; approved_amount: number | null; conditions: string; reason: string | null }>(
+  const lenders = await all<{ id: number; name: string }>("SELECT id, name FROM lenders WHERE active = 1 ORDER BY name");
+  const outcomes = new Map((await all<{ application_id: number; decision: keyof typeof OUTCOME_DECISION; approved_amount: number | null; conditions: string; reason: string | null }>(
     "SELECT application_id, decision, approved_amount, conditions, reason FROM outcomes WHERE client_id = ? AND application_id IS NOT NULL", id,
-  ).map((o) => [o.application_id, o]));
+  )).map((o) => [o.application_id, o]));
   const edit = can(u, "client.edit");
   const age = c.birth_year ? new Date().getFullYear() - c.birth_year : null;
 
@@ -310,7 +310,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
 
       {tab === "edit" && edit && (
         <>
-          <ClientForm action={updateClient.bind(null, id)} products={products()} obligations={obligations.map((o) => ({ kind: o.kind, monthly: o.monthly }))}
+          <ClientForm action={updateClient.bind(null, id)} products={await products()} obligations={obligations.map((o) => ({ kind: o.kind, monthly: o.monthly }))}
             initial={Object.fromEntries(Object.entries(c).map(([k, v]) => [k, v == null ? "" : (v as string | number)]))} />
           {can(u, "client.delete") && (
             <form action={deleteClient.bind(null, id)} className="card p-4 mt-6 border-rose-200 flex items-center justify-between gap-3">

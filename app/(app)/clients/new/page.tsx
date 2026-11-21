@@ -9,7 +9,7 @@ export default async function NewClient() {
   return (
     <>
       <PageHeader title="فتح ملف عميل جديد" sub="أدخل ما يتوفر من بيانات — الدراسة المبدئية تُحدّث مباشرة على اليسار" back={{ href: "/clients", label: "العملاء" }} />
-      <ClientForm action={createClient} products={products()} isNew />
+      <ClientForm action={createClient} products={await products()} isNew />
     </>
   );
 }

@@ -10,10 +10,10 @@ export const dynamic = "force-dynamic";
 export default async function Knowledge({ searchParams }: { searchParams: Promise<{ ft?: string }> }) {
   const u = await requireUser();
   const ft = (await searchParams).ft ?? "personal";
-  const lenders = all<{ id: number; name: string }>("SELECT id, name FROM lenders WHERE active = 1 ORDER BY name");
-  const rules = lenderRules();
-  const exp = lenderExperience(ft);
-  const recent = all<{ id: number; lender: string; decision: keyof typeof OUTCOME_DECISION; sector: keyof typeof SECTOR; salary: number | null; estimated_amount: number | null; approved_amount: number | null; conditions: string; reason: string | null; note: string | null; created_at: string; finance_type: keyof typeof FINANCE_TYPE }>(
+  const lenders = await all<{ id: number; name: string }>("SELECT id, name FROM lenders WHERE active = 1 ORDER BY name");
+  const rules = await lenderRules();
+  const exp = await lenderExperience(ft);
+  const recent = await all<{ id: number; lender: string; decision: keyof typeof OUTCOME_DECISION; sector: keyof typeof SECTOR; salary: number | null; estimated_amount: number | null; approved_amount: number | null; conditions: string; reason: string | null; note: string | null; created_at: string; finance_type: keyof typeof FINANCE_TYPE }>(
     "SELECT o.*, l.name lender FROM outcomes o JOIN lenders l ON l.id = o.lender_id ORDER BY o.id DESC LIMIT 25",
   );
   const byLender = new Map<string, typeof rules>();
@@ -21,7 +21,7 @@ export default async function Knowledge({ searchParams }: { searchParams: Promis
     const k = r.lender_name ?? "عام — كل الجهات";
     byLender.set(k, [...(byLender.get(k) ?? []), r]);
   }
-  const total = all<{ n: number }>("SELECT COUNT(*) n FROM outcomes")[0]?.n ?? 0;
+  const total = (await all<{ n: number }>("SELECT COUNT(*) n FROM outcomes"))[0]?.n ?? 0;
 
   return (
     <>

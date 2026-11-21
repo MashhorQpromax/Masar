@@ -6,12 +6,12 @@ import { Badge, PageHeader, sar, dateAr } from "@/components/ui";
 import { saveProduct } from "@/app/actions";
 
 export const dynamic = "force-dynamic";
-type PR = ReturnType<typeof productRows>[number];
+type PR = Awaited<ReturnType<typeof productRows>>[number];
 
 export default async function Lenders() {
   const u = await requireUser();
-  const rows = productRows(true);
-  const lenders = all<{ id: number; name: string }>("SELECT id, name FROM lenders ORDER BY name");
+  const rows = await productRows(true);
+  const lenders = await all<{ id: number; name: string }>("SELECT id, name FROM lenders ORDER BY name");
   const manage = can(u, "lender.manage");
   const groups = Object.entries(FINANCE_TYPE).map(([k, v]) => [k, v, rows.filter((r) => r.finance_type === k)] as const).filter((g) => g[2].length);
   return (

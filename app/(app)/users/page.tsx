@@ -15,7 +15,7 @@ const ROLE_DESC: Record<Role, string> = {
 
 export default async function Users() {
   const me = await requirePage("user.manage");
-  const users = all<{ id: number; name: string; email: string; role: Role; active: number; last_login_at: string | null }>("SELECT * FROM users ORDER BY id");
+  const users = await all<{ id: number; name: string; email: string; role: Role; active: number; last_login_at: string | null }>("SELECT * FROM users ORDER BY id");
   return (
     <>
       <PageHeader title="المستخدمون والصلاحيات" sub={`${users.length} مستخدم`} />

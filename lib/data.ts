@@ -45,15 +45,15 @@ export interface ClientRow {
   updated_at: string;
 }
 
-export function getClient(id: number) {
-  return get<ClientRow>(
+export async function getClient(id: number) {
+  return await get<ClientRow>(
     "SELECT c.*, u.name AS owner_name FROM clients c LEFT JOIN users u ON u.id = c.owner_id WHERE c.id = ?",
     id,
   );
 }
 
-export function getObligations(clientId: number) {
-  return all<{ id: number; kind: Obligation["kind"]; lender: string | null; monthly: number; remaining: number | null; end_date: string | null }>(
+export async function getObligations(clientId: number) {
+  return await all<{ id: number; kind: Obligation["kind"]; lender: string | null; monthly: number; remaining: number | null; end_date: string | null }>(
     "SELECT * FROM obligations WHERE client_id = ? ORDER BY id",
     clientId,
   );
@@ -85,15 +85,15 @@ interface ProductRow {
   active: number;
 }
 
-export function productRows(includeInactive = false) {
-  return all<ProductRow>(
+export async function productRows(includeInactive = false) {
+  return await all<ProductRow>(
     `SELECT p.*, l.name AS lender_name, l.type AS lender_type, l.bank_code FROM products p JOIN lenders l ON l.id = p.lender_id
      ${includeInactive ? "" : "WHERE p.active = 1 AND l.active = 1"} ORDER BY l.name, p.finance_type`,
   );
 }
 
-export function products(): Product[] {
-  return productRows().map((r) => ({
+export async function products(): Promise<Product[]> {
+  return (await productRows()).map((r) => ({
     id: String(r.id),
     lenderId: String(r.lender_id),
     lenderName: r.lender_name,
@@ -118,7 +118,7 @@ export function products(): Product[] {
   }));
 }
 
-export function profileOf(c: ClientRow): Profile {
+export async function profileOf(c: ClientRow): Promise<Profile> {
   const year = new Date().getFullYear();
   return {
     age: c.birth_year ? year - c.birth_year : null,
@@ -137,20 +137,20 @@ export function profileOf(c: ClientRow): Profile {
     firstHome: c.owns_home == null ? null : !c.owns_home,
     propertyValue: c.property_value,
     coIncome: c.co_income,
-    obligations: getObligations(c.id).map((o) => ({ kind: o.kind, lender: o.lender ?? undefined, monthly: o.monthly, remaining: o.remaining ?? undefined })),
+    obligations: (await getObligations(c.id)).map((o) => ({ kind: o.kind, lender: o.lender ?? undefined, monthly: o.monthly, remaining: o.remaining ?? undefined })),
   };
 }
 
-export function studyFor(c: ClientRow) {
-  return deepStudy(profileOf(c), products());
+export async function studyFor(c: ClientRow) {
+  return deepStudy(await profileOf(c), await products());
 }
 
-export function docProgress(clientId: number) {
-  const r = get<{ total: number; done: number; req: number; reqDone: number }>(
+export async function docProgress(clientId: number) {
+  const r = await get<{ total: number; done: number; req: number; reqDone: number }>(
     `SELECT COUNT(*) total,
             SUM(CASE WHEN status IN ('received','verified') THEN 1 ELSE 0 END) done,
             SUM(required) req,
-            SUM(CASE WHEN required = 1 AND status IN ('received','verified') THEN 1 ELSE 0 END) reqDone
+            SUM(CASE WHEN required = 1 AND status IN ('received','verified') THEN 1 ELSE 0 END) "reqDone"
      FROM documents WHERE client_id = ?`,
     clientId,
   );
@@ -159,8 +159,8 @@ export function docProgress(clientId: number) {
   return { total: r?.total ?? 0, done: r?.done ?? 0, required: req, requiredDone: reqDone, pct: req ? Math.round((reqDone / req) * 100) : 0 };
 }
 
-export function nextFileNo() {
-  const r = get<{ n: number }>("SELECT COALESCE(MAX(CAST(SUBSTR(file_no, 3) AS INTEGER)), 0) + 1 AS n FROM clients");
+export async function nextFileNo() {
+  const r = await get<{ n: number }>("SELECT COALESCE(MAX(CAST(SUBSTR(file_no, 3) AS INTEGER)), 0) + 1 AS n FROM clients");
   return `C-${String(r?.n ?? 1).padStart(3, "0")}`;
 }
 
@@ -177,8 +177,8 @@ export interface Experience {
   reasons: [string, number][];
 }
 
-export function lenderExperience(financeType: string, sector?: string, salary?: number | null): Map<number, Experience> {
-  const rows = all<{ lender_id: number; decision: string; sector: string; salary: number | null; estimated_amount: number | null; approved_amount: number | null; conditions: string; reason: string | null }>(
+export async function lenderExperience(financeType: string, sector?: string, salary?: number | null): Promise<Map<number, Experience>> {
+  const rows = await all<{ lender_id: number; decision: string; sector: string; salary: number | null; estimated_amount: number | null; approved_amount: number | null; conditions: string; reason: string | null }>(
     "SELECT lender_id, decision, sector, salary, estimated_amount, approved_amount, conditions, reason FROM outcomes WHERE finance_type = ?",
     financeType,
   );
@@ -209,10 +209,23 @@ export function lenderExperience(financeType: string, sector?: string, salary?: 
 }
 
 export interface LenderRule { id: number; lender_id: number | null; lender_name: string | null; finance_type: string | null; kind: "condition" | "exception" | "tip" | "warning"; title: string; body: string | null; author: string | null; created_at: string }
-export function lenderRules(financeType?: string) {
-  return all<LenderRule>(
+export async function lenderRules(financeType?: string) {
+  return await all<LenderRule>(
     `SELECT r.*, l.name lender_name, u.name author FROM lender_rules r LEFT JOIN lenders l ON l.id = r.lender_id LEFT JOIN users u ON u.id = r.user_id
      WHERE r.active = 1 ${financeType ? "AND (r.finance_type IS NULL OR r.finance_type = ?)" : ""} ORDER BY r.lender_id IS NOT NULL, l.name, r.id DESC`,
     ...(financeType ? [financeType] : []),
   );
+}
+
+/** تقدّم المستندات لعدة عملاء باستعلام واحد */
+export async function docProgressMap(ids: number[]) {
+  const m = new Map<number, { pct: number; required: number; requiredDone: number }>();
+  if (!ids.length) return m;
+  const rows = await all<{ client_id: number; req: number; reqDone: number }>(
+    `SELECT client_id, SUM(required) req, SUM(CASE WHEN required = 1 AND status IN ('received','verified') THEN 1 ELSE 0 END) "reqDone"
+     FROM documents WHERE client_id IN (${ids.map(() => "?").join(",")}) GROUP BY client_id`,
+    ...ids,
+  );
+  for (const r of rows) m.set(r.client_id, { required: r.req ?? 0, requiredDone: r.reqDone ?? 0, pct: r.req ? Math.round(((r.reqDone ?? 0) / r.req) * 100) : 0 });
+  return m;
 }

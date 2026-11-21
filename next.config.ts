@@ -9,6 +9,7 @@ const securityHeaders = [
 
 const config: NextConfig = {
   poweredByHeader: false,
+  serverExternalPackages: ["@electric-sql/pglite", "postgres"],
   outputFileTracingIncludes: { "/**": ["./seed/masar.db", "./seed/.secret"] },
   experimental: { serverActions: { bodySizeLimit: "12mb" } },
   async headers() {
