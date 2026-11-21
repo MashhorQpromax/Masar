@@ -22,6 +22,9 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   const active = rows.filter((r) => !["approved", "rejected"].includes(r.status));
   const pipeline = active.reduce((s, r) => s + (r.requested_amount || 0), 0);
   const approvedAmt = (await get<{ s: number }>("SELECT COALESCE(SUM(amount),0) s FROM applications WHERE status IN ('approved','disbursed')"))?.s ?? 0;
+  const deals = await all<{ stage: string; capital: number | null; fee: number | null }>("SELECT stage, capital, fee FROM deals");
+  const openDeals = deals.filter((d) => d.stage !== "closed" && d.stage !== "lost");
+  const deployed = deals.filter((d) => !["study", "agreement", "recovered", "closed", "lost"].includes(d.stage)).reduce((a, d) => a + (d.capital ?? 0), 0);
   const today = new Date().toISOString().slice(0, 10);
   const due = active.filter((r) => r.next_step && r.next_step_due).sort((a, b) => a.next_step_due!.localeCompare(b.next_step_due!)).slice(0, 6);
   const activity = await all<{ action: string; created_at: string; name: string | null; full_name: string | null; entity_id: number | null }>(
@@ -46,6 +49,14 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
         <Stat label="حجم التمويل قيد العمل" value={sar(pipeline)} tone="blue" hint="ريال — مجموع المبالغ المطلوبة" />
         <Stat label="تمويل معتمد" value={sar(approvedAmt)} tone="green" hint="ريال — موافقات وصرف" />
       </div>
+
+      <Link href="/deals" className="card p-5 mb-8 flex flex-wrap items-center gap-x-8 gap-y-2 hover:ring-brand-300">
+        <span className="font-bold">💼 الصفقات</span>
+        <span className="text-sm text-slate-500">مفتوحة <b className="num text-slate-800">{openDeals.length}</b></span>
+        <span className="text-sm text-slate-500">رأس مال موظّف <b className="num text-orange-700">{sar(deployed)}</b></span>
+        <span className="text-sm text-slate-500">أتعاب متوقعة <b className="num text-brand-700">{sar(openDeals.reduce((a, d) => a + (d.fee ?? 0), 0))}</b></span>
+        <span className="text-sm text-brand-700 ms-auto">لوحة الصفقات ←</span>
+      </Link>
 
       <h2 className="font-bold mb-3">مسار الملفات</h2>
       <div className="flex gap-4 overflow-x-auto pb-4 mb-6 snap-x">

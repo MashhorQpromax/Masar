@@ -9,6 +9,8 @@ import { getClient, nextFileNo, studyFor, profileOf } from "@/lib/data";
 import { requiredDocuments } from "@/lib/engine";
 import { analyzeCredit } from "@/lib/simah";
 import { parseSimahPages, type ParsedSimah } from "@/lib/simah-parse";
+import { dealStudy, defaultInput, normFee, STAGE_LABEL, type DealInput, type Stage } from "@/lib/deal";
+import { borrowerOf, latestCredit } from "@/lib/data";
 
 export type FormState = { error?: string; ok?: string } | undefined;
 
@@ -511,4 +513,62 @@ export async function confirmCredit(clientId: number, reportId: number, fd: Form
   await refreshEligibility(clientId);
   await audit(u, "simah_confirm", "client", clientId, { suspension: susp, note: !!note });
   revalidatePath(`/clients/${clientId}`);
+}
+
+// ===== صفقة السداد وإعادة التمويل =====
+export async function saveDeal(clientId: number, json: string): Promise<FormState> {
+  const u = await requireUser();
+  if (!can(u, "client.edit")) return { error: "لا تملك صلاحية التعديل" };
+  const c = await getClient(clientId);
+  if (!c) return { error: "العميل غير موجود" };
+  let x: DealInput;
+  try {
+    const raw = JSON.parse(json) as Partial<DealInput>;
+    const d = defaultInput();
+    const n = (v: unknown, def: number | null) => (v == null || v === "" || !Number.isFinite(Number(v)) ? def : Number(v));
+    x = {
+      ...d,
+      items: (raw.items ?? []).slice(0, 60).map((i, k) => ({
+        id: String(i.id ?? `i${k}`).slice(0, 20), kind: i.kind ?? "other", label: String(i.label ?? "").slice(0, 200),
+        original: n(i.original, 0)!, pay: n(i.pay, 0)!, by: i.by === "bank" ? "bank" : "company", confirmed: !!i.confirmed,
+      })),
+      propertyValue: n(raw.propertyValue, null), transferTaxPct: n(raw.transferTaxPct, d.transferTaxPct)!, saleTaxPct: n(raw.saleTaxPct, d.saleTaxPct)!,
+      fixedCosts: n(raw.fixedCosts, d.fixedCosts)!, fee: normFee(raw.fee),
+      targetBank: raw.targetBank ? String(raw.targetBank).slice(0, 40) : null, mortgageApr: n(raw.mortgageApr, d.mortgageApr)!, personalFlat: n(raw.personalFlat, d.personalFlat)!,
+      personalMonths: n(raw.personalMonths, d.personalMonths)!, mortgageMaxAge: n(raw.mortgageMaxAge, d.mortgageMaxAge)!, mortgageMaxMonths: n(raw.mortgageMaxMonths, d.mortgageMaxMonths)!,
+      ltvPct: n(raw.ltvPct, d.ltvPct)!, bankMortgage: n(raw.bankMortgage, null), bankPersonal: n(raw.bankPersonal, null), notes: String(raw.notes ?? "").slice(0, 4000),
+    };
+  } catch {
+    return { error: "بيانات غير صالحة" };
+  }
+  const cr = await latestCredit(clientId);
+  const credit = cr ? { bankReopenMonths: cr.analysis.banks.reopenInMonths, suspension: !!cr.report.serviceSuspension, financeCoDefault: cr.analysis.stats.financeCoDefaults > 0 } : null;
+  const st = dealStudy(x, borrowerOf(c), credit);
+  const exists = await get("SELECT id FROM deals WHERE client_id = ?", clientId);
+  if (exists)
+    await run("UPDATE deals SET data = ?, capital = ?, fee = ?, client_net = ?, verdict = ?, updated_at = datetime('now') WHERE client_id = ?", JSON.stringify(x), st.capital, st.fee, st.clientNet, st.verdict, clientId);
+  else
+    await run("INSERT INTO deals (client_id, data, capital, fee, client_net, verdict, user_id, stage_log) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", clientId, JSON.stringify(x), st.capital, st.fee, st.clientNet, st.verdict, u.id,
+      JSON.stringify([{ stage: "study", at: new Date().toISOString().slice(0, 16).replace("T", " "), by: u.name }]));
+  if (x.propertyValue && x.propertyValue !== c.property_value) await run("UPDATE clients SET property_value = ?, updated_at = datetime('now') WHERE id = ?", x.propertyValue, clientId);
+  await audit(u, "deal_save", "client", clientId, { capital: st.capital, fee: st.fee, verdict: st.verdict });
+  revalidatePath(`/clients/${clientId}`);
+  revalidatePath("/deals");
+  return { ok: "حُفظت دراسة الصفقة" };
+}
+
+export async function setDealStage(clientId: number, fd: FormData) {
+  const u = await requireUser();
+  if (!can(u, "client.edit")) return;
+  const stage = String(fd.get("stage") ?? "") as Stage;
+  if (!(stage in STAGE_LABEL)) return;
+  const note = str(fd.get("note"));
+  const row = await get<{ stage_log: string }>("SELECT stage_log FROM deals WHERE client_id = ?", clientId);
+  if (!row) return;
+  const log = JSON.parse(row.stage_log) as unknown[];
+  log.push({ stage, at: new Date().toISOString().slice(0, 16).replace("T", " "), by: u.name, note });
+  await run("UPDATE deals SET stage = ?, stage_log = ?, updated_at = datetime('now') WHERE client_id = ?", stage, JSON.stringify(log.slice(-100)), clientId);
+  await audit(u, "deal_stage", "client", clientId, { stage: STAGE_LABEL[stage], note });
+  revalidatePath(`/clients/${clientId}`);
+  revalidatePath("/deals");
 }

@@ -3,6 +3,7 @@ import { all, get } from "./db";
 import { deepStudy } from "./advisor";
 import { analyzeCredit, type CreditReport } from "./simah";
 import { projectStudy, type ProjectInput } from "./project";
+import { dealStudy, defaultInput, normFee, itemsFrom, type DealInput, type Borrower, type Stage } from "./deal";
 import { type Product, type Profile, type Sector, type FinanceType, type Simah, type Obligation } from "./engine";
 
 export interface ClientRow {
@@ -254,4 +255,29 @@ export async function docProgressMap(ids: number[]) {
   );
   for (const r of rows) m.set(r.client_id, { required: r.req ?? 0, requiredDone: r.reqDone ?? 0, pct: r.req ? Math.round(((r.reqDone ?? 0) / r.req) * 100) : 0 });
   return m;
+}
+
+// ===== صفقة السداد وإعادة التمويل =====
+export function borrowerOf(c: ClientRow): Borrower {
+  return { age: c.birth_year ? new Date().getFullYear() - c.birth_year : null, basicSalary: c.basic_salary, totalSalary: c.total_salary, serviceMonths: c.service_months, sector: c.sector };
+}
+export async function dealFor(c: ClientRow) {
+  const row = await get<{ id: number; stage: Stage; data: string; stage_log: string; updated_at: string }>("SELECT id, stage, data, stage_log, updated_at FROM deals WHERE client_id = ?", c.id);
+  const cr = await latestCredit(c.id);
+  let input: DealInput;
+  if (row) { const raw = JSON.parse(row.data) as Partial<DealInput>; input = { ...defaultInput(), ...raw, fee: normFee(raw.fee) }; }
+  else {
+    input = { ...defaultInput(), items: itemsFrom(cr?.report ?? null, await getObligations(c.id)), propertyValue: c.property_value ?? null, targetBank: c.salary_bank ?? null };
+  }
+  const credit = cr ? { bankReopenMonths: cr.analysis.banks.reopenInMonths, suspension: !!cr.report.serviceSuspension, financeCoDefault: cr.analysis.stats.financeCoDefaults > 0 } : null;
+  return {
+    saved: !!row,
+    stage: (row?.stage ?? "study") as Stage,
+    log: row ? (JSON.parse(row.stage_log) as { stage: Stage; at: string; by: string; note?: string }[]) : [],
+    updatedAt: row?.updated_at ?? null,
+    input,
+    credit,
+    borrower: borrowerOf(c),
+    study: dealStudy(input, borrowerOf(c), credit),
+  };
 }

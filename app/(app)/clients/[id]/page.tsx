@@ -2,7 +2,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { all } from "@/lib/db";
 import { requireUser, can, maskId } from "@/lib/auth";
-import { getClient, getObligations, studyFor, docProgress, products, lenderExperience, lenderRules, latestCredit, projectFor } from "@/lib/data";
+import { getClient, getObligations, studyFor, docProgress, products, lenderExperience, lenderRules, latestCredit, projectFor, dealFor } from "@/lib/data";
+import DealEditor from "@/components/deal-editor";
+import { STAGES, STAGE_LABEL } from "@/lib/deal";
 import CreditView from "@/components/credit-view";
 import ProjectView from "@/components/project-view";
 import StudyView from "@/components/study-view";
@@ -15,12 +17,13 @@ import { Badge, EligBadge, PageHeader, Progress, StatusBadge, sar, dateAr, dateT
 import ClientForm from "@/components/client-form";
 import { UploadButton, RevealId, SimahUpload } from "@/components/client-bits";
 import {
-  setStatus, setNextStep, recordOutcome, addObligation, deleteObligation, setDocStatus, addCustomDoc, createApplication, updateApplication, addNote, saveStudy, updateClient, deleteClient,
+  setStatus, setNextStep, saveDeal, setDealStage, recordOutcome, addObligation, deleteObligation, setDocStatus, addCustomDoc, createApplication, updateApplication, addNote, saveStudy, updateClient, deleteClient,
 } from "@/app/actions";
 
 export const dynamic = "force-dynamic";
 
 const TABS = [
+  ["deal", "الصفقة"],
   ["overview", "نظرة عامة"],
   ["study", "دراسة الأهلية"],
   ["credit", "سمة"],
@@ -35,7 +38,8 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
   const id = Number((await params).id);
   const c = await getClient(id);
   if (!c) notFound();
-  const tab = (await searchParams).tab ?? "overview";
+  const tab = (await searchParams).tab ?? (c.finance_type === "project" ? "overview" : "deal");
+  const deal = c.finance_type === "project" ? null : await dealFor(c);
   const s = await studyFor(c);
   const cr = await latestCredit(id);
   const pj = projectFor(c);
@@ -83,12 +87,44 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
       />
 
       <div className="no-print flex gap-1 overflow-x-auto border-b border-slate-200 mb-6">
-        {TABS.filter(([k]) => k !== "edit" || edit).map(([k, l]) => (
+        {TABS.filter(([k]) => (k !== "edit" || edit) && (k !== "deal" || deal)).map(([k, l]) => (
           <Link key={k} href={`?tab=${k}`} className={`px-4 py-2.5 text-sm font-semibold border-b-2 -mb-px whitespace-nowrap ${tab === k ? "border-brand-600 text-brand-800" : "border-transparent text-slate-500 hover:text-slate-800"}`}>
             {l}{k === "docs" && <span className="ms-1.5 text-xs num text-slate-400">{dp.requiredDone}/{dp.required}</span>}{k === "apps" && apps.length > 0 && <span className="ms-1.5 text-xs num text-slate-400">{apps.length}</span>}
           </Link>
         ))}
       </div>
+
+      {tab === "deal" && deal && (
+        <div className="space-y-5">
+          <div className="card p-5">
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+              <h3 className="font-bold">مرحلة الصفقة</h3>
+              {!deal.saved && <span className="text-xs text-amber-700">احفظ دراسة الصفقة أولاً لبدء تتبع المراحل</span>}
+            </div>
+            <ol className="flex gap-1.5 overflow-x-auto pb-2">
+              {STAGES.filter(([k]) => k !== "lost").map(([k, l], i) => {
+                const cur = STAGES.findIndex(([x]) => x === deal.stage);
+                const done = deal.stage !== "lost" && i < cur, now = k === deal.stage;
+                return <li key={k} className={`shrink-0 rounded-xl px-3 py-2 text-xs font-semibold ring-1 ${now ? "bg-brand-600 text-white ring-brand-600" : done ? "bg-emerald-50 text-emerald-800 ring-emerald-200" : "bg-white text-slate-500 ring-slate-200"}`}>{done ? "✓ " : ""}{l}</li>;
+              })}
+              {deal.stage === "lost" && <li className="shrink-0 rounded-xl px-3 py-2 text-xs font-semibold bg-rose-600 text-white">{STAGE_LABEL.lost}</li>}
+            </ol>
+            {edit && deal.saved && (
+              <form action={setDealStage.bind(null, id)} className="mt-3 flex flex-wrap gap-2">
+                <select name="stage" defaultValue={STAGES[Math.min(STAGES.length - 3, STAGES.findIndex(([x]) => x === deal.stage) + 1)][0]} className="input w-auto">{STAGES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
+                <input name="note" className="input flex-1 min-w-48" placeholder="ملاحظة (مثال: سُدد قرار التنفيذ بخصم 20%، رقم الإيصال...)" />
+                <button className="btn-primary">نقل المرحلة</button>
+              </form>
+            )}
+            {deal.log.length > 0 && (
+              <ul className="mt-4 space-y-1 text-xs text-slate-500">
+                {[...deal.log].reverse().slice(0, 8).map((g, i) => <li key={i}><span className="num">{g.at}</span> — <b className="text-slate-700">{STAGE_LABEL[g.stage]}</b> · {g.by}{g.note ? ` · ${g.note}` : ""}</li>)}
+              </ul>
+            )}
+          </div>
+          <DealEditor clientId={id} initial={deal.input} borrower={deal.borrower} credit={deal.credit} canEdit={edit} save={saveDeal} banks={BANKS} />
+        </div>
+      )}
 
       {tab === "overview" && (
         <div className="grid lg:grid-cols-3 gap-4">

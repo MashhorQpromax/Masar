@@ -213,6 +213,20 @@ CREATE TABLE IF NOT EXISTS credit_reports (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_credit_client ON credit_reports(client_id);
+CREATE TABLE IF NOT EXISTS deals (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  client_id INTEGER NOT NULL UNIQUE REFERENCES clients(id) ON DELETE CASCADE,
+  stage TEXT NOT NULL DEFAULT 'study',
+  data TEXT NOT NULL,
+  stage_log TEXT NOT NULL DEFAULT '[]',
+  capital REAL,
+  fee REAL,
+  client_net REAL,
+  verdict TEXT,
+  user_id INTEGER REFERENCES users(id),
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
 CREATE INDEX IF NOT EXISTS idx_outcomes_lender ON outcomes(lender_id, finance_type);
 CREATE INDEX IF NOT EXISTS idx_docs_client ON documents(client_id);
 CREATE INDEX IF NOT EXISTS idx_apps_client ON applications(client_id);

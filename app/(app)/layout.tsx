@@ -7,6 +7,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const u = await requireUser();
   const items = [
     { href: "/", label: "لوحة المتابعة", icon: "grid" },
+    { href: "/deals", label: "الصفقات", icon: "deal" },
     { href: "/clients", label: "العملاء", icon: "users" },
     { href: "/calculator", label: "الحاسبة السريعة", icon: "calc" },
     { href: "/lenders", label: "جهات التمويل", icon: "bank" },
