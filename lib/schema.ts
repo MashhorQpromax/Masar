@@ -1,4 +1,9 @@
 // مخطط قاعدة البيانات (SQL قريب من PostgreSQL)
+// أعمدة أضيفت بعد v0.1 — تُطبق على القواعد القديمة
+export const ADD_COLUMNS: [string, string, string][] = [
+  ["clients", "property_value", "REAL"],
+  ["clients", "co_income", "REAL"],
+];
 export const SCHEMA = `
 CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -71,6 +76,8 @@ CREATE TABLE IF NOT EXISTS clients (
   simah TEXT NOT NULL DEFAULT 'unknown',
   owns_home INTEGER,
   housing_support INTEGER NOT NULL DEFAULT 0,
+  property_value REAL,
+  co_income REAL,
   finance_type TEXT NOT NULL DEFAULT 'personal',
   requested_amount REAL,
   requested_tenor INTEGER,
@@ -156,6 +163,40 @@ CREATE TABLE IF NOT EXISTS audit_log (
   ip TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+CREATE TABLE IF NOT EXISTS outcomes (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  application_id INTEGER REFERENCES applications(id) ON DELETE SET NULL,
+  client_id INTEGER REFERENCES clients(id) ON DELETE SET NULL,
+  lender_id INTEGER NOT NULL REFERENCES lenders(id) ON DELETE CASCADE,
+  finance_type TEXT NOT NULL,
+  sector TEXT NOT NULL,
+  salary REAL,
+  age INTEGER,
+  simah TEXT,
+  decision TEXT NOT NULL CHECK (decision IN ('approved','approved_modified','rejected')),
+  requested_amount REAL,
+  estimated_amount REAL,
+  approved_amount REAL,
+  approved_rate REAL,
+  approved_tenor INTEGER,
+  conditions TEXT NOT NULL DEFAULT '[]',
+  reason TEXT,
+  note TEXT,
+  user_id INTEGER REFERENCES users(id),
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS lender_rules (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  lender_id INTEGER REFERENCES lenders(id) ON DELETE CASCADE,
+  finance_type TEXT,
+  kind TEXT NOT NULL CHECK (kind IN ('condition','exception','tip','warning')),
+  title TEXT NOT NULL,
+  body TEXT,
+  user_id INTEGER REFERENCES users(id),
+  active INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_outcomes_lender ON outcomes(lender_id, finance_type);
 CREATE INDEX IF NOT EXISTS idx_docs_client ON documents(client_id);
 CREATE INDEX IF NOT EXISTS idx_apps_client ON applications(client_id);
 CREATE INDEX IF NOT EXISTS idx_notes_client ON notes(client_id);

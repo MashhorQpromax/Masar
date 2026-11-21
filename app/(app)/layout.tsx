@@ -10,6 +10,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     { href: "/clients", label: "العملاء", icon: "users" },
     { href: "/calculator", label: "الحاسبة السريعة", icon: "calc" },
     { href: "/lenders", label: "جهات التمويل", icon: "bank" },
+    { href: "/knowledge", label: "خبرة الجهات", icon: "bulb" },
     ...(can(u, "user.manage") ? [{ href: "/users", label: "المستخدمون", icon: "shield" }] : []),
     ...(can(u, "audit.view") ? [{ href: "/audit", label: "سجل التدقيق", icon: "log" }] : []),
   ];

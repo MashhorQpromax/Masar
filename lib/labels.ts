@@ -116,9 +116,58 @@ export const AUDIT_ACTION: Record<string, string> = {
   app_update: "تحديث طلب",
   note_add: "إضافة ملاحظة",
   study_save: "اعتماد دراسة",
+  outcome_record: "سجّل نتيجة الجهة",
+  rule_add: "أضاف خبرة جهة",
+  rule_archive: "أرشف خبرة جهة",
   user_create: "إنشاء مستخدم",
   user_update: "تعديل مستخدم",
   product_update: "تعديل منتج تمويلي",
   product_create: "إضافة منتج تمويلي",
   export: "تصدير",
 };
+
+// ===== خبرة الواقع =====
+export const OUTCOME_DECISION = {
+  approved: { label: "موافقة كما طُلب", tone: "green" },
+  approved_modified: { label: "موافقة معدّلة", tone: "amber" },
+  rejected: { label: "رفض", tone: "red" },
+} as const;
+
+export const OUTCOME_CONDITIONS: Record<string, string> = {
+  medical: "تقرير / فحص طبي",
+  guarantor: "كفيل أو متضامن",
+  salary_transfer: "تحويل الراتب",
+  employer_letter: "خطاب/تعهد جهة العمل",
+  gosi_match: "مطابقة التأمينات",
+  extra_statements: "كشوف حساب إضافية",
+  down_payment: "دفعة أولى أعلى",
+  insurance: "تأمين إضافي",
+  buyout: "سداد/شراء مديونية",
+  simah_letter: "خطاب تسوية سمة",
+  lower_amount: "خفض المبلغ",
+  shorter_tenor: "تقصير المدة",
+  valuation: "إعادة تقييم العقار",
+  employer_classification: "تصنيف جهة العمل",
+  other: "أخرى",
+};
+
+export const REJECT_REASONS: Record<string, string> = {
+  dbr: "نسبة الاستقطاع",
+  simah: "السجل الائتماني",
+  employer: "جهة العمل غير معتمدة",
+  service: "مدة الخدمة",
+  age: "العمر",
+  nationality: "الجنسية / الإقامة",
+  income_verification: "تعذر التحقق من الدخل",
+  property: "العقار / التقييم",
+  policy: "سياسة داخلية للجهة",
+  documents: "نقص مستندات",
+  other: "أخرى",
+};
+
+export const RULE_KIND = {
+  condition: { label: "اشتراط", emoji: "📌", tone: "blue" },
+  exception: { label: "استثناء", emoji: "🔓", tone: "green" },
+  tip: { label: "طريقة / حيلة نظامية", emoji: "💡", tone: "brand" },
+  warning: { label: "تحذير", emoji: "⚠️", tone: "amber" },
+} as const;

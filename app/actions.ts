@@ -7,7 +7,7 @@ import path from "node:path";
 import { z } from "zod";
 import { all, get, run, tx, UPLOAD_DIR } from "@/lib/db";
 import { audit, can, hashPassword, login, logout, requireUser } from "@/lib/auth";
-import { getClient, nextFileNo, studyFor } from "@/lib/data";
+import { getClient, nextFileNo, studyFor, profileOf } from "@/lib/data";
 import { requiredDocuments } from "@/lib/engine";
 
 export type FormState = { error?: string; ok?: string } | undefined;
@@ -69,6 +69,8 @@ function readClient(fd: FormData) {
     simah: (str(fd.get("simah")) || "unknown") as "unknown",
     owns_home: fd.get("owns_home") ? 1 : 0,
     housing_support: fd.get("housing_support") ? 1 : 0,
+    property_value: num(fd.get("property_value")),
+    co_income: num(fd.get("co_income")),
     finance_type: (str(fd.get("finance_type")) || "personal") as "personal",
     requested_amount: num(fd.get("requested_amount")),
     requested_tenor: num(fd.get("requested_tenor")),
@@ -280,6 +282,51 @@ export async function updateApplication(clientId: number, appId: number, fd: For
   if (status === "approved" || status === "disbursed") run("UPDATE clients SET status = 'approved', updated_at = datetime('now') WHERE id = ?", clientId);
   await audit(u, "app_update", "client", clientId, { app: appId, status });
   revalidatePath(`/clients/${clientId}`);
+}
+
+// ===== نتيجة الجهة الفعلية (التعلّم من الواقع) =====
+export async function recordOutcome(clientId: number, appId: number, fd: FormData) {
+  const u = await requireUser("app.manage");
+  const c = getClient(clientId);
+  const app = get<{ lender_id: number | null; amount: number | null }>("SELECT lender_id, amount FROM applications WHERE id = ? AND client_id = ?", appId, clientId);
+  if (!c || !app?.lender_id) return;
+  const decision = String(fd.get("decision"));
+  if (!["approved", "approved_modified", "rejected"].includes(decision)) return;
+  const s = studyFor(c);
+  const m = s.matches.filter((x) => x.product.lenderId === String(app.lender_id)).sort((a, b) => b.maxPrincipal - a.maxPrincipal)[0];
+  const p = profileOf(c);
+  const conditions = fd.getAll("conditions").map(String).slice(0, 20);
+  run(
+    `INSERT INTO outcomes (application_id, client_id, lender_id, finance_type, sector, salary, age, simah, decision, requested_amount, estimated_amount, approved_amount, approved_rate, approved_tenor, conditions, reason, note, user_id)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    appId, clientId, app.lender_id, c.finance_type, c.sector, c.total_salary ?? c.basic_salary, p.age, c.simah, decision,
+    app.amount ?? c.requested_amount, m?.maxPrincipal ?? null, decision === "rejected" ? null : num(fd.get("approved_amount")) ?? app.amount,
+    num(fd.get("approved_rate")), num(fd.get("approved_tenor")), JSON.stringify(conditions), str(fd.get("reason")), str(fd.get("note")), u.id,
+  );
+  const st = decision === "rejected" ? "rejected" : "approved";
+  run("UPDATE applications SET status = ?, decided_at = date('now'), updated_at = datetime('now') WHERE id = ?", st, appId);
+  if (st === "approved") run("UPDATE clients SET status = 'approved', updated_at = datetime('now') WHERE id = ?", clientId);
+  await audit(u, "outcome_record", "client", clientId, { app: appId, decision, conditions });
+  revalidatePath(`/clients/${clientId}`);
+  revalidatePath("/lenders");
+}
+
+// ===== خبرة الجهات: اشتراطات واستثناءات يضيفها الفريق =====
+export async function addLenderRule(fd: FormData) {
+  const u = await requireUser("client.edit");
+  const title = str(fd.get("title"));
+  const kind = String(fd.get("kind"));
+  if (!title || !["condition", "exception", "tip", "warning"].includes(kind)) return;
+  run("INSERT INTO lender_rules (lender_id, finance_type, kind, title, body, user_id) VALUES (?,?,?,?,?,?)", num(fd.get("lender_id")), str(fd.get("finance_type")), kind, title, str(fd.get("body")), u.id);
+  await audit(u, "rule_add", "lender", num(fd.get("lender_id")), title);
+  revalidatePath("/lenders");
+  revalidatePath("/knowledge");
+}
+export async function archiveLenderRule(id: number) {
+  const u = await requireUser("lender.manage");
+  run("UPDATE lender_rules SET active = 0 WHERE id = ?", id);
+  await audit(u, "rule_archive", "lender", null, { id });
+  revalidatePath("/knowledge");
 }
 
 // ===== الملاحظات =====

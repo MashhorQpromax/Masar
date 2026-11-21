@@ -83,6 +83,15 @@ export default async function Report({ params }: { params: Promise<{ id: string 
         <H>6. التوصيات</H>
         <ol className="list-decimal ps-5 mb-6">{s.recommendations.map((x, i) => <li key={i}>{x}</li>)}</ol>
 
+        {s.alerts.filter((x) => x.id !== "inquiries").length > 0 && <>
+          <H>اشتراطات قد تطلبها الجهات</H>
+          <ul className="mb-6 space-y-1.5">{s.alerts.filter((x) => x.id !== "inquiries").map((x) => <li key={x.id}><b>{x.level === "block" ? "⛔" : x.level === "warn" ? "⚠️" : "•"} {x.title}:</b> {x.detail}{x.exit ? <span className="text-emerald-800"> — المخرج: {x.exit}</span> : null}</li>)}</ul>
+        </>}
+        {s.scenarios.length > 0 && <>
+          <H>المخارج المحسوبة</H>
+          <table className="w-full mb-6 text-sm"><tbody>{s.scenarios.map((x) => <tr key={x.key} className="border-b border-slate-100"><td className="py-1.5">{x.title}</td><td className="py-1.5 num text-left">{x.amount.toLocaleString("en-US")}</td><td className="py-1.5 num text-left text-emerald-700">{x.gain > 0 ? `+${x.gain.toLocaleString("en-US")}` : ""}</td></tr>)}</tbody></table>
+        </>}
+
         {approved?.analyst_opinion && <><H>7. رأي المحلل الائتماني</H><p className="mb-6 rounded-xl bg-slate-50 p-3">{approved.analyst_opinion}<br /><span className="text-xs text-slate-500">— {approved.name}</span></p></>}
 
         <H>8. حالة المستندات</H>

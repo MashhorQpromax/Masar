@@ -33,6 +33,7 @@ const lenders: [string, "bank" | "finance_company", string | null][] = [
   ["بنك الرياض", "bank", "riyad"],
   ["مصرف الإنماء", "bank", "alinma"],
   ["بنك البلاد", "bank", "albilad"],
+  ["البنك السعودي للاستثمار", "bank", "saib"],
   ["إمكان للتمويل", "finance_company", null],
   ["النايفات للتمويل", "finance_company", null],
   ["دار التمليك", "finance_company", null],
@@ -56,6 +57,7 @@ const prods: P[] = [
   { l: "النايفات للتمويل", t: "personal", n: "تمويل شخصي", minSal: 3000, maxAge: 65, svc: 6, sectors: WIDE, tenor: 60, max: 300_000, rate: 7.5, transfer: false, late: true, nat: ["saudi", "non_saudi"] },
   { l: "مصرف الراجحي", t: "mortgage", n: "التمويل العقاري", minSal: 5000, maxAge: 70, svc: 3, sectors: ALL_SALARIED, tenor: 300, max: 5_000_000, rate: 5.2, rt: "reducing", ltv: 90 },
   { l: "البنك الأهلي السعودي", t: "mortgage", n: "التمويل العقاري", minSal: 6000, maxAge: 70, svc: 6, sectors: ALL_SALARIED, tenor: 300, max: 5_000_000, rate: 5.0, rt: "reducing", ltv: 90 },
+  { l: "البنك السعودي للاستثمار", t: "mortgage", n: "سكني المدعوم — وحدة جاهزة", minSal: 4000, maxAge: 75, svc: 3, sectors: ALL_SALARIED, tenor: 300, max: 7_000_000, rate: 4.9, rt: "reducing", ltv: 90 },
   { l: "دار التمليك", t: "mortgage", n: "تمويل المسكن", minSal: 5000, maxAge: 70, svc: 6, sectors: WIDE, tenor: 300, max: 3_000_000, rate: 6.4, rt: "reducing", ltv: 85, transfer: false },
   { l: "مصرف الراجحي", t: "auto", n: "التأجير التمويلي للسيارات", minSal: 4000, maxAge: 65, svc: 3, sectors: ALL_SALARIED, tenor: 60, max: 400_000, rate: 4.2 },
   { l: "عبداللطيف جميل للتمويل", t: "auto", n: "تأجير السيارات", minSal: 3000, maxAge: 65, svc: 3, sectors: WIDE, tenor: 60, max: 400_000, rate: 5.5, transfer: false, late: true, nat: ["saudi", "non_saudi"] },
@@ -81,7 +83,10 @@ const clients: C[] = [
     status: "study", employer: "مؤسسة مقاولات", obligations: [["other", "قرض من صاحب العمل", 400, 4000]], next: "طلب برنت التأمينات", owner: 3, purpose: "سيارة للعمل" },
   { name: "عميلة تجريبية — ريم ح.", by: 1988, sector: "semi_gov", svc: 120, basic: 18000, total: 26000, bank: "snb", simah: "clean", ft: "personal", amt: 400000, tenor: 60,
     status: "approved", employer: "شركة شبه حكومية", obligations: [], next: "تسليم الشيك للعميلة", owner: 2, purpose: "سداد مديونيات" },
+  { name: "عميل تجريبي — فهد ن.", by: 1972, sector: "gov", svc: 300, basic: 16000, total: 21000, bank: "rajhi", simah: "clean", ft: "mortgage", amt: 1400000, tenor: 300,
+    status: "study", employer: "وزارة الصحة", obligations: [["personal", "مصرف الراجحي", 2600, 70000], ["card", "البنك الأهلي السعودي", 450, 12000]], next: "تحديد العقار وطلب تقييم", owner: 2, purpose: "شراء فيلا — مسكن أول" },
 ];
+const EXTRA: Record<number, { property_value?: number; owns_home?: number; co_income?: number }> = { 1: { property_value: 1100000, owns_home: 0 }, 5: { property_value: 1600000, owns_home: 0 } };
 const insC = db.prepare(`INSERT INTO clients (file_no, full_name, national_id, phone, birth_year, nationality, employer, sector, service_months, basic_salary, total_salary,
   salary_bank, simah, housing_support, finance_type, requested_amount, requested_tenor, purpose, status, next_step, next_step_due, owner_id, source, consent_at, created_at, updated_at)
   VALUES (?,?,?,?,?,'saudi',?,?,?,?,?,?,?,?,?,?,?,?,?,?,date('now', ?),?, 'إحالة', datetime('now','-20 days'), datetime('now', ?), datetime('now', ?))`);
@@ -98,6 +103,8 @@ clients.forEach((c, i) => {
       c.employer, c.sector, c.svc, c.basic, c.total, c.bank, c.simah, c.housing ?? 0, c.ft, c.amt, c.tenor, c.purpose, c.status, c.next, `+${i + 1} days`, c.owner, age, `-${i} days`).lastInsertRowid,
   );
   for (const o of c.obligations) insO.run(id, o[0], o[1], o[2], o[3]);
+  const ex = EXTRA[i];
+  if (ex) db.prepare("UPDATE clients SET property_value = ?, owns_home = ?, co_income = ? WHERE id = ?").run(ex.property_value ?? null, ex.owns_home ?? null, ex.co_income ?? null, id);
   const docs = requiredDocuments(c.ft, c.sector, "saudi");
   docs.forEach((d, j) => {
     const st = c.status === "approved" ? "verified" : j < Math.ceil(docs.length * (c.status === "submitted" ? 1 : 0.5)) ? (j % 2 ? "received" : "verified") : "missing";
@@ -112,6 +119,30 @@ clients.forEach((c, i) => {
   }
 });
 
+// ===== خبرة الجهات: قواعد سوق عامة (تقديرية) يكملها الفريق =====
+const insR = db.prepare("INSERT INTO lender_rules (lender_id, finance_type, kind, title, body, user_id) VALUES (?,?,?,?,?,1)");
+const R: [string | null, string | null, string, string, string][] = [
+  [null, "mortgage", "tip", "اطلب تقييماً مبدئياً قبل العربون", "التمويل يُحسب على الأقل من السعر والتقييم؛ فرق التقييم يدفعه العميل نقداً."],
+  [null, "personal", "tip", "التمويل الإضافي لدى بنك الراتب", "إن كان على العميل قرض قائم، بنك الراتب يعطي غالباً تمويلاً إضافياً دون نقل الراتب أو شراء مديونية."],
+  ["مصرف الراجحي", "personal", "condition", "منتج قرب التقاعد", "خدمة 20 سنة مدني / 17 عسكري / 25 تأمينات، وحتى 60 للموظف و75 للمتقاعد عند آخر قسط (من موقع الجهة — للتحقق)."],
+  ["البنك السعودي للاستثمار", "mortgage", "exception", "لا فحص طبي حتى 2.5 مليون", "التكافل على الحياة مجاني ودون فحص طبي للتمويل حتى 2,500,000 في منتج سكني المدعوم (من موقع الجهة — للتحقق)."],
+  ["إمكان للتمويل", "personal", "exception", "يقبل تأخراً بسيطاً في سمة", "مع خطاب تسوية ومرور 3 أشهر انتظام (تجريبي — للتحقق)."],
+];
+for (const r of R) if (!r[0] || lid[r[0]]) insR.run(r[0] ? lid[r[0]] : null, r[1], r[2], r[3], r[4]);
+
+// نتائج تجريبية توضح كيف تتعلم المنصة من الواقع (بيانات وهمية)
+const insOut = db.prepare(`INSERT INTO outcomes (lender_id, finance_type, sector, salary, age, simah, decision, requested_amount, estimated_amount, approved_amount, approved_rate, approved_tenor, conditions, reason, note, user_id, created_at)
+  VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,2, datetime('now', ?))`);
+const O: [string, string, string, number, number, string, number, number, number | null, string[], string | null, string][] = [
+  ["البنك الأهلي السعودي", "personal", "semi_gov", 26000, 36, "approved", 400000, 410000, 400000, ["salary_transfer"], null, "تجريبي"],
+  ["البنك الأهلي السعودي", "personal", "gov", 14000, 41, "approved_modified", 200000, 215000, 190000, ["salary_transfer", "lower_amount"], null, "خفضوا المبلغ بسبب بطاقة لم تُذكر — تجريبي"],
+  ["مصرف الراجحي", "personal", "gov", 13500, 33, "approved", 180000, 185000, 180000, [], null, "تجريبي"],
+  ["مصرف الراجحي", "mortgage", "gov", 21000, 53, "approved_modified", 1300000, 1250000, 1100000, ["medical", "down_payment"], null, "طلبوا تقريراً طبياً لعمر 53 ورفعوا الدفعة — تجريبي"],
+  ["إمكان للتمويل", "personal", "retired", 9000, 63, "approved", 70000, 72000, 70000, ["simah_letter"], null, "قبلوا مع خطاب تسوية — تجريبي"],
+  ["بنك الرياض", "personal", "private", 7000, 29, "rejected", 120000, 110000, null, [], "employer", "الشركة غير مصنفة لديهم — تجريبي"],
+];
+O.forEach((o, i) => insOut.run(lid[o[0]] ?? 1, o[1], o[2], o[3], o[4], "clean", o[5], o[6], o[7], o[8], null, null, JSON.stringify(o[9]), o[10], o[11], `-${(i + 1) * 4} days`));
+
 // حساب الأهلية الأولية لكل عميل بنفس المحرك
 const prodObjs: Product[] = (db.prepare("SELECT p.*, l.name lender_name, l.type lender_type, l.bank_code FROM products p JOIN lenders l ON l.id = p.lender_id").all() as any[]).map((r) => ({
   id: String(r.id), lenderId: String(r.lender_id), lenderName: r.lender_name, lenderType: r.lender_type, bankCode: r.bank_code, financeType: r.finance_type, name: r.name,
@@ -123,7 +154,7 @@ for (const c of db.prepare("SELECT * FROM clients").all() as any[]) {
   const obl = db.prepare("SELECT kind, monthly FROM obligations WHERE client_id = ?").all(c.id) as any[];
   const s = study({ age: new Date().getFullYear() - c.birth_year, nationality: c.nationality, sector: c.sector, serviceMonths: c.service_months, basicSalary: c.basic_salary,
     totalSalary: c.total_salary, salaryBank: c.salary_bank, simah: c.simah, housingSupport: !!c.housing_support, financeType: c.finance_type, requestedAmount: c.requested_amount,
-    requestedTenor: c.requested_tenor, obligations: obl }, prodObjs);
+    requestedTenor: c.requested_tenor, obligations: obl, propertyValue: c.property_value, coIncome: c.co_income, firstHome: c.owns_home == null ? null : !c.owns_home }, prodObjs);
   db.prepare("UPDATE clients SET eligibility = ? WHERE id = ?").run(c.status === "approved" ? "eligible" : s.verdict, c.id);
 }
 

@@ -1,6 +1,7 @@
 "use client";
 import { useActionState, useMemo, useState } from "react";
-import { study, fmt, type Product, type Profile, type Obligation } from "@/lib/engine";
+import { fmt, type Product, type Profile, type Obligation } from "@/lib/engine";
+import { deepStudy } from "@/lib/advisor";
 import { BANKS, FINANCE_TYPE, SECTOR, SIMAH, OBLIGATION_KIND, ELIGIBILITY } from "@/lib/labels";
 import type { FormState } from "@/app/actions";
 
@@ -38,8 +39,11 @@ export default function ClientForm({
       requestedAmount: n("requested_amount"),
       requestedTenor: n("requested_tenor"),
       obligations: [...initialObl, ...obl.filter((o) => o.monthly > 0)],
+      firstHome: v.owns_home === "" || v.owns_home == null ? null : !Number(v.owns_home),
+      propertyValue: n("property_value"),
+      coIncome: n("co_income"),
     };
-    return study(p, products);
+    return deepStudy(p, products);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [v, obl, products, initialObl]);
 
@@ -91,6 +95,8 @@ export default function ClientForm({
           {S({ k: "finance_type", label: "نوع التمويل", opts: FINANCE_TYPE })}
           {F({ k: "requested_amount", label: "المبلغ المطلوب (ريال)", type: "number" })}
           {F({ k: "requested_tenor", label: "المدة المرغوبة (شهر)", type: "number" })}
+          {(v.finance_type === "mortgage" || v.finance_type === "auto") && F({ k: "property_value", label: v.finance_type === "mortgage" ? "قيمة العقار (إن عُرفت)" : "قيمة السيارة", type: "number" })}
+          {v.finance_type === "mortgage" && F({ k: "co_income", label: "دخل المتضامن (الزوج/الزوجة)", type: "number", ph: "اختياري" })}
           {S({ k: "priority", label: "أولوية العميل", opts: { low_installment: "أقل قسط", max_amount: "أكبر مبلغ", fast: "أسرع صرف", specific: "جهة معينة" } })}
           {F({ k: "purpose", label: "الغرض" })}
           {F({ k: "source", label: "مصدر العميل", ph: "إحالة، إعلان، …" })}
@@ -158,6 +164,13 @@ export default function ClientForm({
               {s.matches.length === 0 && <li className="text-slate-500">لا توجد منتجات معرّفة لهذا النوع</li>}
             </ul>
           </div>
+          {s.alerts.filter((a) => a.level !== "info").length > 0 && (
+            <div>
+              <div className="text-xs font-bold text-slate-500 mb-2">انتبه</div>
+              <ul className="space-y-1.5 text-xs">{s.alerts.filter((a) => a.level !== "info").slice(0, 4).map((a) => <li key={a.id} className="flex gap-1.5"><span>{a.level === "block" ? "⛔" : "⚠️"}</span>{a.title}</li>)}</ul>
+            </div>
+          )}
+          {s.scenarios[0] && s.scenarios[0].gain > 0 && <div className="rounded-xl bg-emerald-50 p-3 text-xs text-emerald-900 leading-6">💡 مخرج: {s.scenarios[0].title} ← <span className="num font-bold">{fmt(s.scenarios[0].amount)}</span> ريال</div>}
           {s.missingData.length > 0 && <div className="rounded-xl bg-amber-50 p-3 text-xs text-amber-900 leading-6">ناقص: {s.missingData.join("، ")}</div>}
         </div>
       </aside>

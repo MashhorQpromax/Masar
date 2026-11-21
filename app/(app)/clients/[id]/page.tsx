@@ -2,16 +2,18 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { all } from "@/lib/db";
 import { requireUser, can, maskId } from "@/lib/auth";
-import { getClient, getObligations, studyFor, docProgress, products } from "@/lib/data";
-import { fmt, SAMA } from "@/lib/engine";
+import { getClient, getObligations, studyFor, docProgress, products, lenderExperience, lenderRules } from "@/lib/data";
+import StudyView from "@/components/study-view";
+import OutcomeForm from "@/components/outcome-form";
+import { fmt } from "@/lib/engine";
 import {
-  STATUS, STATUS_ORDER, FINANCE_TYPE, SECTOR, SIMAH, BANKS, OBLIGATION_KIND, DOC_STATUS, DOC_CATEGORY, APP_STATUS, NOTE_KIND, ELIGIBILITY, AUDIT_ACTION,
+  STATUS, STATUS_ORDER, FINANCE_TYPE, OUTCOME_DECISION, OUTCOME_CONDITIONS, REJECT_REASONS, SECTOR, SIMAH, BANKS, OBLIGATION_KIND, DOC_STATUS, DOC_CATEGORY, APP_STATUS, NOTE_KIND, ELIGIBILITY, AUDIT_ACTION,
 } from "@/lib/labels";
 import { Badge, EligBadge, PageHeader, Progress, StatusBadge, sar, dateAr, dateTimeAr, Empty } from "@/components/ui";
 import ClientForm from "@/components/client-form";
 import { UploadButton, RevealId } from "@/components/client-bits";
 import {
-  setStatus, setNextStep, addObligation, deleteObligation, setDocStatus, addCustomDoc, createApplication, updateApplication, addNote, saveStudy, updateClient, deleteClient,
+  setStatus, setNextStep, recordOutcome, addObligation, deleteObligation, setDocStatus, addCustomDoc, createApplication, updateApplication, addNote, saveStudy, updateClient, deleteClient,
 } from "@/app/actions";
 
 export const dynamic = "force-dynamic";
@@ -32,6 +34,8 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
   if (!c) notFound();
   const tab = (await searchParams).tab ?? "overview";
   const s = studyFor(c);
+  const exp = lenderExperience(c.finance_type, c.sector, c.total_salary ?? c.basic_salary);
+  const rules = lenderRules(c.finance_type);
   const obligations = getObligations(id);
   const dp = docProgress(id);
   const docs = all<{ id: number; code: string; label: string; category: keyof typeof DOC_CATEGORY; required: number; status: keyof typeof DOC_STATUS; file_name: string | null; size: number | null; uploaded_at: string | null; uploader: string | null }>(
@@ -50,6 +54,9 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
     "SELECT s.verdict, s.analyst_opinion, s.created_at, u.name FROM studies s JOIN users u ON u.id = s.user_id WHERE client_id = ? ORDER BY s.id DESC LIMIT 3", id,
   );
   const lenders = all<{ id: number; name: string }>("SELECT id, name FROM lenders WHERE active = 1 ORDER BY name");
+  const outcomes = new Map(all<{ application_id: number; decision: keyof typeof OUTCOME_DECISION; approved_amount: number | null; conditions: string; reason: string | null }>(
+    "SELECT application_id, decision, approved_amount, conditions, reason FROM outcomes WHERE client_id = ? AND application_id IS NOT NULL", id,
+  ).map((o) => [o.application_id, o]));
   const edit = can(u, "client.edit");
   const age = c.birth_year ? new Date().getFullYear() - c.birth_year : null;
 
@@ -150,49 +157,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
 
       {tab === "study" && (
         <div className="space-y-4">
-          <div className="card overflow-hidden">
-            <div className={`p-5 flex flex-wrap items-center justify-between gap-3 ${s.verdict === "eligible" ? "bg-emerald-50" : s.verdict === "conditional" ? "bg-amber-50" : s.verdict === "pending" ? "bg-slate-50" : "bg-rose-50"}`}>
-              <div><div className="text-xs text-slate-500">حكم المحرك الآلي</div><div className="text-xl font-bold mt-1">{ELIGIBILITY[s.verdict].emoji} {s.headline}</div></div>
-              <div className="text-xs text-slate-500 max-w-md leading-5">المرجع: {SAMA.source}</div>
-            </div>
-            <div className="p-5 grid sm:grid-cols-2 lg:grid-cols-5 gap-4 border-b border-slate-100">
-              <Big label="الدخل المعتمد" v={fmt(s.capacity.income)} unit={s.capacity.incomeBasis} />
-              <Big label="الالتزامات غير العقارية" v={fmt(s.capacity.existingNonRealEstate)} unit="ريال شهرياً" />
-              <Big label="الالتزامات العقارية" v={fmt(s.capacity.existingMortgage)} unit="ريال شهرياً" />
-              <Big label="الحد الأقصى للأقساط" v={fmt(s.capacity.maxInstallment)} unit={s.capacity.bindingRule} />
-              <Big label="القسط الجديد المتاح" v={fmt(s.capacity.available)} unit="ريال شهرياً" tone="brand" />
-            </div>
-            {s.capacity.warnings.length > 0 && <div className="px-5 py-3 text-xs text-amber-800 bg-amber-50/60">{s.capacity.warnings.join(" · ")}</div>}
-          </div>
-
-          <div className="card overflow-x-auto">
-            <div className="p-5 pb-3 flex items-center justify-between"><h3 className="font-bold">مطابقة جهات التمويل ({FINANCE_TYPE[c.finance_type]})</h3><span className="text-xs text-slate-500">مرتبة حسب الملاءمة</span></div>
-            <table className="w-full min-w-[900px]">
-              <thead><tr>{["الجهة / المنتج", "الحكم", "الملاءمة", "المبلغ الممكن", "المبلغ المقترح", "المدة", "القسط", "النسبة", "المعايير"].map((h) => <th key={h} className="th">{h}</th>)}</tr></thead>
-              <tbody>
-                {s.matches.map((m) => (
-                  <tr key={m.product.id} className="align-top">
-                    <td className="td"><div className="font-semibold">{m.product.lenderName}</div><div className="text-xs text-slate-500">{m.product.name} · {m.product.lenderType === "bank" ? "بنك" : "شركة تمويل"}</div></td>
-                    <td className="td"><Badge tone={m.verdict === "pass" ? "green" : m.verdict === "warn" ? "amber" : "red"}>{m.verdict === "pass" ? "مؤهل" : m.verdict === "warn" ? "بشروط" : "غير مؤهل"}</Badge></td>
-                    <td className="td w-28"><div className="flex items-center gap-2"><Progress pct={m.score} tone={m.score > 70 ? "green" : m.score > 40 ? "amber" : "red"} /><span className="text-xs num">{m.score}</span></div></td>
-                    <td className="td num">{m.verdict === "fail" ? "—" : sar(m.maxPrincipal)}</td>
-                    <td className="td num font-semibold">{m.verdict === "fail" ? "—" : sar(m.offerPrincipal)}</td>
-                    <td className="td num">{m.tenor}</td>
-                    <td className="td num">{m.verdict === "fail" ? "—" : sar(m.installment)}</td>
-                    <td className="td num text-xs">{m.product.rate}% {m.product.rateType === "flat" ? "ثابتة" : "متناقصة"}</td>
-                    <td className="td">
-                      <details><summary className="text-xs text-brand-700 cursor-pointer select-none">{m.checks.filter((x) => x.status !== "pass").length ? `${m.checks.filter((x) => x.status !== "pass").length} ملاحظات` : "كل المعايير مستوفاة"}</summary>
-                        <ul className="mt-2 space-y-1 text-xs">{m.checks.map((ch) => <li key={ch.key} className="flex gap-1.5"><span>{ch.status === "pass" ? "✅" : ch.status === "warn" ? "⚠️" : "❌"}</span><span><b>{ch.label}:</b> {ch.detail}</span></li>)}</ul>
-                      </details>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {s.matches.length === 0 && <div className="p-5"><Empty>لا توجد منتجات معرّفة لهذا النوع من التمويل. أضفها من صفحة جهات التمويل.</Empty></div>}
-            <p className="px-5 py-3 text-xs text-slate-500 border-t border-slate-100">⚠️ معايير الجهات ونسبها تقديرية حتى يتحقق منها فريق الائتمان من صفحة جهات التمويل. الأرقام للدراسة المبدئية وليست عرضاً ملزماً.</p>
-          </div>
-
+          <StudyView s={s} exp={exp} rules={rules} requested={c.requested_amount} />
           <div className="grid lg:grid-cols-3 gap-4">
             <ListCard title="نقاط القوة" items={s.strengths} icon="✅" />
             <ListCard title="المخاطر ونقاط الضعف" items={s.risks} icon="⚠️" />
@@ -261,7 +226,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
           {apps.length === 0 ? <Empty>لم يُقدَّم أي طلب بعد. استخدم الدراسة لاختيار الجهة الأنسب ثم سجّل الطلب هنا.</Empty> : (
             <div className="card overflow-x-auto">
               <table className="w-full min-w-[900px]">
-                <thead><tr>{["الجهة", "المنتج", "المبلغ", "المدة", "القسط", "رقم الطلب", "تاريخ التقديم", "الحالة", "تحديث"].map((h) => <th key={h} className="th">{h}</th>)}</tr></thead>
+                <thead><tr>{["الجهة", "المنتج", "المبلغ", "المدة", "القسط", "رقم الطلب", "تاريخ التقديم", "الحالة", "تحديث", "نتيجة الجهة"].map((h) => <th key={h} className="th">{h}</th>)}</tr></thead>
                 <tbody>{apps.map((a) => (
                   <tr key={a.id}>
                     <td className="td font-semibold">{a.lender_name}</td><td className="td">{a.product_name}</td><td className="td num">{sar(a.amount)}</td><td className="td num">{a.tenor ?? "—"}</td><td className="td num">{sar(a.installment)}</td>
@@ -273,6 +238,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
                         <button className="btn-ghost btn-sm">حفظ</button>
                       </form>
                     )}</td>
+                    <td className="td">{outcomes.has(a.id) ? <OutcomeBadge o={outcomes.get(a.id)!} /> : can(u, "app.manage") && <OutcomeForm action={recordOutcome.bind(null, id, a.id)} amount={a.amount} tenor={a.tenor} />}</td>
                   </tr>
                 ))}</tbody>
               </table>
@@ -375,6 +341,18 @@ function ListCard({ title, items, icon }: { title: string; items: string[]; icon
     <div className="card p-5">
       <h3 className="font-bold mb-3">{title}</h3>
       {items.length === 0 ? <p className="text-sm text-slate-400">—</p> : <ul className="space-y-2 text-sm leading-6">{items.map((x, i) => <li key={i} className="flex gap-2"><span>{icon}</span><span>{x}</span></li>)}</ul>}
+    </div>
+  );
+}
+
+function OutcomeBadge({ o }: { o: { decision: keyof typeof OUTCOME_DECISION; approved_amount: number | null; conditions: string; reason: string | null } }) {
+  const conds = JSON.parse(o.conditions || "[]") as string[];
+  return (
+    <div className="space-y-1">
+      <Badge tone={OUTCOME_DECISION[o.decision].tone}>{OUTCOME_DECISION[o.decision].label}</Badge>
+      {o.approved_amount ? <div className="text-xs num">{sar(o.approved_amount)}</div> : null}
+      {o.reason && <div className="text-xs text-rose-700">{REJECT_REASONS[o.reason] ?? o.reason}</div>}
+      {conds.length > 0 && <div className="text-[11px] text-slate-500 max-w-48">{conds.map((k) => OUTCOME_CONDITIONS[k] ?? k).join("، ")}</div>}
     </div>
   );
 }

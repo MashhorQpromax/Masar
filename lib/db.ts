@@ -2,7 +2,7 @@ import "server-only";
 import { DatabaseSync } from "node:sqlite";
 import path from "node:path";
 import fs from "node:fs";
-import { SCHEMA } from "./schema";
+import { SCHEMA, ADD_COLUMNS } from "./schema";
 
 // طبقة بيانات بسيطة فوق SQLite المدمج في Node.
 // المخطط مكتوب بـ SQL قياسي قريب من PostgreSQL ليسهل الانتقال إلى Supabase لاحقاً.
@@ -30,6 +30,10 @@ export function db(): DatabaseSync {
 
 
 function migrate(d: DatabaseSync) {
+  for (const [t, c, type] of ADD_COLUMNS) {
+    const cols = d.prepare(`PRAGMA table_info(${t})`).all() as { name: string }[];
+    if (cols.length && !cols.some((x) => x.name === c)) d.exec(`ALTER TABLE ${t} ADD COLUMN ${c} ${type}`);
+  }
   d.exec(SCHEMA);
 }
 
