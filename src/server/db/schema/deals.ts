@@ -65,6 +65,9 @@ export const deals = masar.table(
     /** The bank's actual offer. Null while the figure is still an estimate. */
     bankMortgage: money(),
     bankPersonal: money(),
+    /** The most the chosen lender's product lends. Set when a lender is chosen from the catalogue. */
+    mortgageCeiling: money(),
+    personalCeiling: money(),
     personalLender: text(),
     personalLenderKind: lenderKind(),
     notes: text().notNull().default(""),

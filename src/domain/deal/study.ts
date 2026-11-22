@@ -87,8 +87,13 @@ function expectedFinancing(
   }
   const mortgageByLtv = st.mortgage && propertyValue ? round0((propertyValue * x.ltvPct) / 100) : null;
   const mortgageEstimate = mortgageByLtv != null ? Math.min(mortgageByIncome, mortgageByLtv) : mortgageByIncome;
-  const mortgage = st.mortgage ? (x.bankMortgage ?? mortgageEstimate) : 0;
-  const personal = st.personal ? (x.bankPersonal ?? personalEstimate) : 0;
+  // A lender's ceiling holds an estimate. A bank's actual offer stands as it is.
+  const held = (estimate: number, offer: number | null, ceiling: number | null | undefined) =>
+    offer == null && ceiling != null && ceiling < estimate ? ceiling : null;
+  const mortgageCeiling = st.mortgage ? held(mortgageEstimate, x.bankMortgage, x.mortgageCeiling) : null;
+  const personalCeiling = st.personal ? held(personalEstimate, x.bankPersonal, x.personalCeiling) : null;
+  const mortgage = st.mortgage ? (x.bankMortgage ?? mortgageCeiling ?? mortgageEstimate) : 0;
+  const personal = st.personal ? (x.bankPersonal ?? personalCeiling ?? personalEstimate) : 0;
   const source =
     (st.mortgage && x.bankMortgage != null) || (st.personal && x.bankPersonal != null) ? "bank" : "estimate";
 
@@ -114,6 +119,8 @@ function expectedFinancing(
     mortgageByIncome,
     mortgageByLtv,
     mortgage,
+    mortgageCeiling,
+    personalCeiling,
     source,
     dbrAfter,
   };
@@ -305,6 +312,9 @@ export function dealStudy(x: DealInput, b: Borrower, credit?: CreditFlags | null
       value: personalInstallment * personalMonths,
       params: { installment: personalInstallment, months: personalMonths },
     });
+    if (f.personalCeiling != null) {
+      ledger.push({ section, key: "ceiling", value: f.personalCeiling, params: { estimate: f.personalEstimate, lender: x.personalLender || null } });
+    }
     ledger.push({
       section,
       key: "principal",
@@ -312,6 +322,7 @@ export function dealStudy(x: DealInput, b: Borrower, credit?: CreditFlags | null
       tone: "total",
       params: {
         fromOffer: x.bankPersonal != null,
+        held: f.personalCeiling != null,
         lender: x.personalLender || null,
         lenderKind: x.personalLenderKind ?? null,
         flat: x.personalFlat,
@@ -344,7 +355,8 @@ export function dealStudy(x: DealInput, b: Borrower, credit?: CreditFlags | null
     if (f.mortgageByLtv != null) {
       ledger.push({ section, key: "value_limit", value: f.mortgageByLtv, params: { propertyValue, ltvPct: x.ltvPct } });
     }
-    ledger.push({ section, key: "mortgage", value: mortgage, tone: "total", params: { fromOffer: x.bankMortgage != null } });
+    if (f.mortgageCeiling != null) ledger.push({ section, key: "ceiling", value: f.mortgageCeiling, params: { lender: x.targetBank || null } });
+    ledger.push({ section, key: "mortgage", value: mortgage, tone: "total", params: { fromOffer: x.bankMortgage != null, held: f.mortgageCeiling != null } });
     if (downPayment) ledger.push({ section, key: "down_payment", value: downPayment, params: { price, mortgage } });
   }
   {

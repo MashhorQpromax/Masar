@@ -78,6 +78,9 @@ export interface DealInput {
   /** The bank's actual approval or offer, when there is one. */
   bankMortgage: number | null;
   bankPersonal: number | null;
+  /** The most the chosen lender's product lends, when a lender was chosen. An estimate never goes above it. */
+  mortgageCeiling?: number | null;
+  personalCeiling?: number | null;
   personalLender?: string | null;
   personalLenderKind?: LenderKind | null;
   notes: string;
@@ -187,6 +190,9 @@ export interface Financing {
   mortgageByIncome: number;
   mortgageByLtv: number | null;
   mortgage: number;
+  /** The lender's ceiling, when it is what holds the estimate. */
+  mortgageCeiling: number | null;
+  personalCeiling: number | null;
   source: "estimate" | "bank";
   /** Deduction ratio after the new financing, percent with one decimal. */
   dbrAfter: number | null;

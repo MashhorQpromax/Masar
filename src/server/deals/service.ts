@@ -141,6 +141,23 @@ export async function reviseDeal(
   });
 }
 
+/**
+ * Changes some of the numbers of a deal in progress, inside the caller's transaction: what is stored
+ * with `terms` over it, checked and computed again. The facts about the client are not touched.
+ */
+export async function amendDeal(
+  tx: Tx,
+  args: { dealId: number; terms: Partial<DealInput>; actor: Actor; now: Date },
+): Promise<{ dealId: number; study: DealStudy }> {
+  const [deal] = await tx.select().from(deals).where(eq(deals.id, args.dealId));
+  if (!deal) throw new DomainError("NOT_FOUND", `deal ${args.dealId}`);
+  if (ENDED.includes(deal.stage)) throw new DomainError("DEAL_ENDED", `deal ${deal.id}`);
+  const client = await clientById(tx, deal.clientId);
+  const items = await tx.select().from(dealItems).where(eq(dealItems.dealId, deal.id));
+  const input = validated({ ...dealInputOf(deal, items), ...args.terms });
+  return writeDeal(tx, { client, deal, input, actor: args.actor, now: args.now });
+}
+
 /** Moves a deal to another stage of its structure and records when. Rejection goes through `rejectDeal`. */
 export async function setDealStage(
   db: Db,

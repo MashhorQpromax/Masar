@@ -35,6 +35,11 @@ export const products = masar.table(
     rateType: text().notNull().default("flat"),
     requiresSalaryTransfer: boolean().notNull().default(true),
     acceptsLateSimah: boolean().notNull().default(false),
+    /**
+     * Months the lender waits after a default was paid before it takes the client. 0 means it takes
+     * them at once with the clearance letter. Null means nobody has confirmed it with the lender.
+     */
+    settledDefaultWaitMonths: integer(),
     maxLtv: percent(),
     notes: text(),
     /** When the criteria were last confirmed with the lender. Null means indicative only. */

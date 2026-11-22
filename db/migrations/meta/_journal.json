@@ -15,6 +15,13 @@
       "when": 1795383899932,
       "tag": "0001_auth_steps",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1795390814316,
+      "tag": "0002_lender_routes",
+      "breakpoints": true
     }
   ]
 }

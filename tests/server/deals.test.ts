@@ -64,7 +64,7 @@ describe("saving a deal", () => {
     const client = await newClient();
     const { dealId, study } = await saveDeal(c.db, { clientId: client.id, input, actor, now });
     const view = await getDeal(c.db, { dealId, now });
-    expect(view!.input).toEqual({ ...input, personalLender: null, personalLenderKind: null, items: input.items.map((i) => ({ ...i, monthly: i.monthly ?? null })) });
+    expect(view!.input).toEqual({ ...input, mortgageCeiling: null, personalCeiling: null, personalLender: null, personalLenderKind: null, items: input.items.map((i) => ({ ...i, monthly: i.monthly ?? null })) });
     expect(view!.study.clientNet).toBe(study.clientNet);
     expect(view!.study.ledger).toEqual(study.ledger);
   });

@@ -5,6 +5,7 @@ import { addCreditReport } from "../credit/service";
 import type { Db } from "../db/client";
 import { clients } from "../db/schema";
 import { saveDeal, setDealStage } from "../deals/service";
+import { seedCatalogue } from "../lenders/service";
 import { SYSTEM } from "../shared/actor";
 import { riyadhDay } from "../shared/clock";
 
@@ -17,6 +18,8 @@ interface DemoDeal {
   basicSalary: number;
   totalSalary: number;
   serviceMonths: number;
+  /** The code of the bank the salary is paid into, when it is known. */
+  salaryBank?: string;
   input: DealInput;
   /** Stages the deal has entered after the study, with how many days ago each one started. */
   path: [Stage, number][];
@@ -39,6 +42,8 @@ const base = defaultDealInput();
  * state the credit page has to show: read again after the debt was cleared, closed by a confirmed
  * suspension, and closed by a suspension nobody has checked yet. The fourth has no report, which is
  * the page's empty state.
+ *
+ * The lenders they are held against are the base catalogue, as a new database gets it.
  */
 const DEALS: DemoDeal[] = [
   {
@@ -82,6 +87,7 @@ const DEALS: DemoDeal[] = [
     basicSalary: 11000,
     totalSalary: 15200,
     serviceMonths: 150,
+    salaryBank: "rajhi",
     input: {
       ...base,
       items: [
@@ -177,6 +183,7 @@ const DEALS: DemoDeal[] = [
     basicSalary: 10500,
     totalSalary: 14100,
     serviceMonths: 230,
+    salaryBank: "snb",
     input: {
       ...base,
       items: [
@@ -228,6 +235,7 @@ const DEALS: DemoDeal[] = [
 /** Fills an empty database with the demo deals, dated relative to `now` so the map always looks alive. */
 export async function seedDemo(db: Db, now: Date): Promise<void> {
   const ago = (days: number) => new Date(now.getTime() - days * DAY);
+  await seedCatalogue(db);
   for (const demo of DEALS) {
     const [client] = await db
       .insert(clients)
@@ -238,6 +246,7 @@ export async function seedDemo(db: Db, now: Date): Promise<void> {
         basicSalary: demo.basicSalary,
         totalSalary: demo.totalSalary,
         serviceMonths: demo.serviceMonths,
+        salaryBank: demo.salaryBank ?? null,
         sector: "gov",
         createdAt: ago(demo.startedDaysAgo),
         updatedAt: ago(demo.startedDaysAgo),

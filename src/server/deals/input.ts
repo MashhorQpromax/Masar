@@ -42,6 +42,8 @@ export const dealInputSchema = z
     ltvPct: pct,
     bankMortgage: amount.nullable(),
     bankPersonal: amount.nullable(),
+    mortgageCeiling: amount.nullable().optional(),
+    personalCeiling: amount.nullable().optional(),
     personalLender: z.string().trim().max(60).nullable().optional(),
     personalLenderKind: z.enum(["bank", "finance_co"]).nullable().optional(),
     notes: z.string().max(4000),

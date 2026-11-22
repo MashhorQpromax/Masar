@@ -25,7 +25,7 @@ const { cases } = JSON.parse(readFileSync(file, "utf8")) as { cases: Case[] };
 const plain = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 
 function comparable(s: DealStudy) {
-  const { totalCap: _totalCap, personalEstimate: _personalEstimate, ...financing } = s.financing;
+  const { totalCap: _totalCap, personalEstimate: _personalEstimate, mortgageCeiling: _mortgageCeiling, personalCeiling: _personalCeiling, ...financing } = s.financing;
   return plain({
     structure: s.structure,
     verdict: s.verdict,

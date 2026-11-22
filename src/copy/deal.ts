@@ -241,10 +241,14 @@ export function ledgerText(line: LedgerLine): { label: string; how?: string } {
         : { label: "أقصى قسط شخصي", how: `ساما: ${share(p.rule)} من الراتب` };
     case "personal.installments_total":
       return { label: "مجموع الأقساط", how: `${money(num(p.installment))} × ${ltr(num(p.months))} شهراً` };
+    case "personal.ceiling":
+      return { label: `سقف ${str(p.lender) || "الجهة"} للشخصي`, how: `القسط يحتمل ${money(num(p.estimate))}، والجهة لا تتجاوز سقفها` };
     case "personal.principal":
       return p.fromOffer
         ? { label: `أصل التمويل، عرض ${str(p.lender) || "البنك"}`, how: p.lenderKind === "finance_co" ? "شركة تمويل" : undefined }
-        : { label: "أصل التمويل", how: `هامش ثابت ${percent(num(p.flat))} سنوياً لمدة ${years(num(p.years))}` };
+        : p.held
+          ? { label: "أصل التمويل: سقف الجهة" }
+          : { label: "أصل التمويل", how: `هامش ثابت ${percent(num(p.flat))} سنوياً لمدة ${years(num(p.years))}` };
     case "personal.buyout": {
       const { title, party } = splitLabel(str(p.label));
       return { label: `شراء ${title}${party ? ` (${party})` : ""}`, how: "يسدده الممول الجديد من نفس التمويل" };
@@ -264,8 +268,10 @@ export function ledgerText(line: LedgerLine): { label: string; how?: string } {
       return { label: "حد الدخل", how: `${ltr(num(p.months))} شهراً بهامش ${percent(num(p.apr))} متناقص` };
     case "mortgage.value_limit":
       return { label: "حد قيمة العقار", how: `${money(num(p.propertyValue))} × ${percent(num(p.ltvPct))}` };
+    case "mortgage.ceiling":
+      return { label: `سقف ${str(p.lender) || "الجهة"} للعقاري` };
     case "mortgage.mortgage":
-      return { label: p.fromOffer ? "العقاري، عرض البنك" : "العقاري: الأقل من الحدّين" };
+      return { label: p.fromOffer ? "العقاري، عرض البنك" : p.held ? "العقاري: سقف الجهة" : "العقاري: الأقل من الحدّين" };
     case "mortgage.down_payment":
       return { label: "الدفعة الأولى، يدفعها العميل", how: `سعر البيع ${money(num(p.price))} ناقص العقاري ${money(num(p.mortgage))}` };
     case "dues.item":

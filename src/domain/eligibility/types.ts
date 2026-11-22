@@ -81,6 +81,13 @@ export interface Product {
   /** The lender's own loan-to-value limit, percent. Null means the regulatory limit alone applies. */
   maxLtv?: number | null;
   notes?: string | null;
+  /**
+   * Months the lender waits after a default was paid before it takes the client. 0 means at once,
+   * with the clearance letter. Null or absent means nobody has confirmed it with the lender.
+   */
+  settledDefaultWaitMonths?: number | null;
+  /** The terms were confirmed with the lender. Otherwise they are indicative. */
+  verified?: boolean;
 }
 
 /** The rule that limits the monthly installment. */
