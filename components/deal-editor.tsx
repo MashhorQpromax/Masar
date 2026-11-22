@@ -62,6 +62,34 @@ export default function DealEditor({
         </div>
       </div>
 
+      <details className="card p-5 group" open>
+        <summary className="font-bold cursor-pointer list-none flex items-center justify-between">
+          <span>🧮 تفصيل الحساب سطراً بسطر</span><span className="text-xs text-slate-400 group-open:hidden">إظهار</span>
+        </summary>
+        <p className="text-xs text-slate-500 mt-1 mb-3">كل رقم فوق محسوب من هذه الأسطر. أي رقم تشك فيه عدّله في الجدول أو الحقول تحت، والحساب يتحدث فوراً.</p>
+        <div className="grid lg:grid-cols-2 gap-4">
+          {[...new Set(s.explain.map((e) => e.group))].map((g) => (
+            <div key={g} className="rounded-xl ring-1 ring-slate-200 p-3">
+              <div className="text-xs font-bold text-slate-500 mb-2">{g}</div>
+              <table className="w-full text-sm">
+                <tbody>
+                  {s.explain.filter((e) => e.group === g).map((e, i) => (
+                    <tr key={i} className={e.tone === "total" ? "border-t border-slate-200 font-bold" : ""}>
+                      <td className="py-1 pe-2 align-top">
+                        <div className={e.tone === "total" ? "" : "text-slate-700"}>{e.label}</div>
+                        {e.note && <div className="text-[11px] text-slate-400">{e.note}</div>}
+                        {e.calc && <div className="text-[11px] text-slate-500 num text-start" dir="ltr" style={{ unicodeBidi: "plaintext" }}>{e.calc}</div>}
+                      </td>
+                      <td className={`py-1 text-end num whitespace-nowrap align-top ${e.tone === "minus" || (e.tone === "total" && e.value < 0) ? "text-rose-700" : e.tone === "total" ? "text-emerald-800" : ""}`}>{f0(e.value)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ))}
+        </div>
+      </details>
+
       {alts.length > 0 && (
         <div className="card p-5">
           <h3 className="font-bold mb-1">💡 حلول بديلة</h3>
@@ -138,7 +166,7 @@ export default function DealEditor({
             <N disabled={!canEdit} label="ضريبة الإفراغ لطرفنا %" value={x.transferTaxPct} onChange={(v) => upd({ transferTaxPct: v ?? 0 })} />
             <N disabled={!canEdit} label="ضريبة البيع للبنك %" value={x.saleTaxPct} onChange={(v) => upd({ saleTaxPct: v ?? 0 })} hint="0 إن كان مسكناً أول للمواطن" />
           </div>
-          <N disabled={!canEdit} label="تكاليف ثابتة (تقييم، سعي، رسوم)" value={x.fixedCosts} onChange={(v) => upd({ fixedCosts: v ?? 0 })} />
+          <N disabled={!canEdit} label="تكاليف ثابتة (تقييم، سعي، رسوم الإفراغ)" value={x.fixedCosts} onChange={(v) => upd({ fixedCosts: v ?? 0 })} hint="تُحسب في هياكل العقار فقط" />
           <div className="rounded-xl bg-brand-50 p-3 space-y-3">
             <div className="text-xs font-bold text-brand-800">الأتعاب (من {FEE_MIN}% إلى {FEE_MAX}%) — النسبة المقترحة لهذا العميل: {s.suggestedPct}%{s.suggestedWhy.length ? ` (${s.suggestedWhy.join("، ")})` : ""}</div>
             <div className="grid grid-cols-2 gap-3">

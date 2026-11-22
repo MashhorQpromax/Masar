@@ -182,6 +182,8 @@ export function itemsFrom(report: CreditReport | null, obligations: { kind: stri
 export interface DealStudy {
   structure: Structure;
   keptMonthly: number; // أقساط الالتزامات التي تبقى قائمة
+  /** تفصيل الحساب سطراً بسطر ليتحقق منه المستخدم بنفسه */
+  explain: { group: string; label: string; calc?: string; note?: string; value: number; tone?: "plus" | "minus" | "total" }[];
   verdict: "go" | "tight" | "short" | "needs_info";
   headline: string;
   paidByCompany: number;
@@ -241,7 +243,9 @@ export function dealStudy(x: DealInput, b: Borrower, credit?: { bankReopenMonths
   const V = st.mortgage ? x.propertyValue ?? 0 : 0;
   const transferTax = r0((V * (x.transferTaxPct || 0)) / 100);
   const saleTax = r0((V * (x.saleTaxPct || 0)) / 100);
-  const capital = r0(paidByCompany + transferTax + (x.fixedCosts || 0));
+  // التكاليف الثابتة (تقييم، سعي، رسوم الإفراغ) تخص هياكل العقار فقط
+  const fixedCosts = st.mortgage ? x.fixedCosts || 0 : 0;
+  const capital = r0(paidByCompany + transferTax + fixedCosts);
 
   // ===== التمويل الجديد المتوقع (بعد التسوية؛ الالتزامات التي تبقى قائمة تأكل من السقف) =====
   const salary = b.totalSalary ?? b.basicSalary ?? 0;
@@ -304,7 +308,7 @@ export function dealStudy(x: DealInput, b: Borrower, credit?: { bankReopenMonths
   const waterfall: DealStudy["waterfall"] = [
     { label: st.mortgage ? "ندفعه نحن (تنفيذ + تعثرات + مخالصة العقار)" : "ندفعه نحن (تنفيذ + تعثرات)", amount: -paidByCompany, tone: "out" },
     ...(st.mortgage ? [{ label: `ضريبة التصرفات عند الإفراغ لطرفنا (${x.transferTaxPct}%)`, amount: -transferTax, tone: "out" as const }] : []),
-    { label: "تكاليف ثابتة (تقييم، سعي، رسوم)", amount: -(x.fixedCosts || 0), tone: "out" },
+    ...(st.mortgage ? [{ label: "تكاليف ثابتة (تقييم، سعي، رسوم)", amount: -fixedCosts, tone: "out" as const }] : []),
     ...(st.mortgage ? [{ label: "يسترد من البنك: ثمن العقار (العقاري + الدفعة الأولى)", amount: companyFromSale, tone: "in" as const }] : []),
     { label: `أتعاب السداد ${fx.settlePct}% من ${fmt(settleBase)}`, amount: feeSettle, tone: "net" },
     { label: `أتعاب استخراج التمويل ${fx.financePct}% من ${fmt(financeBase)}`, amount: feeFinance, tone: "net" },
@@ -354,8 +358,54 @@ export function dealStudy(x: DealInput, b: Borrower, credit?: { bankReopenMonths
     verdict === "short" ? `لا تُغلق بالأرقام الحالية — عجز ${fmt(Math.max(0, -clientNet))}` :
     "ناقصة: نحتاج تقييم العقار";
 
+  // ===== تفصيل الحساب =====
+  const ex: DealStudy["explain"] = [];
+  const pct = (v: number) => `${Math.round(v * 10000) / 100}%`;
+  const bought = active.filter((i) => i.by === "bank");
+  if (st.personal) {
+    const G = "التمويل الشخصي الجديد";
+    ex.push({ group: G, label: "الراتب الإجمالي", value: r0(salary) });
+    const byRule = r0(salary * SAMA.salaryDeductionEmployee);
+    if (personalInstallment < byRule) ex.push({ group: G, label: "أقصى قسط شخصي", note: `محدود بسقف الاستقطاع الكلي ${pct(totalCap)} ناقص الأقساط القائمة`, calc: `${fmt(salary)} × ${pct(totalCap)} − ${fmt(keptMonthly)}`, value: personalInstallment });
+    else ex.push({ group: G, label: "أقصى قسط شخصي", note: `ساما: ${pct(SAMA.salaryDeductionEmployee)} من الراتب`, calc: `${fmt(salary)} × ${pct(SAMA.salaryDeductionEmployee)}`, value: personalInstallment });
+    ex.push({ group: G, label: "مجموع الأقساط", note: `${personalMonths} شهراً (أقصى مدة للشخصي)`, calc: `${fmt(personalInstallment)} × ${personalMonths}`, value: personalInstallment * personalMonths });
+    if (x.bankPersonal != null) ex.push({ group: G, label: "أصل التمويل (عرض البنك)", value: personal, tone: "total" });
+    else ex.push({ group: G, label: "أصل التمويل", note: `هامش ثابت ${x.personalFlat}% سنوياً لمدة ${Math.round((personalMonths / 12) * 10) / 10} سنوات`, calc: `${fmt(personalInstallment * personalMonths)} ÷ (1 + ${x.personalFlat}% × ${Math.round((personalMonths / 12) * 10) / 10})`, value: personal, tone: "total" });
+    for (const i of bought) ex.push({ group: G, label: `− شراء ${i.label.split("—")[0].trim()}${i.label.includes("—") ? ` (${i.label.split("—")[1].trim()})` : ""}`, note: "يسدده البنك الجديد من نفس التمويل", value: -r0(i.pay), tone: "minus" });
+    ex.push({ group: G, label: "− رسوم إدارية", note: "1% بحد أقصى 5,000", calc: `${fmt(personal)} × 1%`, value: -adminFee(personal), tone: "minus" });
+    ex.push({ group: G, label: "= صافي يستلمه العميل", value: personalCash, tone: "total" });
+  }
+  if (st.mortgage) {
+    const G = "التمويل العقاري الجديد";
+    ex.push({ group: G, label: "القسط العقاري المتاح", note: `سقف الاستقطاع ${pct(totalCap)} ناقص القسط الشخصي${keptMonthly ? " والأقساط القائمة" : ""}`, calc: `${fmt(salary)} × ${pct(totalCap)} − ${fmt(personalInstallment)}${keptMonthly ? ` − ${fmt(keptMonthly)}` : ""}`, value: pre });
+    if (post !== pre) ex.push({ group: G, label: "القسط بعد التقاعد", note: `ضمن المعاش التقديري ${fmt(pension ?? 0)}`, value: post });
+    ex.push({ group: G, label: "حد الدخل", note: `${maxM} شهراً بهامش ${x.mortgageApr}% متناقص`, value: mortgageByIncome });
+    if (mortgageByLtv != null) ex.push({ group: G, label: "حد قيمة العقار", calc: `${fmt(V)} × ${x.ltvPct}%`, value: mortgageByLtv });
+    ex.push({ group: G, label: x.bankMortgage != null ? "العقاري (عرض البنك)" : "العقاري = الأقل منهما", value: mortgage, tone: "total" });
+    if (downPayment) ex.push({ group: G, label: "الدفعة الأولى (يدفعها العميل)", note: "سعر البيع ناقص العقاري", calc: `${fmt(price)} − ${fmt(mortgage)}`, value: downPayment });
+  }
+  {
+    const G = "مستحقاتنا";
+    for (const i of active.filter((i) => i.by === "company")) ex.push({ group: G, label: i.label, value: r0(i.pay), tone: "plus" });
+    if (transferTax) ex.push({ group: G, label: "ضريبة التصرفات عند الإفراغ لطرفنا", calc: `${fmt(V)} × ${x.transferTaxPct}%`, value: transferTax, tone: "plus" });
+    if (fixedCosts) ex.push({ group: G, label: "تكاليف ثابتة", value: fixedCosts, tone: "plus" });
+    ex.push({ group: G, label: "= رأس المال الذي ندفعه", value: capital, tone: "total" });
+    ex.push({ group: G, label: "+ أتعاب السداد", calc: `${fmt(settleBase)} × ${fx.settlePct}%`, value: feeSettle, tone: "plus" });
+    ex.push({ group: G, label: "+ أتعاب استخراج التمويل", calc: `${fmt(financeBase)} × ${fx.financePct}%`, value: feeFinance, tone: "plus" });
+    if (fx.fixed) ex.push({ group: G, label: "+ أتعاب مقطوعة", value: fx.fixed, tone: "plus" });
+    if (companyFromSale) ex.push({ group: G, label: "− نسترده من ثمن بيع العقار للبنك", value: -r0(companyFromSale), tone: "minus" });
+    ex.push({ group: G, label: "= المطلوب من العميل لنا", value: dueFromClient, tone: "total" });
+  }
+  {
+    const G = "النتيجة";
+    ex.push({ group: G, label: "صافي التمويل للعميل", value: personalCash, tone: "plus" });
+    if (downPayment) ex.push({ group: G, label: "− الدفعة الأولى", value: -downPayment, tone: "minus" });
+    ex.push({ group: G, label: "− المطلوب لنا", value: -dueFromClient, tone: "minus" });
+    ex.push({ group: G, label: clientNet < 0 ? "= عجز" : "= يبقى للعميل", value: clientNet, tone: "total" });
+  }
+
   return {
-    structure, keptMonthly,
+    structure, keptMonthly, explain: ex,
     verdict, headline, paidByCompany: r0(paidByCompany), paidByBank: r0(paidByBank), transferTax, saleTax, capital,
     financing: { age, monthsToRetire, pension, personalInstallment, personalMonths, personal, mortgagePre: pre, mortgagePost: post, mortgageMonths: maxM, mortgageByIncome, mortgageByLtv, mortgage, source, dbrAfter },
     waterfall, downPayment, personalCash, fee, feeSettle, feeFinance, settleBase, financeBase, suggestedPct, suggestedWhy: why, dueFromClient, clientNet, surplusBeforeFee, roi, days, annualized, cover, breakEvenDiscount, risks,
@@ -419,9 +469,17 @@ export function dealAlternatives(x: DealInput, b: Borrower, credit?: Credit): Al
     out.push({ tone: "no", title: "التمويل الشخصي لا يغطي حتى 5% من المتعثرات", detail: `صافي الشخصي ${fmt(s0.personalCash)} ريال فقط.` });
   }
   if (!st.mortgage) {
-    const room = cur.personalCash - (x.fixedCosts || 0) - cur.feeFinance;
+    const room = cur.personalCash - cur.feeFinance;
     const cap = Math.max(0, r0(room / (1 + fx.settlePct / 100)));
     out.push({ tone: "maybe", title: `الشخصي يغطي سداد ≈ ${fmt(cap)} فقط من المتعثرات`, detail: `من أصل ${fmt(cur.settleBase)}. ممكن سداد جزئي (القرارات الأصغر أولاً) لكن الإيقاف لا يُرفع إلا بسداد كل قرارات التنفيذ.` });
+  }
+  // 4ب) إبقاء الشخصي القائم وأخذ تمويل إضافي بدل شرائه
+  const boughtP = splitItems(x).active.filter((i) => i.by === "bank");
+  if (st.personal && boughtP.length && boughtP.every((i) => i.monthly)) {
+    const left = Math.max(0, cur.financing.personalInstallment - boughtP.reduce((a, i) => a + (i.monthly || 0), 0));
+    const top = r0(principalFrom(left, cur.financing.personalMonths, x.personalFlat, "flat"));
+    const netTop = top - adminFee(top);
+    out.push({ tone: netTop > cur.personalCash ? "maybe" : "no", title: `إبقاء الشخصي القائم وأخذ تمويل إضافي: صافي ≈ ${fmt(netTop)}`, detail: `يبقى ${fmt(left)} فقط من سقف القسط الشخصي، مقابل صافي ${fmt(cur.personalCash)} لو اشترى البنك الشخصي القائم. ${netTop > cur.personalCash ? "الإبقاء أفضل هنا." : "الشراء أفضل."}` });
   }
   // 5) العقار: تقييم أعلى أو متضامن
   if (st.mortgage && x.propertyValue) {
