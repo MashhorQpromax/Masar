@@ -53,7 +53,7 @@ export interface WaContext {
   /** الملف مرفوض (حالة العميل) أو الصفقة خاسرة */
   rejected?: boolean;
   /** أفضل عرض من جهة تمويلية (من «الطلبات لدى الجهات») */
-  offer?: { lender: string; lenderType: string; amount: number; tenor: number | null; status: string } | null;
+  offer?: { lender: string; lenderType: string; product: string | null; amount: number; tenor: number | null; status: string } | null;
   /** إظهار اسم الجهة للعميل (افتراضياً مخفي حتى لا يتجاوزنا العميل) */
   showLender?: boolean;
   link?: string | null;
@@ -83,9 +83,14 @@ function offerBlock(c: WaContext) {
   if (!o) return null;
   const who = c.showLender ? `*${o.lender}*` : `${LENDER_KIND[o.lenderType] ?? "جهة تمويلية معتمدة"}`;
   const term = o.tenor ? ` على مدة ${tenorAr(o.tenor)}` : "";
+  const kind = o.product ? `\n_${o.product}_` : "";
+  const amt = `*${approx(o.amount)}* ريال${term}`;
+  // الصياغة حسب حالة الطلب فعلاً — لا نوحي بموافقة لم تصدر
   if (o.status === "approved" || o.status === "disbursed")
-    return `🎉 *بشارة: صدرت الموافقة على تمويلك*\nحصلنا لك على موافقة من ${who} بمبلغ *${approx(o.amount)}* ريال${term}.`;
-  return `🎉 *بشارة: وفرنا لك جهة تمويلية*\nبعد دراسة ملفك تواصلنا مع ${who}، وأبدت الجهة استعدادها لتمويلك بمبلغ يصل إلى *${approx(o.amount)}* ريال${term}.\nنحتاج فقط نستكمل معك المتطلبات حتى نثبت العرض.`;
+    return `🎉 *بشارة: صدرت الموافقة على تمويلك*\nحصلنا لك على موافقة جهة تمويلية (${who}) بمبلغ ${amt}.${kind}`;
+  if (o.status === "draft")
+    return `🎉 *بشارة: وفرنا لك جهة تمويلية*\nبعد دراسة ملفك حددنا لك جهة تمويلية (${who}) قادرة توصلك إلى تمويل يصل إلى ${amt}.${kind}\nنستكمل معك المتطلبات ونقدّم ملفك حتى نثبت العرض.`;
+  return `🎉 *بشارة: ملفك الآن لدى جهة تمويلية*\nقدّمنا ملفك لدى جهة تمويلية (${who}) لتمويل يصل إلى ${amt}، والملف قيد الدراسة لديها.${kind}\nنستكمل معك المتطلبات حتى نسرّع الموافقة.`;
 }
 
 const n = (v: number) => Math.round(v).toLocaleString("en-US");
@@ -126,7 +131,7 @@ export const STAGE_NEXT: Partial<Record<Stage, string>> = {
 };
 
 function greeting(c: WaContext) {
-  return `السلام عليكم ورحمة الله ${c.firstName} 🌿\nمعك ${c.staffName} من *مسار للحلول التمويلية*.`;
+  return `السلام عليكم ورحمة الله${c.firstName ? ` ${c.firstName}` : ""} 🌿\nمعك ${c.staffName} من *مسار للحلول التمويلية*.`;
 }
 function footer(c: WaContext) {
   const parts: string[] = [];

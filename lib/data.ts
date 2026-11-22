@@ -286,8 +286,8 @@ export async function dealFor(c: ClientRow) {
 
 // ===== واتساب ورابط العميل =====
 export async function missingDocs(clientId: number) {
-  return await all<{ id: number; label: string; status: string; required: number }>(
-    "SELECT id, label, status, required FROM documents WHERE client_id = ? AND required = 1 AND status IN ('missing','rejected') ORDER BY id", clientId,
+  return await all<{ id: number; code: string; label: string; status: string; required: number }>(
+    "SELECT id, code, label, status, required FROM documents WHERE client_id = ? AND required = 1 AND status IN ('missing','rejected') ORDER BY id", clientId,
   );
 }
 export async function activeShareLink(clientId: number) {
@@ -295,6 +295,16 @@ export async function activeShareLink(clientId: number) {
     "SELECT token, expires_at, views, last_view_at FROM share_links WHERE client_id = ? AND revoked = 0 AND expires_at > datetime('now') ORDER BY id DESC LIMIT 1", clientId,
   );
 }
+// الأهم أولاً (الصك والتقييم يحددان التمويل)، وبدون تكرار
+const DOC_FIRST = ["deed", "valuation", "feasibility", "permit", "boq", "sources_uses", "id", "salary_cert"];
+function dedupeDocs(rows: { label: string; code?: string }[]) {
+  const seen = new Set<string>();
+  const rank = (c?: string) => { const i = DOC_FIRST.indexOf(c ?? ""); return i < 0 ? 99 : i; };
+  return [...rows].sort((a, b) => rank(a.code) - rank(b.code))
+    .filter((r) => { const k = r.label.trim(); if (seen.has(k)) return false; seen.add(k); return true; })
+    .map((r) => ({ label: r.label }));
+}
+
 export async function waContextFor(c: ClientRow, staffName: string, link: string | null, linkDays = 14): Promise<WaContext> {
   const cr = await latestCredit(c.id);
   const deal = c.finance_type === "project" ? null : await dealFor(c);
@@ -315,8 +325,9 @@ export async function waContextFor(c: ClientRow, staffName: string, link: string
   const best = offers.sort((a, b) => (RANK[a.status] ?? 9) - (RANK[b.status] ?? 9) || b.amount - a.amount)[0];
   return {
     rejected: c.status === "rejected" || deal?.stage === "lost",
-    offer: best ? { lender: best.lender ?? best.product_name ?? "جهة تمويلية", lenderType: best.lender_type ?? "", amount: best.amount, tenor: best.tenor, status: best.status } : null,
-    firstName: c.full_name.split(" ")[0],
+    offer: best ? { lender: best.lender ?? best.product_name ?? "جهة تمويلية", lenderType: best.lender_type ?? "", product: best.lender ? best.product_name : null, amount: best.amount, tenor: best.tenor, status: best.status } : null,
+    // اسم مؤقت مثل «عميل المسوّق — …» لا يُستخدم في التحية
+    firstName: /^(عميل|client)(\s|$)/i.test(c.full_name.trim()) || c.full_name.includes("—") ? "" : c.full_name.split(" ")[0],
     fullName: c.full_name,
     fileNo: c.file_no,
     staffName: staffName.split(" ")[0],
@@ -336,7 +347,7 @@ export async function waContextFor(c: ClientRow, staffName: string, link: string
       capital: d.capital, fee: d.fee, feeSettle: d.feeSettle, feeFinance: d.feeFinance, roi: d.roi, cover: d.cover, days: d.days,
       risks: d.risks.filter((r) => r.level !== "info").map((r) => r.text), breakEvenDiscount: d.breakEvenDiscount,
     } : null,
-    missingDocs: (await missingDocs(c.id)).map((m) => ({ label: m.label })),
+    missingDocs: dedupeDocs(await missingDocs(c.id)),
     link,
     linkDays,
   };
