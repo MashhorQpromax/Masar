@@ -5,15 +5,16 @@ const securityHeaders = [
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "Referrer-Policy", value: "same-origin" },
   { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
+  { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains" },
 ];
 
 const config: NextConfig = {
   poweredByHeader: false,
-  serverExternalPackages: ["@electric-sql/pglite", "postgres", "unpdf"],
-  outputFileTracingIncludes: { "/**": ["./seed/masar.db", "./seed/.secret"] },
-  experimental: { serverActions: { bodySizeLimit: "12mb" } },
+  reactStrictMode: true,
+  serverExternalPackages: ["postgres", "@electric-sql/pglite"],
   async headers() {
     return [{ source: "/(.*)", headers: securityHeaders }];
   },
 };
+
 export default config;
