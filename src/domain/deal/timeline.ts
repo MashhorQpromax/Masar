@@ -19,6 +19,8 @@ export interface Timeline {
   total: number;
   /** Days until the financing is disbursed and the capital starts coming back. Null once that has happened. */
   daysToDisbursement: number | null;
+  /** Days left of the current stage's planned duration. Negative when the stage is late. Null when the deal ended. */
+  stageDueInDays: number | null;
 }
 
 /**
@@ -40,5 +42,10 @@ export function dealTimeline(structure: Structure, stage: Stage, enteredAt: Date
     recovered?.expectedAt && recovered.state === "ahead"
       ? Math.max(0, Math.ceil((recovered.expectedAt.getTime() - now.getTime()) / DAY))
       : null;
-  return { steps, position: index + 1, total: plan.length, daysToDisbursement };
+  const current = index >= 0 ? plan[index] : undefined;
+  const stageDueInDays =
+    current && current.stage !== "closed"
+      ? Math.ceil((enteredAt.getTime() + current.days * DAY - now.getTime()) / DAY)
+      : null;
+  return { steps, position: index + 1, total: plan.length, daysToDisbursement, stageDueInDays };
 }

@@ -1,4 +1,5 @@
 import "server-only";
+import path from "node:path";
 import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
 import * as schema from "./schema";
 
@@ -10,7 +11,11 @@ export type Db = PgDatabase<PgQueryResultHKT, Schema>;
 /** A handle that is either the database or an open transaction on it. */
 export type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0] | Db;
 
-const MIGRATIONS = { migrationsFolder: "db/migrations", migrationsSchema: "masar", migrationsTable: "schema_migrations" };
+const MIGRATIONS = {
+  migrationsFolder: path.join(process.cwd(), "db/migrations"),
+  migrationsSchema: "masar",
+  migrationsTable: "schema_migrations",
+};
 
 export interface Connection {
   db: Db;
@@ -45,19 +50,46 @@ export async function connect(url: string): Promise<Connection> {
 }
 
 /**
+ * Where the running app gets its data.
+ *
+ * - `live`: the Postgres database named by MASAR_DATABASE_URL.
+ * - `demo`: no database is configured, so the app runs on an in-memory Postgres filled with
+ *   fictional deals. Nothing is stored and nothing real is shown. Never allowed in production.
+ *
  * The rebuild reads its own variable on purpose. It never falls back to DATABASE_URL or POSTGRES_URL,
  * so a preview deployment cannot attach itself to the live database by accident.
  */
+export type DataMode = "live" | "demo";
+
+export function dataMode(): DataMode {
+  if (process.env.MASAR_DATABASE_URL) return "live";
+  if (process.env.VERCEL_ENV === "production") throw new Error("MASAR_DATABASE_URL is not set");
+  return "demo";
+}
+
+/** The configured database. Used by the migration script, which must never run on demo data. */
 export function databaseUrl(): string {
   const url = process.env.MASAR_DATABASE_URL;
   if (!url) throw new Error("MASAR_DATABASE_URL is not set");
   return url;
 }
 
+async function open(): Promise<Connection> {
+  if (dataMode() === "live") return connect(databaseUrl());
+  const connection = await connect("pglite:");
+  await connection.migrate();
+  const { seedDemo } = await import("../demo/seed");
+  await seedDemo(connection.db, new Date());
+  return connection;
+}
+
 const globalForDb = globalThis as unknown as { masarConnection?: Promise<Connection> };
 
 /** The shared connection of the running app. */
 export async function getDb(): Promise<Db> {
-  globalForDb.masarConnection ??= connect(databaseUrl());
+  globalForDb.masarConnection ??= open().catch((error) => {
+    globalForDb.masarConnection = undefined;
+    throw error;
+  });
   return (await globalForDb.masarConnection).db;
 }

@@ -1,23 +1,29 @@
 @import "tailwindcss";
+@import "../ui/ui.css";
 
 /* Identity "الخريطة": cool ground, ink text, navy road, coral action, sun for the destination. */
-@theme {
+@theme static {
   --color-ground: #eef0f3;
   --color-tile: #ffffff;
   --color-ink: #101828;
   --color-body: #475467;
   --color-muted: #667085;
   --color-line: #dfe3e8;
+  --color-dot: #e1e5ea;
   --color-navy: #0f2a43;
   --color-navy-soft: #1d4468;
+  --color-navy-mist: #b7c4d1;
   --color-coral: #ff5a3c;
   --color-coral-ink: #c93a1c;
+  --color-coral-soft: #ffd9d1;
   --color-sun: #ffc233;
   --color-sun-soft: #fff6d9;
+  --color-sun-ink: #7a5a00;
   --font-sans: "Rubik", system-ui, sans-serif;
   --radius-tile: 28px;
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
 }
 
 @font-face {
@@ -40,6 +46,12 @@
 html {
   background: var(--color-ground);
   color: var(--color-ink);
+}
+
+:focus-visible {
+  outline: 3px solid var(--color-coral);
+  outline-offset: 3px;
+  border-radius: 6px;
 }
 
 /* Numbers always read left to right, with aligned digits. */

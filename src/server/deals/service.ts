@@ -174,6 +174,8 @@ export interface DealView {
   study: DealStudy;
   /** When the deal entered its current stage. */
   stageEnteredAt: Date;
+  /** Every stage the deal entered and when, oldest first. */
+  history: { stage: Stage; at: Date }[];
 }
 
 /** A deal with its study recomputed from what is stored. */
@@ -186,12 +188,12 @@ export async function getDeal(
   if (!deal) return null;
   const client = await clientById(db, deal.clientId);
   const items = await db.select().from(dealItems).where(eq(dealItems.dealId, deal.id));
-  const [event] = await db
-    .select({ at: dealStageEvents.createdAt })
+  const history = await db
+    .select({ stage: dealStageEvents.stage, at: dealStageEvents.createdAt })
     .from(dealStageEvents)
-    .where(and(eq(dealStageEvents.dealId, deal.id), eq(dealStageEvents.stage, deal.stage)))
-    .orderBy(desc(dealStageEvents.id))
-    .limit(1);
+    .where(eq(dealStageEvents.dealId, deal.id))
+    .orderBy(dealStageEvents.id);
+  const event = history.findLast((e) => e.stage === deal.stage);
   const input = dealInputOf(deal, items);
   return {
     deal,
@@ -199,6 +201,7 @@ export async function getDeal(
     input,
     study: dealStudy(input, borrowerOf(client, now), args.credit),
     stageEnteredAt: event?.at ?? deal.updatedAt,
+    history,
   };
 }
 

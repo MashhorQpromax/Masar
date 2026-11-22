@@ -12,6 +12,14 @@ const config: NextConfig = {
   poweredByHeader: false,
   reactStrictMode: true,
   serverExternalPackages: ["postgres", "@electric-sql/pglite"],
+  // Files read from disk at run time: the migrations, and the in-memory Postgres used for demo data.
+  outputFileTracingIncludes: {
+    "/**": [
+      "./db/migrations/**/*",
+      "./node_modules/@electric-sql/pglite/dist/pglite.wasm",
+      "./node_modules/@electric-sql/pglite/dist/pglite.data",
+    ],
+  },
   async headers() {
     return [{ source: "/(.*)", headers: securityHeaders }];
   },

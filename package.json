@@ -3,7 +3,9 @@
   "version": "2.0.0-dev",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "dev": "next dev -p 3000",
     "build": "next build",
@@ -17,6 +19,7 @@
     "golden:deal": "tsx legacy/tools/gen-deal-golden.ts"
   },
   "dependencies": {
+    "@electric-sql/pglite": "^0.3.7",
     "drizzle-orm": "^0.45.4",
     "next": "15.5.9",
     "postgres": "^3.4.7",
@@ -26,7 +29,6 @@
     "zod": "3.25.76"
   },
   "devDependencies": {
-    "@electric-sql/pglite": "^0.3.7",
     "@tailwindcss/postcss": "4.1.13",
     "@types/node": "22.18.0",
     "@types/react": "19.1.12",
