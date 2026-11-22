@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import crypto from "node:crypto";
 import { z } from "zod";
 import { all, get, run, tx } from "@/lib/db";
-import { audit, can, hashPassword, login, logout, requireUser } from "@/lib/auth";
+import { audit, can, hashPassword, login, logout, requireUser, passwordProblem, changeOwnPassword } from "@/lib/auth";
 import { getClient, nextFileNo, studyFor, profileOf } from "@/lib/data";
 import { requiredDocuments } from "@/lib/engine";
 import { analyzeCredit } from "@/lib/simah";
@@ -26,7 +26,7 @@ const str = (v: FormDataEntryValue | null) => {
 
 // ===== الدخول =====
 export async function loginAction(_: FormState, fd: FormData): Promise<FormState> {
-  const r = await login(String(fd.get("email") || ""), String(fd.get("password") || ""));
+  const r = await login(String(fd.get("email") || ""), String(fd.get("password") || ""), fd.get("remember") === "1");
   if (!r.ok) return { error: r.error };
   redirect("/");
 }
@@ -377,7 +377,8 @@ export async function createUser(_: FormState, fd: FormData): Promise<FormState>
   const name = String(fd.get("name") || "").trim();
   const role = String(fd.get("role") || "officer");
   if (!name || !/^\S+@\S+\.\S+$/.test(email)) return { error: "الاسم والبريد مطلوبان" };
-  if (password.length < 10 || !/[A-Za-z]/.test(password) || !/\d/.test(password)) return { error: "كلمة المرور 10 خانات على الأقل وتحتوي حروفاً وأرقاماً" };
+  const bad = passwordProblem(password);
+  if (bad) return { error: bad };
   if (await get("SELECT id FROM users WHERE email = ?", email)) return { error: "البريد مستخدم" };
   const r = await run("INSERT INTO users (name, email, password_hash, role) VALUES (?,?,?,?)", name, email, await hashPassword(password), role);
   await audit(u, "user_create", "user", r.lastInsertRowid, { email, role });
@@ -393,8 +394,9 @@ export async function updateUser(id: number, fd: FormData) {
   await run("UPDATE users SET role = COALESCE(?, role), active = ? WHERE id = ?", role, active, id);
   if (!active) await run("DELETE FROM sessions WHERE user_id = ?", id);
   const pw = String(fd.get("password") || "");
-  if (pw.length >= 10) await run("UPDATE users SET password_hash = ? WHERE id = ?", await hashPassword(pw), id);
-  await audit(u, "user_update", "user", id, { role, active, passwordReset: pw.length >= 10 });
+  const reset = pw !== "" && !passwordProblem(pw);
+  if (reset) await run("UPDATE users SET password_hash = ? WHERE id = ?", await hashPassword(pw), id);
+  await audit(u, "user_update", "user", id, { role, active, passwordReset: reset });
   revalidatePath("/users");
 }
 
@@ -571,4 +573,15 @@ export async function setDealStage(clientId: number, fd: FormData) {
   await audit(u, "deal_stage", "client", clientId, { stage: STAGE_LABEL[stage], note });
   revalidatePath(`/clients/${clientId}`);
   revalidatePath("/deals");
+}
+
+// ===== حسابي =====
+export async function changePasswordAction(_: FormState, fd: FormData): Promise<FormState> {
+  const u = await requireUser();
+  const next = String(fd.get("next") || "");
+  if (next !== String(fd.get("confirm") || "")) return { error: "كلمتا المرور غير متطابقتين" };
+  const err = await changeOwnPassword(u.id, String(fd.get("current") || ""), next);
+  if (err) return { error: err };
+  await audit(u, "password_change", "user", u.id);
+  return { ok: "تم تغيير كلمة المرور" };
 }

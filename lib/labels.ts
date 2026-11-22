@@ -101,6 +101,7 @@ export const BANKS: Record<string, string> = {
 
 export const AUDIT_ACTION: Record<string, string> = {
   deal_save: "حفظ دراسة الصفقة",
+  password_change: "تغيير كلمة المرور",
   deal_stage: "تحديث مرحلة الصفقة",
   login: "تسجيل دخول",
   login_failed: "محاولة دخول فاشلة",

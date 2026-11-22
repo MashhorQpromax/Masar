@@ -16,7 +16,8 @@ export interface User {
 }
 
 const COOKIE = "masar_session";
-const SESSION_HOURS = 10;
+const SESSION_HOURS = 12; // بدون «تذكرني»
+const REMEMBER_HOURS = 24 * 30; // مع «تذكرني»: 30 يوماً
 
 export const ROLE_LABEL: Record<Role, string> = {
   admin: "مدير النظام",
@@ -55,7 +56,22 @@ export async function clientIp() {
   return (h.get("x-forwarded-for") || "").split(",")[0].trim() || "local";
 }
 
-export async function login(email: string, password: string): Promise<{ ok: true } | { ok: false; error: string }> {
+export const MIN_PASSWORD = 6;
+export function passwordProblem(p: string) {
+  return p.length < MIN_PASSWORD ? `كلمة المرور ${MIN_PASSWORD} خانات على الأقل` : null;
+}
+
+/** تغيير المستخدم لكلمة مروره بنفسه */
+export async function changeOwnPassword(uid: number, current: string, next: string): Promise<string | null> {
+  const u = await get<{ password_hash: string }>("SELECT password_hash FROM users WHERE id = ?", uid);
+  if (!u || !(await bcrypt.compare(current, u.password_hash))) return "كلمة المرور الحالية غير صحيحة";
+  const bad = passwordProblem(next);
+  if (bad) return bad;
+  await run("UPDATE users SET password_hash = ? WHERE id = ?", await hashPassword(next), uid);
+  return null;
+}
+
+export async function login(email: string, password: string, remember = true): Promise<{ ok: true } | { ok: false; error: string }> {
   const u = await get<{ id: number; password_hash: string; active: number; failed_logins: number; locked_until: string | null }>(
     "SELECT id, password_hash, active, failed_logins, locked_until FROM users WHERE email = ?",
     email.trim().toLowerCase(),
@@ -81,7 +97,8 @@ export async function login(email: string, password: string): Promise<{ ok: true
     await run("INSERT INTO audit_log (user_id, action, ip) VALUES (?, 'login_failed', ?)", u.id, ip);
     return { ok: false, error: "البريد أو كلمة المرور غير صحيحة" };
   }
-  const token = signSession(u.id);
+  const hours = remember ? REMEMBER_HOURS : SESSION_HOURS;
+  const token = signSession(u.id, hours);
   await run("UPDATE users SET failed_logins = 0, locked_until = NULL, last_login_at = datetime('now') WHERE id = ?", u.id);
   await run("INSERT INTO audit_log (user_id, action, ip) VALUES (?, 'login', ?)", u.id, ip);
   (await cookies()).set(COOKIE, token, {
@@ -89,7 +106,7 @@ export async function login(email: string, password: string): Promise<{ ok: true
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production" && process.env.MASAR_INSECURE_COOKIE !== "1",
     path: "/",
-    maxAge: SESSION_HOURS * 3600,
+    maxAge: hours * 3600,
   });
   return { ok: true };
 }
@@ -118,8 +135,8 @@ function secret() {
   if (!s && process.env.NODE_ENV === "production" && process.env.VERCEL) throw new Error("MASAR_SECRET مطلوب");
   return s || "dev-only-secret-change-me";
 }
-function signSession(uid: number) {
-  const exp = Date.now() + SESSION_HOURS * 3600_000;
+function signSession(uid: number, hours = SESSION_HOURS) {
+  const exp = Date.now() + hours * 3600_000;
   const body = `${uid}.${exp}.${crypto.randomBytes(12).toString("base64url")}`;
   return `${body}.${crypto.createHmac("sha256", secret()).update(body).digest("base64url")}`;
 }
