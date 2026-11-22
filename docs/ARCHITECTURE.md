@@ -15,6 +15,8 @@ src/
   server/      Everything that touches the outside world (database, auth, WhatsApp). Server only.
   app/         Next.js routes. Thin: read through services, render, call server actions.
   ui/          Design system for the "الخريطة" identity.
+  server/db/   Drizzle schema (one file per area) and the connection.
+  server/deals/ Deal service: validate, compute with the engine, store, move stages, audit.
 db/migrations/ Versioned SQL migrations. The only way the schema changes.
 tests/
   domain/      Unit tests and golden tests for the engines.
@@ -32,6 +34,7 @@ legacy/        The old application, parked as a read-only reference. Deleted bef
 6. **Client-facing output cannot leak fees.** Anything sent to a client (portal, WhatsApp) is built from client view types that have no fee, profit or capital fields.
 7. **Schema changes are migrations.** No schema is created or altered at runtime.
 8. **No secrets in the repository.** Configuration comes from environment variables.
+9. **Its own database, by name.** All tables live in the Postgres schema `masar`, and the app reads only `MASAR_DATABASE_URL`. It never falls back to `DATABASE_URL` or `POSTGRES_URL`, so a preview of this branch cannot attach to the live data by accident.
 
 ## Deal engine
 
@@ -60,7 +63,9 @@ Old module (under `legacy/lib`) and its state in the rebuild:
 - [ ] `advisor.ts`
 - [ ] `whatsapp.ts`, `wa-cloud.ts` messages and Meta Cloud API
 - [ ] `auth.ts`, `auth-methods.ts`, `totp.ts` sign-in: password, passkey, authenticator, WhatsApp code
-- [ ] `schema.ts`, `db.ts`, `data.ts`: replaced by `src/server/db` with versioned migrations
+- [x] `schema.ts`, `db.ts`: replaced by `src/server/db` (Drizzle schema, `db/migrations`, Postgres schema `masar`)
+- [x] deal storage and stages from `data.ts` and `actions.ts`: `src/server/deals` (save, stage, reject, reopen, read), tested on a real Postgres engine in memory
+- [ ] the rest of `data.ts` and `actions.ts`: clients, credit, lenders, documents, notes
 - [ ] screens, on the "الخريطة" direction
 - [ ] data migration from the live database, then the domain switch (only after the owner approves)
 

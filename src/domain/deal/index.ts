@@ -4,3 +4,4 @@ export * from "./fee";
 export * from "./labels";
 export * from "./study";
 export * from "./alternatives";
+export * from "./timeline";
