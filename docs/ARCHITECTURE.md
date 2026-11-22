@@ -109,6 +109,26 @@ The weights, waiting periods and thresholds are one object, `CREDIT_RULES`. They
 
 `itemDrafts(report, obligations)` in `src/domain/deal` suggests what a new deal has to settle: every open court order, every unpaid default no order already covers, then the client's loans at an estimated payoff. `creditFlags` hands the deal engine the three facts of the record it uses.
 
+### Stored records and the upload
+
+A client's record lives in `credit_reports`. Every reading is kept: the newest is the record, the older ones its history. `src/server/credit/service.ts` writes them (`addCreditReport`, `reviewCreditReport`), in a transaction with an audit entry, and reads them graded as of now (`latestCredit`, `getCredit`). The grade is computed on read, so a change to `CREDIT_RULES` applies to every stored record at once.
+
+The upload (`/clients/[id]/credit`, permission `doc.upload`) takes the PDF as SIMAH issued it, at most 4 MB (`REPORT_MAX_BYTES`, under the platform's request limit), reads its text with `unpdf`, runs the reader and stores the reading. The file itself is read and let go; it is kept once a client's documents are. A reading passes the same schema as any other input (`src/server/credit/input.ts`). One thing is softened there on purpose: an inquiry's amount is only shown, never counted, and extraction often glues it to the number beside it, so an impossible one is stored blank instead of refusing the report.
+
+`unpdf` is pinned to the exact version production runs. The reader depends on how that version lays text out, and `tests/server/pdf.test.ts` reads a made-up report from a real PDF (`tests/fixtures/simah-made-up.pdf`, made by `scripts/make-simah-pdf.cjs`) and expects the production reading. Upgrade the library only with that test green.
+
+SIMAH shows neither a service suspension nor a travel ban. The reading assumes a suspension when an enforcement order is unpaid and marks it as assumed; the credit page then asks one question, answered in one tap after checking Absher or Najiz. A travel ban and a note are set in the manual review. Both go through `reviewCreditReport`, which grades the record again.
+
+A build without a database refuses the upload: it holds invented clients only and is reachable by a shared link, so no real person's report is taken there. The demo carries invented records instead, one per state of the page.
+
+The deal reads the client's newest record (`getDeal`) and hands the engine its three facts, so the deal's notes and its editor say the same thing as the credit page.
+
+Kept as the old system has them and worth a decision before the switch:
+
+- after a settled default the grading keeps banks closed for 12 to 24 months, and the deal shows it as a warning, while the bridge deal goes back to a bank right after settlement. Which banks take a client with a fresh settlement letter belongs with lender matching
+- `totalToClear` leaves out an open bounced cheque, and a travel ban or an open cheque alone still reads as a "clean" standing
+- a settled telecom default causes no waiting period, and a settlement with no date is read as made just now
+
 Three things differ from the old system on purpose. The analysis no longer writes a guessed creditor back onto the report; it returns the guess, marked as a guess. A bounced cheque is no longer paired with a default of a similar amount, which used to drop that default from the deal's list. A new card in the deal editor defaults to being bought out by the new personal finance, as the old item list already did.
 
 ## Porting checklist
@@ -121,7 +141,8 @@ Old module (under `legacy/lib`) and its state in the rebuild:
 - [ ] `engine.ts` eligibility, lender matching, required documents
 - [x] `simah.ts` credit grading: `src/domain/credit`, locked by `tests/golden/credit.json` (320 records)
 - [x] `simah-parse.ts` reading the report's text: `src/domain/credit/parse.ts`, locked by `tests/golden/simah.json` (160 made-up texts)
-- [ ] storing a client's credit report, the upload of the PDF and the credit screen
+- [x] storing a client's credit report, the upload of the PDF, the Najiz check and the credit screen: `src/server/credit`, `/clients/[id]/credit`
+- [ ] keeping the uploaded PDF with the client's documents, importing commitments from a report, and suggesting a new deal's items from it in the editor (`itemDrafts` is ready)
 - [ ] `project.ts` project finance
 - [ ] `advisor.ts`
 - [ ] `whatsapp.ts`, `wa-cloud.ts` messages and Meta Cloud API
@@ -133,7 +154,7 @@ Old module (under `legacy/lib`) and its state in the rebuild:
 - [ ] the rest of `data.ts` and `actions.ts`: clients, credit, lenders, documents, notes
 - [x] screens on the "الخريطة" direction: the road (home), the deals list, the deal file with stage moves and the step by step calculation, the deal editor
 - [x] opening a client file and revising its facts, from `data.ts` and `actions.ts`: `src/server/clients`
-- [ ] screens still to build: clients, credit, lenders, inbox, calculator, knowledge, users, audit, client portal
+- [ ] screens still to build: clients, lenders, inbox, calculator, knowledge, users, audit, client portal
 - [ ] data migration from the live database, then the domain switch (only after the owner approves)
 
 To regenerate a golden file while `legacy/` still exists: `npm run golden:deal`, `npm run golden:credit`, `npm run golden:simah`. Each generator is seeded, so it writes the same file every time.

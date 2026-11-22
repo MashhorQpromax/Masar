@@ -15,6 +15,7 @@ import {
   labelParts,
   STRUCTURES,
   structureOf,
+  type CreditFlags,
   type DealInput,
   type DealItem,
   type ItemKind,
@@ -83,6 +84,7 @@ export function DealEditor({
   year,
   borrower,
   input,
+  credit = null,
 }: {
   /** The deal being revised, or null for a new client. */
   dealId: number | null;
@@ -90,6 +92,8 @@ export function DealEditor({
   year: number;
   borrower: BorrowerDraft;
   input: DealInput;
+  /** What the client's credit record adds to the notes. Null for a client with no report read. */
+  credit?: CreditFlags | null;
 }) {
   const [who, setWho] = useState(borrower);
   const [born, setBorn] = useState(borrower.birthYear);
@@ -103,7 +107,7 @@ export function DealEditor({
   const birthYear = born == null ? null : gregorianBirthYear(born);
   const facts = useMemo(() => ({ ...who, birthYear }), [who, birthYear]);
   const full = useMemo<DealInput>(() => ({ ...x, items: rows.map(toItem) }), [x, rows]);
-  const study = useMemo(() => dealStudy(full, borrowerIn(facts, year)), [full, facts, year]);
+  const study = useMemo(() => dealStudy(full, borrowerIn(facts, year), credit), [full, facts, year, credit]);
   /** What the engine estimates from the salary, shown beside a bank offer. */
   const estimate = useMemo(
     () =>

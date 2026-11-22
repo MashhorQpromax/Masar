@@ -46,6 +46,7 @@ export default async function EditDealPage({ params }: { params: Promise<{ id: s
           serviceMonths: client.serviceMonths,
         }}
         input={input}
+        credit={view.creditFlags}
       />
     </>
   );

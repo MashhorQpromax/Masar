@@ -3,8 +3,10 @@ import { describe, expect, it } from "vitest";
 import {
   ACCESS,
   actionText,
+  actionTitle,
   blockerText,
   CONFIDENCE,
+  creditError,
   CREDITOR_TYPE,
   doorText,
   draftLabel,
@@ -13,7 +15,9 @@ import {
   GRADE,
   JUDGMENT_KIND,
   parseWarningText,
+  readText,
   STANDING,
+  UPLOAD_ERROR_CODES,
 } from "@/copy/credit";
 import { analyzeCredit, parseSimahPages, type CreditReport } from "@/domain/credit";
 import { itemDrafts, type Owed } from "@/domain/deal";
@@ -41,6 +45,14 @@ describe("credit wording", () => {
         expect(text.endsWith("."), code).toBe(true);
         seen.add(code);
       }
+      for (const x of a.actions) {
+        const title = actionTitle(x);
+        expect(title.length, x.code).toBeGreaterThan(8);
+        expect(title, x.code).not.toMatch(broken);
+        // A heading is shorter than the instruction it stands over, and carries no full stop.
+        expect(title.length, x.code).toBeLessThan(actionText(x).length);
+        expect(title.endsWith("."), x.code).toBe(false);
+      }
       for (const d of [a.banks, a.financeCompanies]) {
         const { reopen } = doorText(d);
         expect(reopen === null, d.reason).toBe(!d.reopenInMonths);
@@ -52,6 +64,19 @@ describe("credit wording", () => {
     }
     // 5 blockers, 12 findings, 9 steps, 7 reasons for banks and 4 for finance companies.
     expect(seen.size).toBe(37);
+  });
+
+  it("says what a reading found and why a report was refused", () => {
+    expect(strip(readText({ facilities: 7, judgments: 1 }))).toBe("قرأنا التقرير: 7 منتجات وقرار تنفيذ واحد.");
+    expect(strip(readText({ facilities: 12, judgments: 0 }))).toBe("قرأنا التقرير: 12 منتجاً.");
+    expect(readText({ facilities: 0, judgments: 0 })).toBe("قرأنا التقرير.");
+    // Every answer of the upload has its own sentence, different from the fallback.
+    const fallback = creditError("SOMETHING_ELSE");
+    for (const code of ["DEMO", "NO_FILE", "TOO_LARGE", "NOT_PDF", "UNREADABLE", "NOT_SIMAH", "NOT_FOUND", "INVALID_INPUT"]) {
+      expect(UPLOAD_ERROR_CODES, code).toContain(code);
+      expect(creditError(code), code).not.toBe(fallback);
+      expect(creditError(code).endsWith("."), code).toBe(true);
+    }
   });
 
   it("names every kind the record can hold", () => {

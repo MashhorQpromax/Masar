@@ -2356,6 +2356,250 @@
     margin-top: 4px;
   }
 
+  /* ---------- Credit record ---------- */
+  .edit-link[data-soft] {
+    background: var(--color-tile);
+    color: var(--color-navy);
+  }
+  .grade-dot {
+    flex: none;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--color-navy-mist);
+  }
+  .grade-dot[data-grade="A"],
+  .grade-dot[data-grade="B"],
+  .grade-dot[data-grade="C"] {
+    background: var(--color-sun);
+  }
+  .grade-dot[data-grade="C"] {
+    box-shadow: 0 0 0 1px var(--color-sun-ink);
+  }
+  .grade-dot[data-grade="D"],
+  .grade-dot[data-grade="E"] {
+    background: var(--color-coral);
+  }
+
+  /* The file input stays in the page for the keyboard and the screen reader. Its label is the button. */
+  .upload {
+    position: relative;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .upload-input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+    pointer-events: none;
+  }
+  .upload label {
+    cursor: pointer;
+  }
+  .upload label[aria-busy="true"] {
+    opacity: 0.6;
+    cursor: progress;
+  }
+  .upload-input:focus-visible + label {
+    outline: 3px solid var(--color-coral);
+    outline-offset: 3px;
+  }
+
+  /* The barrier turns on its post. It starts across the road and swings to where the record puts it. */
+  .gate-arm {
+    transform-origin: 162px 14px;
+    rotate: var(--swing, 0deg);
+    animation: swing 1.1s 0.6s var(--ease-spring) backwards;
+  }
+  .gate[data-shut] .road-dash {
+    animation: none;
+    opacity: 0.4;
+  }
+  .steps--scale li {
+    padding-top: 22px;
+  }
+  .steps--scale[data-good] li[data-state="current"]::after {
+    background: var(--color-sun);
+    animation: none;
+  }
+
+  .tile--access {
+    grid-column: span 5;
+    padding: 22px 28px 6px;
+    animation-delay: 0.16s;
+  }
+  .tile--access[data-tall] {
+    grid-row: span 2;
+  }
+  .door-node b {
+    width: 10px;
+    height: 3px;
+    border-radius: 2px;
+    background: currentColor;
+  }
+  .door[data-access="open"] .door-node {
+    background: var(--color-sun);
+    border-color: var(--color-sun);
+  }
+  .door[data-access="conditional"] .door-node {
+    border-color: var(--color-sun);
+    color: var(--color-sun-ink);
+  }
+  .door[data-access="closed"] .door-node {
+    background: var(--color-coral-soft);
+    border-color: var(--color-coral-soft);
+    color: var(--color-coral-ink);
+  }
+  .door[data-access="open"] .door-state,
+  .door[data-access="conditional"] .door-state {
+    color: var(--color-sun-ink);
+  }
+  .door[data-access="closed"] .door-state {
+    color: var(--color-coral-ink);
+  }
+
+  .tile--plan {
+    grid-column: span 7;
+    animation-delay: 0.24s;
+  }
+  .plan {
+    display: grid;
+    gap: 18px;
+    margin-top: 18px;
+  }
+  .plan li {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 14px;
+  }
+  .plan li > b {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    background: var(--color-ground);
+    color: var(--color-navy);
+    font-size: 14px;
+    font-weight: 600;
+  }
+  .plan li:first-child > b {
+    background: var(--color-navy);
+    color: #fff;
+  }
+  .plan h3 {
+    font-size: 17px;
+    font-weight: 600;
+    line-height: 1.6;
+  }
+  .plan p {
+    font-size: 14.5px;
+    line-height: 1.75;
+    color: var(--color-body);
+    max-width: 62ch;
+  }
+  /* With no plan to show, the figures stand in its place and fill the tile. */
+  .tile--figures {
+    display: grid;
+    align-items: center;
+  }
+  .tile--figures .figures {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 34px 16px;
+  }
+  .tile--figures .figures dd {
+    font-size: 32px;
+  }
+  .tile--five {
+    grid-column: span 5;
+  }
+  /* What a person wrote about the record, set apart from what the engine found. */
+  .note-own {
+    margin-top: 4px;
+    padding-top: 12px;
+    border-top: 1px solid rgba(122, 90, 0, 0.18);
+    font-size: 14.5px;
+    line-height: 1.7;
+    color: var(--color-sun-ink);
+  }
+  .note[data-level="good"]::before {
+    background: var(--color-sun);
+  }
+
+  .figures {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 18px 16px;
+  }
+  .figures dt {
+    font-size: 13px;
+    color: var(--color-muted);
+  }
+  .figures dd {
+    font-size: 26px;
+    font-weight: 600;
+    text-align: right;
+    margin-top: 2px;
+  }
+  .ledger-none {
+    padding: 12px 0;
+    font-size: 14.5px;
+    color: var(--color-muted);
+  }
+
+  .review {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+    padding-top: 14px;
+  }
+  .review .field[data-wide],
+  .review-actions {
+    grid-column: 1 / -1;
+  }
+  .review-actions {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  .empty--credit {
+    gap: 12px;
+    padding-block: 56px;
+  }
+  .empty--credit .gate {
+    position: static;
+    width: 240px;
+    margin-bottom: 6px;
+  }
+  .empty--credit .gate path:first-child {
+    stroke: var(--color-ground);
+  }
+  .empty--credit .gate .road-dash {
+    stroke: var(--color-navy-mist);
+  }
+  .empty--credit .gate-arm rect {
+    fill: var(--color-navy);
+  }
+  .empty--credit h2 {
+    font-size: 30px;
+    font-weight: 700;
+  }
+  .empty--credit > p {
+    max-width: 46ch;
+    font-size: 16px;
+    line-height: 1.8;
+    color: var(--color-body);
+  }
+  .empty--credit .upload {
+    justify-content: center;
+    margin-top: 8px;
+  }
+
   /* ---------- Small screens ---------- */
   @media (max-width: 900px) {
     .page {
@@ -2487,9 +2731,36 @@
     }
     .tile--card,
     .tile--doors,
-    .tile--devices {
+    .tile--devices,
+    .tile--access,
+    .tile--plan {
       grid-column: 1 / -1;
       grid-row: auto;
+    }
+    .tile--access {
+      padding: 18px 20px 2px;
+    }
+    /* Five short words fit one line on a phone, so the scale reads as one scale. */
+    .steps--scale {
+      flex-wrap: nowrap;
+    }
+    .steps--scale li {
+      flex: 1 1 0;
+      padding-inline-end: 4px;
+    }
+    .review {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .tile--figures .figures {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 20px 16px;
+    }
+    .tile--figures .figures dd,
+    .figures dd {
+      font-size: 24px;
+    }
+    .empty--credit {
+      padding: 40px 20px;
     }
     .tile--card {
       padding: 24px 20px;
@@ -2653,6 +2924,11 @@
   }
   80% {
     transform: translateX(-2px);
+  }
+}
+@keyframes swing {
+  from {
+    rotate: 0deg;
   }
 }
 @keyframes tick {

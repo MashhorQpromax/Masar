@@ -14,6 +14,7 @@ import {
   STRUCTURE,
   VERDICT,
 } from "@/copy/deal";
+import { GRADE } from "@/copy/credit";
 import { counted, days, dayShort, dueIn, ltr, money, percent, plainMoney } from "@/copy/format";
 import {
   dealAlternatives,
@@ -48,13 +49,14 @@ const VISIBLE_NOTES = 3;
 export default async function DealPage({ params }: { params: Promise<{ id: string }> }) {
   const me = await requireActor();
   const mayEdit = can(me.role, "deal.edit");
+  const maySeeCredit = can(me.role, "client.view_pii");
   const dealId = Number((await params).id);
   if (!Number.isInteger(dealId) || dealId <= 0) notFound();
 
   const now = new Date();
   const view = await getDeal(await getDb(), { dealId, now });
   if (!view) notFound();
-  const { deal, client, input, study, history } = view;
+  const { deal, client, input, study, history, credit } = view;
 
   const ended = deal.stage === "closed" || deal.stage === "lost";
   const timeline = dealTimeline(deal.structure, deal.stage, view.stageEnteredAt, now);
@@ -63,7 +65,7 @@ export default async function DealPage({ params }: { params: Promise<{ id: strin
   const closes = study.verdict === "go" || study.verdict === "tight";
   const alternatives =
     study.verdict === "short"
-      ? dealAlternatives(input, borrowerOf(client, now)).sort((a, b) => TONE_ORDER[a.tone] - TONE_ORDER[b.tone])
+      ? dealAlternatives(input, borrowerOf(client, now), view.creditFlags).sort((a, b) => TONE_ORDER[a.tone] - TONE_ORDER[b.tone])
       : [];
   const bestWay = alternatives.find((a) => a.tone === "good") ?? alternatives.find((a) => a.tone === "maybe");
 
@@ -103,6 +105,12 @@ export default async function DealPage({ params }: { params: Promise<{ id: strin
             )}{" "}
             · {STRUCTURE[deal.structure]}
           </p>
+          {maySeeCredit && (
+            <Link className="edit-link" data-soft href={`/clients/${client.id}/credit`}>
+              {credit && <i className="grade-dot" data-grade={credit.analysis.grade} aria-hidden="true" />}
+              {credit ? `سمة: ${GRADE[credit.analysis.grade].title}` : "ارفع تقرير سمة"}
+            </Link>
+          )}
           {!ended && mayEdit && (
             <Link className="edit-link" href={`/deals/${deal.id}/edit`}>
               <PenIcon size={16} />

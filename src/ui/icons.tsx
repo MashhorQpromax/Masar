@@ -140,3 +140,14 @@ export function CheckIcon({ size = 18 }: { size?: number }) {
     </svg>
   );
 }
+
+/** A sheet going up: bring a file in. */
+export function UploadIcon({ size = 18 }: { size?: number }) {
+  return (
+    <svg {...base(size)}>
+      <path d="M12 16V5" />
+      <path d="M7.5 9.5L12 5l4.5 4.5" />
+      <path d="M5 19h14" />
+    </svg>
+  );
+}

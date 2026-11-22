@@ -130,7 +130,7 @@ export function findingText(finding: Finding): string {
     case "BANK_DEFAULTS":
       return `${counted(finding.params.count, DEFAULTS)} لدى بنوك. البنوك تنتظر عادة نحو ${months(finding.params.waitMonths)} بعد التسوية والمخالصة.`;
     case "TELECOM_DEFAULTS":
-      return `${counted(finding.params.count, DEFAULTS)} في الاتصالات أو الفواتير. وزنه أخف، لكن سدّده قبل التقديم، فأغلب الجهات ترفض أي تعثر قائم مهما صغر.`;
+      return `${counted(finding.params.count, DEFAULTS)} في الاتصالات أو الفواتير. وزنه أخف، لكن أغلب الجهات ترفض أي تعثر قائم مهما صغر، فتأكد من سداده قبل التقديم.`;
     case "SETTLED_DEFAULT": {
       const p = finding.params;
       const since = p.monthsAgo == null ? "" : p.monthsAgo < 1 ? " منذ أقل من شهر" : ` منذ ${months(p.monthsAgo)}`;
@@ -183,6 +183,30 @@ export function actionText(action: CreditAction): string {
   }
 }
 
+/** The same step in a few words, as a heading. */
+export function actionTitle(action: CreditAction): string {
+  switch (action.code) {
+    case "LIFT_SUSPENSION":
+      return "ارفع إيقاف الخدمات";
+    case "SETTLE_JUDGMENTS":
+      return action.params.count === 1 ? "سدّد قرار التنفيذ" : "سدّد قرارات التنفيذ";
+    case "PAY_DEFAULT":
+      return `سدّد تعثر ${action.params.lender}`;
+    case "REFRESH_REPORT":
+      return "حدّث سمة وارفع تقريراً جديداً";
+    case "PAY_ON_TIME":
+      return "انتظام في السداد";
+    case "PAUSE_APPLICATIONS":
+      return "أوقف التقديمات الجديدة";
+    case "LOWER_CARDS":
+      return "اخفض رصيد البطاقات";
+    case "RESTUDY_BANKS":
+      return `أعد الدراسة بعد ${months(action.params.months)}`;
+    case "NONE":
+      return "لا إجراء مطلوب";
+  }
+}
+
 /** How far a reading of the report can be trusted before a person has checked it. */
 export const CONFIDENCE: Record<ParsedReport["confidence"], string> = {
   high: "قراءة واثقة",
@@ -228,3 +252,29 @@ export function draftLabel(source: DraftSource): string {
       return joinLabel(PAYOFF_TITLE[source.kind], source.lender ?? "");
   }
 }
+
+const PRODUCTS = { one: "منتج واحد", two: "منتجان", few: "منتجات", many: "منتجاً" };
+const ORDERS = { one: "قرار تنفيذ واحد", two: "قرارا تنفيذ", few: "قرارات تنفيذ", many: "قرار تنفيذ" };
+
+/** What a reading found, said in one line once the report is stored. */
+export function readText(read: { facilities: number; judgments: number }): string {
+  const found = [read.facilities ? counted(read.facilities, PRODUCTS) : null, read.judgments ? counted(read.judgments, ORDERS) : null].filter(Boolean);
+  return found.length ? `قرأنا التقرير: ${found.join(" و")}.` : "قرأنا التقرير.";
+}
+
+const UPLOAD_ERROR: Record<string, string> = {
+  DEMO: "هذا عرض ببيانات وهمية. رفع التقارير يعمل مع البيانات الحقيقية.",
+  NO_FILE: "اختر ملف التقرير.",
+  TOO_LARGE: "الملف أكبر من 4 ميجابايت. ارفع التقرير كما نزل من سمة.",
+  NOT_PDF: "ارفع التقرير بصيغة PDF كما نزل من سمة.",
+  UNREADABLE: "تعذرت قراءة الملف. ارفع التقرير الأصلي من سمة، لا صورة منه.",
+  NOT_SIMAH: "لم نجد بيانات سمة في الملف. ارفع التقرير الائتماني الأساسي.",
+  NOT_FOUND: "هذا الملف غير موجود.",
+  INVALID_INPUT: "قرأنا التقرير ولم نستطع حفظه. راجع الملف وحاول مرة أخرى.",
+};
+
+/** Why a report was not taken, or why a review was not saved. */
+export const creditError = (code: string): string => UPLOAD_ERROR[code] ?? "تعذر الحفظ. حاول مرة أخرى.";
+
+/** The codes an upload can answer with, for the test that every one has its sentence. */
+export const UPLOAD_ERROR_CODES = Object.keys(UPLOAD_ERROR);
