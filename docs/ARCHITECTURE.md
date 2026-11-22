@@ -131,6 +131,19 @@ Kept as the old system has them and worth a decision before the switch:
 
 Three things differ from the old system on purpose. The analysis no longer writes a guessed creditor back onto the report; it returns the guess, marked as a guess. A bounced cheque is no longer paired with a default of a similar amount, which used to drop that default from the deal's list. A new card in the deal editor defaults to being bought out by the new personal finance, as the old item list already did.
 
+## Eligibility
+
+`src/domain/eligibility` answers three questions about a client and a kind of finance: how much room SAMA's deduction rules leave in the income (`capacity`), what each lender's product would give and why not more (`matchProduct`), and what that adds up to (`study`: a verdict, the products ranked, what helps, what hurts, what to do next). `requiredDocuments` lists the papers a lender asks for. Every answer is a code with its numbers; the sentences are in `src/copy/eligibility.ts`.
+
+The numbers are locked to the old engine by `npm run golden:eligibility`. Old behaviours kept as they were, each worth a decision before the switch:
+
+- A non-Saudi's first home is financed at 70 percent like a second home, and the 85 percent tier is never used.
+- The 45 percent rule for obligations other than a mortgage never binds, because the salary rule is always tighter.
+- When a client retires inside a consumer finance term, the installment after retirement is a quarter of the pension with existing installments not taken off.
+- The score takes 2.5 points off for every percent of the effective rate, so a cheap product outranks a better fit.
+
+One thing changed on purpose: the old list of documents could name a paper twice (a self-employed client asking for project finance), and the old screen then stored it twice. The new list names each paper once.
+
 ## Porting checklist
 
 Old module (under `legacy/lib`) and its state in the rebuild:
@@ -138,7 +151,7 @@ Old module (under `legacy/lib`) and its state in the rebuild:
 - [x] `deal.ts` study, structures, fees, alternatives: `src/domain/deal`, locked by `tests/golden/deal.json` (240 cases)
 - [x] loan math and SAMA constants from `engine.ts`: `src/domain/finance`
 - [x] `deal.ts` `itemsFrom` (deal items from a credit report): `itemDrafts` in `src/domain/deal/from-credit.ts`, locked by `tests/golden/credit.json`
-- [ ] `engine.ts` eligibility, lender matching, required documents
+- [x] `engine.ts` eligibility, lender matching, required documents: `src/domain/eligibility`, locked by `tests/golden/eligibility.json` (400 clients against the seeded catalogue and against products with unusual terms, 2,286 matches, and the document lists of all 84 kinds of client)
 - [x] `simah.ts` credit grading: `src/domain/credit`, locked by `tests/golden/credit.json` (320 records)
 - [x] `simah-parse.ts` reading the report's text: `src/domain/credit/parse.ts`, locked by `tests/golden/simah.json` (160 made-up texts)
 - [x] storing a client's credit report, the upload of the PDF, the Najiz check and the credit screen: `src/server/credit`, `/clients/[id]/credit`

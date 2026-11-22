@@ -1,8 +1,6 @@
 import type { Borrower, ItemKind, PaidBy } from "./types";
 
-/** How the employer is classified. It decides retirement and which lenders accept the client. */
-export const SECTORS = ["gov", "semi_gov", "military", "private_approved", "private", "retired", "self"] as const;
-export type Sector = (typeof SECTORS)[number];
+export { SECTORS, type Sector } from "../shared/sector";
 
 /** What is known about a person that a deal depends on. */
 export interface BorrowerFacts {
