@@ -2,66 +2,62 @@ import Link from "next/link";
 import { all } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { STAGES, STAGE_LABEL, CAPITAL_OUT_STAGES, type Stage } from "@/lib/deal";
-import { PageHeader, Stat, Badge, sar, dateAr } from "@/components/ui";
+import { PageHeader, Metric, MetricStrip, Badge, Empty, Fold, StageBar, sar } from "@/components/ui";
+import { CountUp } from "@/components/count-up";
 
 export const dynamic = "force-dynamic";
 
-const VERDICT: Record<string, [string, string]> = { go: ["تُغلق", "green"], tight: ["هامش ضيق", "amber"], short: ["عجز", "red"], needs_info: ["ناقصة", "slate"] };
+const VERDICT: Record<string, [string, string]> = { go: ["تُغلق", "green"], tight: ["هامش ضيق", "amber"], short: ["عجز", "red"], needs_info: ["بيانات ناقصة", "slate"] };
+const ORDER = STAGES.map(([k]) => k).filter((k) => k !== "closed" && k !== "lost") as Stage[];
+
+type Row = { client_id: number; full_name: string; file_no: string; stage: Stage; capital: number | null; fee: number | null; client_net: number | null; verdict: string | null; updated_at: string };
 
 export default async function DealsPage() {
   await requireUser();
-  const rows = await all<{ client_id: number; full_name: string; file_no: string; stage: Stage; capital: number | null; fee: number | null; client_net: number | null; verdict: string | null; updated_at: string }>(
+  const rows = await all<Row>(
     "SELECT d.client_id, c.full_name, c.file_no, d.stage, d.capital, d.fee, d.client_net, d.verdict, d.updated_at FROM deals d JOIN clients c ON c.id = d.client_id ORDER BY d.updated_at DESC",
   );
-  const open = rows.filter((r) => r.stage !== "closed" && r.stage !== "lost");
+  const open = rows.filter((r) => r.stage !== "closed" && r.stage !== "lost").sort((a, b) => ORDER.indexOf(b.stage) - ORDER.indexOf(a.stage));
+  const done = rows.filter((r) => r.stage === "closed" || r.stage === "lost");
   const deployed = rows.filter((r) => CAPITAL_OUT_STAGES.includes(r.stage)).reduce((s, r) => s + (r.capital ?? 0), 0);
   const pipelineCap = open.filter((r) => r.stage === "study" || r.stage === "agreement").reduce((s, r) => s + (r.capital ?? 0), 0);
   const expected = open.reduce((s, r) => s + (r.fee ?? 0), 0);
   const realized = rows.filter((r) => r.stage === "recovered" || r.stage === "closed").reduce((s, r) => s + (r.fee ?? 0), 0);
-  const cols = STAGES.filter(([k]) => k !== "closed" && k !== "lost");
+
+  const line = (r: Row) => (
+    <li key={r.client_id} className="border-b border-slate-100 last:border-0">
+      <Link href={`/clients/${r.client_id}?tab=deal`} className="grid grid-cols-2 md:grid-cols-[minmax(0,1.6fr)_minmax(0,1.7fr)_repeat(3,minmax(0,.8fr))] gap-x-6 gap-y-3 items-center px-5 py-4 hover:bg-slate-50/70 transition-colors">
+        <div className="min-w-0"><div className="font-semibold text-sm truncate">{r.full_name}</div><div className="mt-1">{r.verdict && <Badge tone={VERDICT[r.verdict]?.[1]} dot>{VERDICT[r.verdict]?.[0]}</Badge>}</div></div>
+        <div className="min-w-0">
+          <div className="text-xs text-slate-600 mb-1.5 truncate">{STAGE_LABEL[r.stage]}</div>
+          <StageBar total={ORDER.length} at={ORDER.indexOf(r.stage)} lost={r.stage === "lost"} />
+        </div>
+        <Num label="رأس المال" v={r.capital} />
+        <Num label="أتعابنا" v={r.fee} tone="text-brand-700" />
+        <Num label="للعميل" v={r.client_net} tone={(r.client_net ?? 0) < 0 ? "text-rose-700" : "text-emerald-700"} />
+      </Link>
+    </li>
+  );
 
   return (
     <>
-      <PageHeader title="الصفقات" sub="سداد المديونيات وإعادة التمويل — رأس المال والأتعاب حسب المرحلة" actions={<Link href="/clients/new" className="btn-primary">+ عميل جديد</Link>} />
-      <div className="grid grid-cols-2 xl:grid-cols-4 gap-4 mb-8">
-        <Stat label="رأس مال موظّف الآن" value={sar(deployed)} tone="orange" hint="ريال — صفقات دفعنا فيها ولم نسترد" />
-        <Stat label="رأس مال مطلوب قريباً" value={sar(pipelineCap)} tone="blue" hint="ريال — صفقات في الدراسة والاتفاق" />
-        <Stat label="أتعاب متوقعة" value={sar(expected)} tone="brand" hint={`ريال — ${open.length} صفقة مفتوحة`} />
-        <Stat label="أتعاب محققة" value={sar(realized)} tone="green" hint="ريال — صفقات مستردة/مغلقة" />
+      <PageHeader title="الصفقات" />
+      <div className="stagger space-y-6">
+        <MetricStrip>
+          <Metric label="رأس مال موظّف" value={<CountUp value={deployed} />} unit="ر.س" hint="دفعناه ولم نسترده بعد" />
+          <Metric label="مطلوب قريباً" value={<CountUp value={pipelineCap} />} unit="ر.س" hint="في الدراسة والاتفاق" />
+          <Metric label="أتعاب متوقعة" value={<CountUp value={expected} />} unit="ر.س" hint={`${open.length} صفقة مفتوحة`} tone="brand" />
+          <Metric label="أتعاب محققة" value={<CountUp value={realized} />} unit="ر.س" tone="green" />
+        </MetricStrip>
+        {open.length === 0 ? (
+          <div className="card"><Empty art="bridge" title="لا صفقات مفتوحة">تبدأ الصفقة من ملف العميل، تبويب «الصفقة».</Empty></div>
+        ) : <div className="card overflow-hidden"><ul>{open.map(line)}</ul></div>}
+        {done.length > 0 && <Fold title="المغلقة والملغاة" icon="layers" meta={<span className="num">{done.length}</span>}><ul className="-mx-5 -mb-5">{done.map(line)}</ul></Fold>}
       </div>
-      {rows.length === 0 ? (
-        <div className="card p-10 text-center text-slate-500">لا صفقات بعد. افتح ملف عميل ← تبويب «الصفقة» ← احفظ الدراسة.</div>
-      ) : (
-        <div className="flex gap-3 overflow-x-auto pb-4 snap-x">
-          {cols.map(([k, l]) => {
-            const list = rows.filter((r) => r.stage === k);
-            return (
-              <div key={k} className="min-w-[240px] flex-1 snap-start">
-                <div className="flex items-center gap-2 mb-2 px-1"><span className="text-sm font-bold">{l}</span><span className="text-xs text-slate-400 num">{list.length}</span></div>
-                <div className="space-y-2 rounded-2xl bg-slate-100/70 p-2 min-h-28">
-                  {list.map((r) => (
-                    <Link key={r.client_id} href={`/clients/${r.client_id}?tab=deal`} className="block card p-3 hover:ring-brand-300">
-                      <div className="flex items-start justify-between gap-2"><div className="font-bold text-sm">{r.full_name}</div>{r.verdict && <Badge tone={VERDICT[r.verdict]?.[1]}>{VERDICT[r.verdict]?.[0]}</Badge>}</div>
-                      <div className="mt-2 grid grid-cols-2 gap-1 text-xs text-slate-500">
-                        <span>رأس المال</span><b className="num text-slate-800 text-end">{sar(r.capital)}</b>
-                        <span>أتعابنا</span><b className="num text-brand-700 text-end">{sar(r.fee)}</b>
-                        <span>للعميل</span><b className={`num text-end ${(r.client_net ?? 0) < 0 ? "text-rose-700" : "text-emerald-700"}`}>{sar(r.client_net)}</b>
-                      </div>
-                      <div className="mt-2 text-[11px] text-slate-400"><span className="num">{r.file_no}</span> · {dateAr(r.updated_at)}</div>
-                    </Link>
-                  ))}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-      {rows.some((r) => r.stage === "closed" || r.stage === "lost") && (
-        <div className="card p-5 mt-6">
-          <h3 className="font-bold mb-3">المغلقة والمتعثرة</h3>
-          <ul className="text-sm space-y-1">{rows.filter((r) => r.stage === "closed" || r.stage === "lost").map((r) => <li key={r.client_id}><Link className="text-brand-700 hover:underline" href={`/clients/${r.client_id}?tab=deal`}>{r.full_name}</Link> — {STAGE_LABEL[r.stage]} · أتعاب <span className="num">{sar(r.fee)}</span></li>)}</ul>
-        </div>
-      )}
     </>
   );
+}
+
+function Num({ label, v, tone = "text-ink" }: { label: string; v: number | null; tone?: string }) {
+  return <div className="min-w-0"><div className="text-[11px] text-slate-500">{label}</div><div className={`num text-sm font-semibold text-start ${tone}`}>{sar(v)}</div></div>;
 }

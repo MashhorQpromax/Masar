@@ -1,37 +1,201 @@
 @import "tailwindcss";
 
+/* الخطوط مستضافة داخل المنصة (public/fonts) حتى لا يعتمد البناء ولا التصفح على خدمة خارجية */
+@font-face { font-family: 'IBM Plex Sans Arabic'; font-style: normal; font-weight: 400; font-display: swap; src: url(/fonts/plex-arabic-400.woff2) format('woff2'); unicode-range: U+0600-06FF, U+0750-077F, U+0870-0891, U+0897-08E1, U+08E3-08FF, U+200C-200E, U+2010-2011, U+204F, U+2E41, U+FB50-FDFF, U+FE70-FE74, U+FE76-FEFC, U+102E0-102FB, U+10E60-10E7E, U+10EC2-10EC7, U+10EC9-10EEE, U+10EF0-10EFF, U+1EE00-1EE03, U+1EE05-1EE1F, U+1EE21-1EE22, U+1EE24, U+1EE27, U+1EE29-1EE32, U+1EE34-1EE37, U+1EE39, U+1EE3B, U+1EE42, U+1EE47, U+1EE49, U+1EE4B, U+1EE4D-1EE4F, U+1EE51-1EE52, U+1EE54, U+1EE57, U+1EE59, U+1EE5B, U+1EE5D, U+1EE5F, U+1EE61-1EE62, U+1EE64, U+1EE67-1EE6A, U+1EE6C-1EE72, U+1EE74-1EE77, U+1EE79-1EE7C, U+1EE7E, U+1EE80-1EE89, U+1EE8B-1EE9B, U+1EEA1-1EEA3, U+1EEA5-1EEA9, U+1EEAB-1EEBB, U+1EEF0-1EEF1; }
+@font-face { font-family: 'IBM Plex Sans Arabic'; font-style: normal; font-weight: 400; font-display: swap; src: url(/fonts/plex-latin-400.woff2) format('woff2'); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+@font-face { font-family: 'IBM Plex Sans Arabic'; font-style: normal; font-weight: 500; font-display: swap; src: url(/fonts/plex-arabic-500.woff2) format('woff2'); unicode-range: U+0600-06FF, U+0750-077F, U+0870-0891, U+0897-08E1, U+08E3-08FF, U+200C-200E, U+2010-2011, U+204F, U+2E41, U+FB50-FDFF, U+FE70-FE74, U+FE76-FEFC, U+102E0-102FB, U+10E60-10E7E, U+10EC2-10EC7, U+10EC9-10EEE, U+10EF0-10EFF, U+1EE00-1EE03, U+1EE05-1EE1F, U+1EE21-1EE22, U+1EE24, U+1EE27, U+1EE29-1EE32, U+1EE34-1EE37, U+1EE39, U+1EE3B, U+1EE42, U+1EE47, U+1EE49, U+1EE4B, U+1EE4D-1EE4F, U+1EE51-1EE52, U+1EE54, U+1EE57, U+1EE59, U+1EE5B, U+1EE5D, U+1EE5F, U+1EE61-1EE62, U+1EE64, U+1EE67-1EE6A, U+1EE6C-1EE72, U+1EE74-1EE77, U+1EE79-1EE7C, U+1EE7E, U+1EE80-1EE89, U+1EE8B-1EE9B, U+1EEA1-1EEA3, U+1EEA5-1EEA9, U+1EEAB-1EEBB, U+1EEF0-1EEF1; }
+@font-face { font-family: 'IBM Plex Sans Arabic'; font-style: normal; font-weight: 500; font-display: swap; src: url(/fonts/plex-latin-500.woff2) format('woff2'); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+@font-face { font-family: 'IBM Plex Sans Arabic'; font-style: normal; font-weight: 600; font-display: swap; src: url(/fonts/plex-arabic-600.woff2) format('woff2'); unicode-range: U+0600-06FF, U+0750-077F, U+0870-0891, U+0897-08E1, U+08E3-08FF, U+200C-200E, U+2010-2011, U+204F, U+2E41, U+FB50-FDFF, U+FE70-FE74, U+FE76-FEFC, U+102E0-102FB, U+10E60-10E7E, U+10EC2-10EC7, U+10EC9-10EEE, U+10EF0-10EFF, U+1EE00-1EE03, U+1EE05-1EE1F, U+1EE21-1EE22, U+1EE24, U+1EE27, U+1EE29-1EE32, U+1EE34-1EE37, U+1EE39, U+1EE3B, U+1EE42, U+1EE47, U+1EE49, U+1EE4B, U+1EE4D-1EE4F, U+1EE51-1EE52, U+1EE54, U+1EE57, U+1EE59, U+1EE5B, U+1EE5D, U+1EE5F, U+1EE61-1EE62, U+1EE64, U+1EE67-1EE6A, U+1EE6C-1EE72, U+1EE74-1EE77, U+1EE79-1EE7C, U+1EE7E, U+1EE80-1EE89, U+1EE8B-1EE9B, U+1EEA1-1EEA3, U+1EEA5-1EEA9, U+1EEAB-1EEBB, U+1EEF0-1EEF1; }
+@font-face { font-family: 'IBM Plex Sans Arabic'; font-style: normal; font-weight: 600; font-display: swap; src: url(/fonts/plex-latin-600.woff2) format('woff2'); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+@font-face { font-family: 'IBM Plex Sans Arabic'; font-style: normal; font-weight: 700; font-display: swap; src: url(/fonts/plex-arabic-700.woff2) format('woff2'); unicode-range: U+0600-06FF, U+0750-077F, U+0870-0891, U+0897-08E1, U+08E3-08FF, U+200C-200E, U+2010-2011, U+204F, U+2E41, U+FB50-FDFF, U+FE70-FE74, U+FE76-FEFC, U+102E0-102FB, U+10E60-10E7E, U+10EC2-10EC7, U+10EC9-10EEE, U+10EF0-10EFF, U+1EE00-1EE03, U+1EE05-1EE1F, U+1EE21-1EE22, U+1EE24, U+1EE27, U+1EE29-1EE32, U+1EE34-1EE37, U+1EE39, U+1EE3B, U+1EE42, U+1EE47, U+1EE49, U+1EE4B, U+1EE4D-1EE4F, U+1EE51-1EE52, U+1EE54, U+1EE57, U+1EE59, U+1EE5B, U+1EE5D, U+1EE5F, U+1EE61-1EE62, U+1EE64, U+1EE67-1EE6A, U+1EE6C-1EE72, U+1EE74-1EE77, U+1EE79-1EE7C, U+1EE7E, U+1EE80-1EE89, U+1EE8B-1EE9B, U+1EEA1-1EEA3, U+1EEA5-1EEA9, U+1EEAB-1EEBB, U+1EEF0-1EEF1; }
+@font-face { font-family: 'IBM Plex Sans Arabic'; font-style: normal; font-weight: 700; font-display: swap; src: url(/fonts/plex-latin-700.woff2) format('woff2'); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+@font-face { font-family: 'Alexandria'; font-style: normal; font-weight: 100 900; font-display: swap; src: url(/fonts/alexandria-arabic.woff2) format('woff2'); unicode-range: U+0600-06FF, U+0750-077F, U+0870-0891, U+0897-08E1, U+08E3-08FF, U+200C-200E, U+2010-2011, U+204F, U+2E41, U+FB50-FDFF, U+FE70-FE74, U+FE76-FEFC, U+102E0-102FB, U+10E60-10E7E, U+10EC2-10EC7, U+10EC9-10EEE, U+10EF0-10EFF, U+1EE00-1EE03, U+1EE05-1EE1F, U+1EE21-1EE22, U+1EE24, U+1EE27, U+1EE29-1EE32, U+1EE34-1EE37, U+1EE39, U+1EE3B, U+1EE42, U+1EE47, U+1EE49, U+1EE4B, U+1EE4D-1EE4F, U+1EE51-1EE52, U+1EE54, U+1EE57, U+1EE59, U+1EE5B, U+1EE5D, U+1EE5F, U+1EE61-1EE62, U+1EE64, U+1EE67-1EE6A, U+1EE6C-1EE72, U+1EE74-1EE77, U+1EE79-1EE7C, U+1EE7E, U+1EE80-1EE89, U+1EE8B-1EE9B, U+1EEA1-1EEA3, U+1EEA5-1EEA9, U+1EEAB-1EEBB, U+1EEF0-1EEF1; }
+@font-face { font-family: 'Alexandria'; font-style: normal; font-weight: 100 900; font-display: swap; src: url(/fonts/alexandria-latin.woff2) format('woff2'); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+:root { --font-plex: "IBM Plex Sans Arabic"; --font-alex: "Alexandria"; }
+
+/* ===== هوية مسار: ورق دافئ، حبر أخضر داكن، خط واحد ذهبي ===== */
 @theme {
   --font-sans: var(--font-plex), system-ui, sans-serif;
-  --color-brand-50: #ecfdf7;
-  --color-brand-100: #d1faec;
-  --color-brand-200: #a7f3d9;
-  --color-brand-500: #0f9f77;
-  --color-brand-600: #0b7f60;
-  --color-brand-700: #0a654e;
-  --color-brand-800: #0b5040;
-  --color-brand-900: #083d32;
-  --color-ink: #0f1d1a;
-  --color-gold: #c8a04a;
+  --font-display: var(--font-alex), var(--font-plex), system-ui, sans-serif;
+
+  --color-canvas: #f1efe9;
+  --color-sheet: #fbfaf7;
+  --color-ink: #141c18;
+  --color-gold: #c29a4b;
+  --color-gold-soft: #ecdfc2;
+  --color-sand: #e7e1d3;
+
+  --color-brand-50: #eef7f3;
+  --color-brand-100: #d7ede4;
+  --color-brand-200: #aedbcb;
+  --color-brand-300: #7cc2ac;
+  --color-brand-400: #44a389;
+  --color-brand-500: #1f8a6e;
+  --color-brand-600: #0e7359;
+  --color-brand-700: #0a5d49;
+  --color-brand-800: #0a4a3b;
+  --color-brand-900: #093d31;
+  --color-brand-950: #05241d;
+
+  /* رمادي دافئ بدل الرمادي المزرق */
+  --color-slate-50: #f7f6f2;
+  --color-slate-100: #f0eee8;
+  --color-slate-200: #e4e1d9;
+  --color-slate-300: #cfcbc1;
+  --color-slate-400: #a3a098;
+  --color-slate-500: #77756e;
+  --color-slate-600: #595852;
+  --color-slate-700: #43433e;
+  --color-slate-800: #2b2c28;
+  --color-slate-900: #1a1c19;
+  --color-slate-950: #0f110f;
+
+  /* ألوان الحالة: هادئة ومقروءة */
+  --color-emerald-50: #edf7f2;
+  --color-emerald-100: #d5ede2;
+  --color-emerald-200: #abdbc6;
+  --color-emerald-300: #7cc4a5;
+  --color-emerald-400: #4cab85;
+  --color-emerald-500: #2c9a72;
+  --color-emerald-600: #1e8260;
+  --color-emerald-700: #17694e;
+  --color-emerald-800: #145441;
+  --color-emerald-900: #0f4034;
+
+  --color-rose-50: #fbf1ee;
+  --color-rose-100: #f6dfd9;
+  --color-rose-200: #eec2b8;
+  --color-rose-300: #e39e90;
+  --color-rose-400: #db7964;
+  --color-rose-500: #d2543c;
+  --color-rose-600: #bc4530;
+  --color-rose-700: #9c3826;
+  --color-rose-800: #7f2f21;
+  --color-rose-900: #66281d;
+
+  --color-amber-50: #fbf6ea;
+  --color-amber-100: #f5e9c9;
+  --color-amber-200: #ebd597;
+  --color-amber-300: #e2c269;
+  --color-amber-400: #d9ae45;
+  --color-amber-500: #c7962b;
+  --color-amber-600: #a97a1e;
+  --color-amber-700: #86601a;
+  --color-amber-800: #6b4d18;
+  --color-amber-900: #573f16;
+
+  --color-orange-50: #fcf3ea;
+  --color-orange-100: #f8e2cb;
+  --color-orange-200: #f1c79b;
+  --color-orange-500: #d97b2b;
+  --color-orange-600: #bd6520;
+  --color-orange-700: #9a511b;
+  --color-orange-800: #7a4118;
+
+  --color-sky-50: #eff5f8;
+  --color-sky-100: #dae8ef;
+  --color-sky-200: #b9d3e0;
+  --color-sky-500: #3e88a8;
+  --color-sky-600: #2f7190;
+  --color-sky-700: #285c75;
+  --color-sky-800: #244c60;
+  --color-sky-900: #1f3e4e;
+
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
+  --animate-rise: rise 0.5s var(--ease-out) both;
+  --animate-fade: fade 0.25s ease both;
+  --animate-pop: pop 0.4s var(--ease-spring) both;
 }
 
-:root { color-scheme: light; }
-html, body { background: #f4f6f5; color: var(--color-ink); }
-body { font-feature-settings: "tnum" 1; }
+:root { color-scheme: light; interpolate-size: allow-keywords; }
+html, body { background: var(--color-canvas); color: var(--color-ink); }
+body { font-feature-settings: "tnum" 1; -webkit-tap-highlight-color: transparent; }
+::selection { background: var(--color-gold-soft); color: var(--color-ink); }
+:focus-visible { outline: 2px solid var(--color-brand-500); outline-offset: 2px; border-radius: 6px; }
+h1, h2, .font-display { font-family: var(--font-display); letter-spacing: -0.01em; }
 
-@utility card { @apply bg-white rounded-2xl border border-slate-200/80 shadow-[0_1px_2px_rgba(16,24,40,.04)]; }
-@utility btn { @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 h-10 text-sm font-semibold transition disabled:opacity-50 cursor-pointer whitespace-nowrap; }
-@utility btn-primary { @apply btn bg-brand-700 text-white hover:bg-brand-800 shadow-sm; }
-@utility btn-ghost { @apply btn bg-white border border-slate-200 text-slate-700 hover:bg-slate-50; }
-@utility btn-sm { @apply h-8 px-3 text-xs rounded-lg; }
-@utility input { @apply w-full h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none focus:border-brand-500 focus:ring-4 focus:ring-brand-100 transition; }
-@utility label { @apply block text-xs font-semibold text-slate-500 mb-1.5; }
-@utility th { @apply text-start text-xs font-semibold text-slate-500 px-4 py-3 bg-slate-50/80 border-b border-slate-100; }
+/* ===== المكوّنات ===== */
+@utility sheet { @apply bg-sheet lg:rounded-[22px] lg:border lg:border-slate-200/70; }
+@utility card { @apply bg-white rounded-2xl border border-slate-200/70; }
+@utility btn { @apply inline-flex items-center justify-center gap-2 rounded-[11px] px-4 h-10 text-sm font-semibold cursor-pointer whitespace-nowrap select-none transition-[background-color,border-color,color,transform,box-shadow] duration-150 active:scale-[.98] disabled:opacity-45 disabled:pointer-events-none; }
+@utility btn-primary { @apply btn bg-ink text-white hover:bg-slate-800 shadow-[0_1px_0_rgba(255,255,255,.08)_inset,0_1px_2px_rgba(20,28,24,.25)]; }
+@utility btn-brand { @apply btn bg-brand-700 text-white hover:bg-brand-800; }
+@utility btn-ghost { @apply btn bg-white border border-slate-200 text-slate-800 hover:border-slate-300 hover:bg-slate-50; }
+@utility btn-quiet { @apply btn px-2.5 text-slate-600 hover:bg-slate-100 hover:text-ink; }
+@utility btn-danger { @apply btn bg-rose-600 text-white hover:bg-rose-700; }
+@utility btn-sm { @apply h-8 px-3 text-xs rounded-[9px]; }
+@utility input { @apply w-full h-10 rounded-[11px] border border-slate-200 bg-white px-3 text-sm outline-none transition-[border-color,box-shadow] duration-150 placeholder:text-slate-400 hover:border-slate-300 focus:border-brand-500 focus:ring-4 focus:ring-brand-100 disabled:bg-slate-50 disabled:text-slate-500; }
+@utility label { @apply block text-xs font-medium text-slate-500 mb-1.5; }
+@utility th { @apply text-start text-[11px] font-semibold text-slate-500 px-4 py-2.5 border-b border-slate-200/70 whitespace-nowrap; }
 @utility td { @apply px-4 py-3 text-sm border-b border-slate-100 align-middle; }
-textarea.input { height: auto; padding-top: .5rem; padding-bottom: .5rem; }
+@utility eyebrow { @apply text-[11px] font-semibold text-slate-500 tracking-wide; }
+@utility hairline { @apply border-slate-200/70; }
+textarea.input { height: auto; padding-top: .55rem; padding-bottom: .55rem; line-height: 1.75; }
+select.input { padding-inline-end: 1.75rem; }
+@layer base { .num, .figure { text-align: -webkit-match-parent; text-align: match-parent; } }
 .num { font-variant-numeric: tabular-nums; direction: ltr; unicode-bidi: isolate; }
+.figure { font-family: var(--font-display); font-variant-numeric: tabular-nums; direction: ltr; unicode-bidi: isolate; letter-spacing: -0.02em; }
+
+/* تبويبات وأزرار مقطّعة */
+@utility seg { @apply inline-flex items-center gap-0.5 rounded-xl bg-slate-100 p-1; }
+@utility seg-item { @apply rounded-[9px] px-3.5 h-8 inline-flex items-center gap-1.5 text-[13px] font-semibold text-slate-500 hover:text-ink transition-colors whitespace-nowrap cursor-pointer; }
+@utility seg-on { @apply bg-white text-ink shadow-[0_1px_2px_rgba(20,28,24,.10)]; }
+
+/* أقسام تُفتح عند الحاجة */
+details.fold { @apply card overflow-hidden; }
+details.fold > summary { @apply flex items-center gap-3 px-5 h-14 cursor-pointer select-none list-none font-semibold text-[15px]; }
+details.fold > summary::-webkit-details-marker { display: none; }
+details.fold > summary .chev { transition: transform .25s var(--ease-out); }
+details.fold[open] > summary .chev { transform: rotate(180deg); }
+details.fold > summary:hover { @apply bg-slate-50/70; }
+details.fold::details-content { block-size: 0; overflow: clip; transition: block-size .32s var(--ease-out), content-visibility .32s allow-discrete; }
+details.fold[open]::details-content { block-size: auto; }
+
+/* ===== الحركة ===== */
+@keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes pop { from { opacity: 0; transform: scale(.6); } to { opacity: 1; transform: none; } }
+@keyframes draw { to { stroke-dashoffset: 0; } }
+@keyframes grow-x { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+@keyframes ring { 0% { box-shadow: 0 0 0 0 rgb(31 138 110 / .45); } 100% { box-shadow: 0 0 0 9px rgb(31 138 110 / 0); } }
+@keyframes shimmer { to { background-position: -200% 0; } }
+@keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
+@keyframes shake { 0%, 100% { transform: none; } 20%, 60% { transform: translateX(-5px); } 40%, 80% { transform: translateX(5px); } }
+@keyframes travel { 0% { offset-distance: 0%; opacity: 0; } 6%, 92% { opacity: 1; } 100% { offset-distance: 100%; opacity: 0; } }
+@keyframes sheet-up { from { transform: translateY(100%); } to { transform: none; } }
+@keyframes palette { from { opacity: 0; transform: translateY(-8px) scale(.98); } to { opacity: 1; transform: none; } }
+
+.stagger > * { animation: rise .55s var(--ease-out) both; }
+.stagger > *:nth-child(2) { animation-delay: 50ms; }
+.stagger > *:nth-child(3) { animation-delay: 100ms; }
+.stagger > *:nth-child(4) { animation-delay: 150ms; }
+.stagger > *:nth-child(5) { animation-delay: 200ms; }
+.stagger > *:nth-child(6) { animation-delay: 250ms; }
+.stagger > *:nth-child(n+7) { animation-delay: 300ms; }
+
+/* رسم الخط: pathLength=1 على العنصر */
+.draw { stroke-dasharray: 1; stroke-dashoffset: 1; animation: draw var(--draw, 1.6s) var(--ease-out) var(--delay, 0s) forwards; }
+.pop { transform-box: fill-box; transform-origin: center; animation: pop .5s var(--ease-spring) var(--delay, 0s) both; }
+.fade { animation: fade .6s ease var(--delay, 0s) both; }
+.float { animation: float 6s ease-in-out infinite; }
+.traveler { offset-rotate: 0deg; animation: travel 7s linear 4.4s infinite; opacity: 0; }
+.grow-x { transform-box: fill-box; animation: grow-x var(--draw, .9s) var(--ease-out) var(--delay, 0s) both; }
+.ring-pulse { animation: ring 1.8s ease-out infinite; }
+.shake { animation: shake .35s ease; }
+.skeleton { background: linear-gradient(90deg, var(--color-slate-100) 25%, var(--color-slate-50) 50%, var(--color-slate-100) 75%); background-size: 200% 100%; animation: shimmer 1.4s linear infinite; border-radius: 10px; }
+.lift { transition: transform .2s var(--ease-out), box-shadow .2s ease, border-color .2s ease; }
+.lift:hover { transform: translateY(-2px); box-shadow: 0 10px 24px -12px rgb(20 28 24 / .18); border-color: var(--color-slate-300); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-delay: 0s !important; transition-duration: .01ms !important; }
+  .draw { stroke-dashoffset: 0; }
+  .traveler { display: none; }
+}
 
 @media print {
   .no-print { display: none !important; }
-  body { background: white; }
-  .card { box-shadow: none; border-color: #ddd; }
+  html, body { background: white; }
+  .sheet { border: 0; background: white; }
+  .card { border-color: #ddd; }
 }

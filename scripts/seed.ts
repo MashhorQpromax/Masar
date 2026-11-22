@@ -31,5 +31,5 @@ for (const p of PRODUCTS)
 const insR = db.prepare("INSERT INTO lender_rules (lender_id, finance_type, kind, title, body, user_id) VALUES (?,?,?,?,?,1)");
 for (const r of RULES) if (!r[0] || lid[r[0]]) insR.run(r[0] ? lid[r[0]] : null, r[1], r[2], r[3], r[4]);
 
-console.log(`✓ قاعدة نظيفة: ${LENDERS.length} جهات، ${PRODUCTS.length} منتجاً، ${RULES.length} قاعدة سوق. بلا عملاء.`);
+console.log(`قاعدة نظيفة: ${LENDERS.length} جهات، ${PRODUCTS.length} منتجاً، ${RULES.length} قاعدة سوق. بلا عملاء.`);
 if (!process.env.VERCEL) console.log(`  الدخول: ${email} / ${pw}`);

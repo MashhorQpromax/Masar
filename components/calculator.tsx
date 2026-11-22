@@ -3,6 +3,8 @@ import { useMemo, useState } from "react";
 import { fmt, type Product, type Profile } from "@/lib/engine";
 import { deepStudy } from "@/lib/advisor";
 import { FINANCE_TYPE, SECTOR, SIMAH, ELIGIBILITY } from "@/lib/labels";
+import { Icon } from "@/components/icon";
+import { Fig, VerdictChip, Empty } from "@/components/ui";
 
 export default function Calculator({ products }: { products: Product[] }) {
   const [f, setF] = useState({ salary: 12000, obligations: 0, mortgage: 0, age: 35, service: 36, sector: "gov", simah: "clean", type: "personal", amount: 0, housing: false, basic: 0, property: 0, co: 0, second: false, tenor: 0 });
@@ -16,69 +18,96 @@ export default function Calculator({ products }: { products: Product[] }) {
     };
     return deepStudy(p, products);
   }, [f, products]);
-  const best = s.matches.filter((m) => m.verdict !== "fail");
+  const ok = s.matches.filter((m) => m.verdict !== "fail");
+  const failed = s.matches.filter((m) => m.verdict === "fail");
+  const top = ok[0] ? Math.max(...ok.map((m) => m.maxPrincipal)) : 0;
+  const el = ELIGIBILITY[s.verdict];
+  const alerts = s.alerts.filter((a) => a.id !== "inquiries").slice(0, 5);
+  const N = (k: keyof typeof f, label: string, ph?: string) => <div><label className="label">{label}</label><input type="number" value={(f[k] as number) || ""} placeholder={ph ?? "0"} onChange={set(k)} className="input num" /></div>;
+
   return (
-    <div className="grid lg:grid-cols-[360px_1fr] gap-6 items-start">
-      <div className="card p-5 space-y-4">
-        <div><label className="label">الراتب الإجمالي: <b className="num text-ink">{fmt(f.salary)}</b></label><input type="range" min={3000} max={60000} step={500} value={f.salary} onChange={set("salary")} className="w-full accent-brand-600" /></div>
-        <div className="grid grid-cols-2 gap-3">
-          <div><label className="label">أقساط استهلاكية حالية</label><input type="number" value={f.obligations} onChange={set("obligations")} className="input" /></div>
-          <div><label className="label">قسط عقاري حالي</label><input type="number" value={f.mortgage} onChange={set("mortgage")} className="input" /></div>
-          <div><label className="label">العمر</label><input type="number" value={f.age} onChange={set("age")} className="input" /></div>
-          <div><label className="label">الخدمة (شهر)</label><input type="number" value={f.service} onChange={set("service")} className="input" /></div>
+    <div className="grid lg:grid-cols-[340px_minmax(0,1fr)] gap-6 items-start">
+      <div className="card p-5 space-y-4 lg:sticky lg:top-6">
+        <div>
+          <div className="flex items-baseline justify-between"><label className="label !mb-0">الراتب الإجمالي</label><span className="figure text-2xl font-semibold">{fmt(f.salary)}</span></div>
+          <input type="range" min={3000} max={60000} step={500} value={f.salary} onChange={set("salary")} className="mt-2 w-full accent-brand-700" aria-label="الراتب الإجمالي" />
         </div>
-        <div><label className="label">القطاع</label><select value={f.sector} onChange={set("sector")} className="input">{Object.entries(SECTOR).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></div>
-        <div><label className="label">سمة</label><select value={f.simah} onChange={set("simah")} className="input">{Object.entries(SIMAH).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></div>
         <div><label className="label">نوع التمويل</label><select value={f.type} onChange={set("type")} className="input">{Object.entries(FINANCE_TYPE).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></div>
-        <div><label className="label">المبلغ المطلوب (اختياري)</label><input type="number" value={f.amount || ""} onChange={set("amount")} className="input" /></div>
         <div className="grid grid-cols-2 gap-3">
-          <div><label className="label">الراتب الأساسي</label><input type="number" value={f.basic || ""} placeholder={fmt(f.salary * 0.7)} onChange={set("basic")} className="input" /></div>
-          <div><label className="label">المدة (شهر)</label><input type="number" value={f.tenor || ""} placeholder="الأقصى" onChange={set("tenor")} className="input" /></div>
+          {N("obligations", "أقساط حالية")}
+          {N("age", "العمر")}
+          <div><label className="label">القطاع</label><select value={f.sector} onChange={set("sector")} className="input">{Object.entries(SECTOR).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></div>
+          <div><label className="label">سمة</label><select value={f.simah} onChange={set("simah")} className="input">{Object.entries(SIMAH).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></div>
         </div>
-        {f.type === "mortgage" && (
-          <div className="grid grid-cols-2 gap-3">
-            <div><label className="label">قيمة العقار</label><input type="number" value={f.property || ""} onChange={set("property")} className="input" /></div>
-            <div><label className="label">دخل المتضامن</label><input type="number" value={f.co || ""} onChange={set("co")} className="input" /></div>
-            <label className="col-span-2 flex items-center gap-2 text-sm"><input type="checkbox" checked={f.second} onChange={set("second")} className="accent-brand-600" />ليس المسكن الأول (تمويل 70%)</label>
+        {f.type === "mortgage" && <div className="grid grid-cols-2 gap-3">{N("property", "قيمة العقار")}{N("co", "دخل المتضامن")}</div>}
+        <details className="group">
+          <summary className="cursor-pointer list-none text-[13px] font-semibold text-slate-500 hover:text-ink inline-flex items-center gap-1.5"><Icon name="chevron-down" className="size-4 transition-transform group-open:rotate-180" />حقول إضافية</summary>
+          <div className="mt-3 grid grid-cols-2 gap-3">
+            {N("mortgage", "قسط عقاري حالي")}
+            {N("service", "الخدمة (شهر)")}
+            {N("basic", "الراتب الأساسي", fmt(f.salary * 0.7))}
+            {N("amount", "المبلغ المطلوب")}
+            {N("tenor", "المدة (شهر)", "الأقصى")}
+            <label className="col-span-2 inline-flex items-center gap-2 text-[13px] text-slate-700"><input type="checkbox" checked={f.housing} onChange={set("housing")} className="size-4 accent-brand-700" />مستفيد من الدعم السكني</label>
+            {f.type === "mortgage" && <label className="col-span-2 inline-flex items-center gap-2 text-[13px] text-slate-700"><input type="checkbox" checked={f.second} onChange={set("second")} className="size-4 accent-brand-700" />ليس المسكن الأول</label>}
           </div>
-        )}
-        <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={f.housing} onChange={set("housing")} className="accent-brand-600" />مستفيد سكني / الصندوق</label>
+        </details>
       </div>
+
       <div className="space-y-4">
-        <div className="card p-6 bg-gradient-to-l from-brand-900 to-brand-700 text-white border-0">
-          <div className="text-sm text-brand-100/80">{ELIGIBILITY[s.verdict].emoji} {s.headline}</div>
-          <div className="grid sm:grid-cols-3 gap-6 mt-4">
-            <div><div className="text-xs text-brand-100/70">القسط الشهري المتاح</div><div className="text-4xl font-bold num text-start mt-1">{fmt(s.capacity.available)}</div></div>
-            <div><div className="text-xs text-brand-100/70">أعلى مبلغ تقريبي</div><div className="text-4xl font-bold num text-start mt-1 text-gold">{fmt(best[0] ? Math.max(...best.map((m) => m.maxPrincipal)) : 0)}</div></div>
-            <div><div className="text-xs text-brand-100/70">القاعدة الحاكمة</div><div className="text-sm font-semibold mt-2 leading-6">{s.capacity.bindingRule}</div></div>
+        <section className="card p-5 sm:p-7">
+          <VerdictChip tone={el.tone} icon={el.icon}>{el.label}</VerdictChip>
+          <h2 className="mt-4 text-[22px] font-bold leading-snug">{s.headline}</h2>
+          <div className="mt-6 grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-5">
+            <Fig label="أعلى مبلغ" value={fmt(top)} tone="text-brand-700" />
+            <Fig label="القسط المتاح" value={fmt(s.capacity.available)} hint="شهرياً" />
+            <div className="col-span-2 sm:col-span-1"><div className="eyebrow">القاعدة الحاكمة</div><div className="text-[13px] font-medium mt-2 leading-6">{s.capacity.bindingRule}</div></div>
           </div>
-        </div>
-        <div className="card overflow-x-auto">
-          <table className="w-full min-w-[640px]">
-            <thead><tr>{["الجهة", "الحكم", "المبلغ الممكن", "المدة", "القسط", "النسبة الفعلية", "إجمالي الأرباح"].map((h) => <th key={h} className="th">{h}</th>)}</tr></thead>
-            <tbody>{s.matches.map((m) => (
-              <tr key={m.product.id} className={m.verdict === "fail" ? "opacity-50" : ""}>
-                <td className="td"><b>{m.product.lenderName}</b><div className="text-xs text-slate-500">{m.product.name}</div></td>
-                <td className="td text-xs">{m.verdict === "pass" ? "✅ مؤهل" : m.verdict === "warn" ? "⚠️ بشروط" : "❌ " + (m.checks.find((c) => c.status === "fail")?.label ?? "")}</td>
-                <td className="td num font-semibold">{m.verdict === "fail" ? "—" : fmt(m.maxPrincipal)}</td><td className="td num">{m.tenor}</td>
-                <td className="td num">{m.verdict === "fail" ? "—" : fmt(m.installment)}</td><td className="td num text-xs">{m.verdict === "fail" ? `${m.product.rate}%` : `${m.apr}%`}<div className="text-[10px] text-slate-400">{m.product.rate}% {m.product.rateType === "flat" ? "ثابتة" : "متناقصة"}</div></td>
-                <td className="td num text-xs">{m.verdict === "fail" ? "—" : fmt(m.totalProfit)}{m.retirement && m.retirement.after < m.installment ? <div className="text-[10px] text-amber-700">قسط بعد التقاعد {fmt(m.retirement.after)}</div> : null}</td>
-              </tr>
-            ))}</tbody>
-          </table>
-        </div>
-        <div className="grid md:grid-cols-2 gap-4">
-          <div className="card p-5">
-            <h3 className="font-bold mb-3 text-sm">💡 المخارج</h3>
-            {s.scenarios.length === 0 ? <p className="text-sm text-slate-500">لا توجد مخارج ترفع المبلغ بهذه المعطيات.</p> : (
-              <ul className="space-y-2 text-sm">{s.scenarios.slice(0, 5).map((x) => <li key={x.key} className="flex justify-between gap-3"><span>{x.title}</span><span className="num font-bold text-brand-700 whitespace-nowrap">{fmt(x.amount)}{x.gain > 0 && <span className="text-emerald-600 text-xs"> +{fmt(x.gain)}</span>}</span></li>)}</ul>
+        </section>
+
+        <section className="card overflow-hidden">
+          <div className="px-5 pt-5 pb-3 text-[15px] font-bold flex items-center gap-2">الجهات المناسبة<span className="num text-xs font-medium text-slate-400">{ok.length}</span></div>
+          {ok.length === 0 ? <Empty art="search" title="لا جهة مناسبة بهذه الأرقام" /> : (
+            <div>
+              <div className="hidden sm:grid grid-cols-[minmax(0,2fr)_1fr_1fr_1fr_1fr] gap-4 px-5 py-2.5 border-y border-slate-200/70 text-[11px] font-semibold text-slate-500"><div>الجهة</div><div>المبلغ</div><div>القسط</div><div>المدة</div><div>النسبة الفعلية</div></div>
+              {ok.map((m) => (
+                <div key={m.product.id} className="grid grid-cols-[minmax(0,1fr)_auto] sm:grid-cols-[minmax(0,2fr)_1fr_1fr_1fr_1fr] gap-4 items-center px-5 py-3.5 border-b border-slate-100 last:border-0">
+                  <div className="min-w-0 flex items-center gap-2.5">
+                    <span className={`size-1.5 shrink-0 rounded-full ${m.verdict === "pass" ? "bg-emerald-500" : "bg-amber-400"}`} title={m.verdict === "pass" ? "مؤهل" : "بشروط"} />
+                    <div className="min-w-0"><div className="font-semibold text-sm truncate">{m.product.lenderName}</div><div className="text-xs text-slate-500 truncate">{m.product.name}</div></div>
+                  </div>
+                  <div className="num font-semibold text-sm">{fmt(m.maxPrincipal)}</div>
+                  <div className="hidden sm:block num text-sm">{fmt(m.installment)}{m.retirement && m.retirement.after < m.installment ? <div className="text-[10px] text-amber-700">بعد التقاعد {fmt(m.retirement.after)}</div> : null}</div>
+                  <div className="hidden sm:block num text-sm">{m.tenor}</div>
+                  <div className="hidden sm:block num text-sm">{m.apr}%</div>
+                </div>
+              ))}
+            </div>
+          )}
+          {failed.length > 0 && (
+            <details className="group border-t border-slate-100">
+              <summary className="cursor-pointer list-none px-5 py-3 text-[13px] font-semibold text-slate-500 hover:text-ink flex items-center gap-1.5"><Icon name="chevron-down" className="size-4 transition-transform group-open:rotate-180" />غير مناسبة <span className="num">{failed.length}</span></summary>
+              <ul className="px-5 pb-4 text-[13px] space-y-2">{failed.map((m) => <li key={m.product.id} className="flex flex-wrap justify-between gap-x-4"><span className="font-medium">{m.product.lenderName}</span><span className="text-rose-700">{m.checks.find((c) => c.status === "fail")?.label ?? ""}</span></li>)}</ul>
+            </details>
+          )}
+        </section>
+
+        {(s.scenarios.length > 0 || alerts.length > 0) && (
+          <div className="grid md:grid-cols-2 gap-4">
+            {s.scenarios.length > 0 && (
+              <div className="card p-5">
+                <h3 className="text-[15px] font-bold mb-3 flex items-center gap-2"><Icon name="trend" className="size-4 text-slate-400" />مخارج لرفع المبلغ</h3>
+                <ul className="space-y-2.5 text-[13px]">{s.scenarios.slice(0, 5).map((x) => <li key={x.key} className="flex justify-between gap-3"><span>{x.title}</span><span className="num font-semibold whitespace-nowrap">{fmt(x.amount)}{x.gain > 0 && <span className="text-emerald-700 text-xs font-medium"> +{fmt(x.gain)}</span>}</span></li>)}</ul>
+              </div>
+            )}
+            {alerts.length > 0 && (
+              <div className="card p-5">
+                <h3 className="text-[15px] font-bold mb-3 flex items-center gap-2"><Icon name="shield" className="size-4 text-slate-400" />قد تطلب الجهة</h3>
+                <ul className="space-y-2.5 text-[13px]">{alerts.map((a) => <li key={a.id} className="flex gap-2.5"><Icon name={a.level === "block" ? "ban" : a.level === "warn" ? "alert" : "info"} className={`size-4 mt-0.5 ${a.level === "block" ? "text-rose-600" : a.level === "warn" ? "text-amber-600" : "text-slate-400"}`} /><span>{a.title}</span></li>)}</ul>
+              </div>
             )}
           </div>
-          {s.alerts.some((a) => a.id !== "inquiries") && <div className="card p-5">
-            <h3 className="font-bold mb-3 text-sm">⚠️ قد تطلب الجهة</h3>
-            <ul className="space-y-2 text-sm">{s.alerts.filter((a) => a.id !== "inquiries").slice(0, 6).map((a) => <li key={a.id} className="flex gap-2"><span>{a.level === "block" ? "⛔" : a.level === "warn" ? "⚠️" : "ℹ️"}</span><span>{a.title}</span></li>)}</ul>
-          </div>}
-        </div>
+        )}
       </div>
     </div>
   );

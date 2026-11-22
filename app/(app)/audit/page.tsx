@@ -2,7 +2,8 @@ import Link from "next/link";
 import { all } from "@/lib/db";
 import { requirePage } from "@/lib/auth";
 import { AUDIT_ACTION } from "@/lib/labels";
-import { PageHeader, dateTimeAr, Badge } from "@/components/ui";
+import { PageHeader, dateTimeAr, Badge, Empty } from "@/components/ui";
+import { AutoSelect } from "@/components/client-bits";
 
 export const dynamic = "force-dynamic";
 
@@ -16,25 +17,26 @@ export default async function Audit({ searchParams }: { searchParams: Promise<{ 
   const sensitive = new Set(["client_view_pii", "doc_download", "export", "client_delete", "login_failed"]);
   return (
     <>
-      <PageHeader title="سجل التدقيق" sub="كل وصول وتعديل على بيانات العملاء — آخر 300 حدث" />
-      <form className="card p-3 mb-4 flex gap-2">
-        <select name="action" defaultValue={action ?? ""} className="input w-auto"><option value="">كل الأحداث</option>{Object.entries(AUDIT_ACTION).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
-        <button className="btn-ghost">تصفية</button>
-      </form>
-      <div className="card overflow-x-auto">
-        <table className="w-full min-w-[800px]">
-          <thead><tr>{["الوقت", "المستخدم", "الحدث", "الملف", "تفاصيل", "IP"].map((h) => <th key={h} className="th">{h}</th>)}</tr></thead>
-          <tbody>{rows.map((r) => (
-            <tr key={r.id}>
-              <td className="td text-xs whitespace-nowrap">{dateTimeAr(r.created_at)}</td>
-              <td className="td text-sm">{r.name ?? "—"}</td>
-              <td className="td">{sensitive.has(r.action) ? <Badge tone="amber">{AUDIT_ACTION[r.action] ?? r.action}</Badge> : <span className="text-sm">{AUDIT_ACTION[r.action] ?? r.action}</span>}</td>
-              <td className="td text-sm">{r.full_name ? <Link href={`/clients/${r.entity_id}`} className="text-brand-700 hover:underline">{r.full_name}</Link> : "—"}</td>
-              <td className="td text-xs text-slate-500 max-w-72 truncate num" dir="auto">{r.details}</td>
-              <td className="td text-xs num text-slate-400">{r.ip}</td>
-            </tr>
-          ))}</tbody>
-        </table>
+      <PageHeader title="سجل التدقيق" sub="آخر 300 حدث" actions={
+        <form><AutoSelect name="action" label="نوع الحدث" defaultValue={action ?? ""} options={[["", "كل الأحداث"], ...Object.entries(AUDIT_ACTION)]} /></form>
+      } />
+      <div className="card overflow-hidden">
+        {rows.length === 0 ? <Empty art="search" title="لا أحداث" /> : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[720px]">
+              <thead><tr>{["الوقت", "المستخدم", "الحدث", "الملف", "التفاصيل"].map((h) => <th key={h} className="th">{h}</th>)}</tr></thead>
+              <tbody>{rows.map((r) => (
+                <tr key={r.id} className="hover:bg-slate-50/60">
+                  <td className="td text-xs whitespace-nowrap text-slate-500">{dateTimeAr(r.created_at)}</td>
+                  <td className="td">{r.name ?? "—"}</td>
+                  <td className="td">{sensitive.has(r.action) ? <Badge tone="amber">{AUDIT_ACTION[r.action] ?? r.action}</Badge> : (AUDIT_ACTION[r.action] ?? r.action)}</td>
+                  <td className="td">{r.full_name ? <Link href={`/clients/${r.entity_id}`} className="text-brand-700 hover:underline">{r.full_name}</Link> : "—"}</td>
+                  <td className="td text-xs text-slate-500 max-w-72 truncate" dir="auto" title={[r.details, r.ip].filter(Boolean).join(" · ")}>{r.details}</td>
+                </tr>
+              ))}</tbody>
+            </table>
+          </div>
+        )}
       </div>
     </>
   );

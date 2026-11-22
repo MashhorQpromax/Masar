@@ -7,7 +7,8 @@ import { revalidatePath } from "next/cache";
 import crypto from "node:crypto";
 import { z } from "zod";
 import { all, get, run, tx } from "@/lib/db";
-import { audit, can, hashPassword, login, logout, requireUser, passwordProblem, changeOwnPassword } from "@/lib/auth";
+import { audit, can, hashPassword, logout, requireUser, passwordProblem, changeOwnPassword } from "@/lib/auth";
+import { resetSecurity } from "@/lib/auth-methods";
 import { getClient, nextFileNo, studyFor, profileOf } from "@/lib/data";
 import { requiredDocuments } from "@/lib/engine";
 import { analyzeCredit } from "@/lib/simah";
@@ -28,11 +29,6 @@ const str = (v: FormDataEntryValue | null) => {
 };
 
 // ===== الدخول =====
-export async function loginAction(_: FormState, fd: FormData): Promise<FormState> {
-  const r = await login(String(fd.get("email") || ""), String(fd.get("password") || ""), fd.get("remember") === "1");
-  if (!r.ok) return { error: r.error };
-  redirect("/");
-}
 export async function logoutAction() {
   const u = await requireUser();
   await audit(u, "logout");
@@ -402,7 +398,14 @@ export async function updateUser(id: number, fd: FormData) {
   const pw = String(fd.get("password") || "");
   const reset = pw !== "" && !passwordProblem(pw);
   if (reset) await run("UPDATE users SET password_hash = ? WHERE id = ?", await hashPassword(pw), id);
-  await audit(u, "user_update", "user", id, { role, active, passwordReset: reset });
+  const phoneRaw = fd.get("phone");
+  if (phoneRaw != null) {
+    const phone = String(phoneRaw).trim();
+    if (phone === "" || normalizePhone(phone)) await run("UPDATE users SET phone = ? WHERE id = ?", phone === "" ? null : phone.slice(0, 20), id);
+  }
+  const wipe = fd.get("reset_security") === "1";
+  if (wipe) await resetSecurity(id);
+  await audit(u, "user_update", "user", id, { role, active, passwordReset: reset, securityReset: wipe });
   revalidatePath("/users");
 }
 
@@ -590,7 +593,7 @@ export async function rejectDeal(clientId: number, fd: FormData) {
   const c = await getClient(clientId);
   if (!c) return;
   const d = await dealFor(c);
-  const reason = str(fd.get("reason")) ?? (d.study.verdict === "short" ? `الصفقة لا تقفل — عجز ${Math.round(Math.max(0, -d.study.clientNet)).toLocaleString("en-US")} ريال` : "رفض");
+  const reason = str(fd.get("reason")) ?? (d.study.verdict === "short" ? `الصفقة لا تقفل، العجز ${Math.round(Math.max(0, -d.study.clientNet)).toLocaleString("en-US")} ريال` : "رفض");
   const row = await get<{ stage_log: string }>("SELECT stage_log FROM deals WHERE client_id = ?", clientId);
   if (row) {
     const log = JSON.parse(row.stage_log) as unknown[];
@@ -599,7 +602,7 @@ export async function rejectDeal(clientId: number, fd: FormData) {
   }
   await run("UPDATE clients SET status = 'rejected', next_step = NULL, updated_at = datetime('now') WHERE id = ?", clientId);
   await run("UPDATE share_links SET revoked = 1 WHERE client_id = ? AND revoked = 0", clientId);
-  await run("INSERT INTO notes (client_id, kind, body, user_id) VALUES (?, 'note', ?, ?)", clientId, `🔴 رُفض الملف: ${reason}`, u.id);
+  await run("INSERT INTO notes (client_id, kind, body, user_id) VALUES (?, 'note', ?, ?)", clientId, `رُفض الملف: ${reason}`, u.id);
   await audit(u, "client_status", "client", clientId, { from: c.status, to: "rejected", reason });
   revalidatePath(`/clients/${clientId}`); revalidatePath("/deals"); revalidatePath("/");
 }
@@ -615,7 +618,7 @@ export async function reopenDeal(clientId: number) {
     await run("UPDATE deals SET stage = 'study', stage_log = ?, updated_at = datetime('now') WHERE client_id = ?", JSON.stringify(log.slice(-100)), clientId);
   }
   await run("UPDATE clients SET status = 'study', updated_at = datetime('now') WHERE id = ?", clientId);
-  await run("INSERT INTO notes (client_id, kind, body, user_id) VALUES (?, 'note', ?, ?)", clientId, "🔄 أُعيد فتح الملف للدراسة", u.id);
+  await run("INSERT INTO notes (client_id, kind, body, user_id) VALUES (?, 'note', ?, ?)", clientId, "أُعيد فتح الملف للدراسة", u.id);
   await audit(u, "client_status", "client", clientId, { from: c.status, to: "study" });
   revalidatePath(`/clients/${clientId}`); revalidatePath("/deals"); revalidatePath("/");
 }
@@ -700,7 +703,7 @@ export async function portalUpload(token: string, docId: number, _: FormState, f
   await maybeAdvance(link.client_id);
   await run("INSERT INTO audit_log (action, entity, entity_id, details) VALUES ('portal_upload', 'client', ?, ?)", link.client_id, JSON.stringify({ doc: docId, size: f.size }));
   revalidatePath(`/clients/${link.client_id}`);
-  return { ok: "تم الاستلام ✅ شكراً لك" };
+  return { ok: "وصلنا، شكراً لك" };
 }
 
 // ===== واتساب للأعمال (من رقم الشركة) =====
@@ -727,5 +730,5 @@ export async function waSendDirect(clientId: number, body: string): Promise<{ ok
   await audit(u, "wa_send", "client", clientId, { via: "api", kind, ok: r.ok });
   revalidatePath(`/clients/${clientId}`);
   if (!r.ok) return { error: `لم تُرسل: ${r.error}` };
-  return { ok: w.open ? "أُرسلت من رقم الشركة ✓" : "العميل لم يراسلنا خلال 24 ساعة، فأُرسل له قالب المتابعة المعتمد مع رابط ملفه ✓ — بعد ما يرد تقدر ترسل الرسالة الكاملة" };
+  return { ok: w.open ? "أُرسلت من رقم الشركة" : "أُرسل قالب المتابعة مع رابط الملف. بعد رد العميل ترسل الرسالة الكاملة." };
 }

@@ -1,19 +1,19 @@
 // تسميات عربية موحدة لكل القيم — تتبع مفاتيح نظام المجلدات السابق
 export const STATUS = {
-  study: { label: "قيد الدراسة", tone: "amber", emoji: "🟡" },
-  awaiting_docs: { label: "بانتظار مستندات", tone: "orange", emoji: "🟠" },
-  submitted: { label: "مقدم للجهة", tone: "blue", emoji: "🔵" },
-  approved: { label: "معتمد / تم الصرف", tone: "green", emoji: "🟢" },
-  rejected: { label: "مرفوض / متوقف", tone: "red", emoji: "🔴" },
+  study: { label: "قيد الدراسة", tone: "amber" },
+  awaiting_docs: { label: "بانتظار مستندات", tone: "orange" },
+  submitted: { label: "مقدم للجهة", tone: "blue" },
+  approved: { label: "معتمد / تم الصرف", tone: "green" },
+  rejected: { label: "مرفوض / متوقف", tone: "red" },
 } as const;
 export type StatusKey = keyof typeof STATUS;
 export const STATUS_ORDER: StatusKey[] = ["study", "awaiting_docs", "submitted", "approved", "rejected"];
 
 export const ELIGIBILITY = {
-  eligible: { label: "مؤهل", tone: "green", emoji: "✅" },
-  conditional: { label: "مؤهل بشروط", tone: "amber", emoji: "⚠️" },
-  not_eligible: { label: "غير مؤهل حالياً", tone: "red", emoji: "❌" },
-  pending: { label: "لم يحدد", tone: "slate", emoji: "⏳" },
+  eligible: { label: "مؤهل", tone: "green", icon: "check-circle" },
+  conditional: { label: "مؤهل بشروط", tone: "amber", icon: "alert" },
+  not_eligible: { label: "غير مؤهل حالياً", tone: "red", icon: "x-circle" },
+  pending: { label: "لم يحدد", tone: "slate", icon: "clock" },
 } as const;
 export type EligibilityKey = keyof typeof ELIGIBILITY;
 
@@ -108,6 +108,13 @@ export const AUDIT_ACTION: Record<string, string> = {
   portal_upload: "رفع مستند من العميل",
   deal_stage: "تحديث مرحلة الصفقة",
   login: "تسجيل دخول",
+  login_code_sent: "إرسال رمز دخول",
+  passkey_add: "إضافة مفتاح مرور",
+  passkey_delete: "حذف مفتاح مرور",
+  totp_enable: "تفعيل تطبيق المصادقة",
+  totp_disable: "إيقاف تطبيق المصادقة",
+  phone_update: "تحديث جوال الدخول",
+  sudo: "تأكيد الهوية",
   login_failed: "محاولة دخول فاشلة",
   logout: "تسجيل خروج",
   client_create: "إنشاء ملف عميل",
@@ -177,8 +184,8 @@ export const REJECT_REASONS: Record<string, string> = {
 };
 
 export const RULE_KIND = {
-  condition: { label: "اشتراط", emoji: "📌", tone: "blue" },
-  exception: { label: "استثناء", emoji: "🔓", tone: "green" },
-  tip: { label: "طريقة / حيلة نظامية", emoji: "💡", tone: "brand" },
-  warning: { label: "تحذير", emoji: "⚠️", tone: "amber" },
+  condition: { label: "اشتراط", icon: "pin", tone: "blue" },
+  exception: { label: "استثناء", icon: "unlock", tone: "green" },
+  tip: { label: "طريقة / حيلة نظامية", icon: "bulb", tone: "brand" },
+  warning: { label: "تحذير", icon: "alert", tone: "amber" },
 } as const;

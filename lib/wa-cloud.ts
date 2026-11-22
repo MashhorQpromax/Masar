@@ -5,13 +5,15 @@ import { normalizePhone } from "./whatsapp";
 
 // واتساب للأعمال — Meta Cloud API. يعمل فقط عند ضبط متغيرات البيئة في Vercel:
 // WA_TOKEN (رمز دائم لمستخدم نظام)، WA_PHONE_ID (معرّف رقم الهاتف)، WA_APP_SECRET (سر التطبيق للتحقق من التوقيع)،
-// WA_VERIFY_TOKEN (كلمة تختارها لتأكيد الـ webhook)، واختيارياً WA_TEMPLATE (اسم قالب المتابعة) و WA_TEMPLATE_LANG (ar).
+// WA_VERIFY_TOKEN (كلمة تختارها لتأكيد الـ webhook)، واختيارياً WA_TEMPLATE (اسم قالب المتابعة) و WA_TEMPLATE_LANG (ar)
+// و WA_OTP_TEMPLATE (اسم قالب رمز الدخول من فئة Authentication، الافتراضي masar_login_code).
 
 const V = process.env.WA_API_VERSION || "v21.0";
 export const WA = {
   configured: !!(process.env.WA_TOKEN && process.env.WA_PHONE_ID),
   template: process.env.WA_TEMPLATE || "masar_file_update",
   templateLang: process.env.WA_TEMPLATE_LANG || "ar",
+  otpTemplate: process.env.WA_OTP_TEMPLATE || "masar_login_code",
 };
 
 type SendResult = { ok: true; id: string } | { ok: false; error: string };
@@ -39,6 +41,13 @@ async function send(payload: Record<string, unknown>): Promise<SendResult> {
 export const sendText = (to: string, body: string) => send({ to, type: "text", text: { preview_url: true, body: body.slice(0, 4096) } });
 export const sendTemplate = (to: string, params: string[]) =>
   send({ to, type: "template", template: { name: WA.template, language: { code: WA.templateLang }, components: [{ type: "body", parameters: params.map((text) => ({ type: "text", text: text.replace(/\s*\n+\s*/g, " ").slice(0, 900) })) }] } });
+
+/** رمز الدخول: قالب من فئة Authentication معتمد من Meta (نص الرمز + زر نسخ الرمز) */
+export const sendLoginCodeMessage = (to: string, code: string) =>
+  send({ to, type: "template", template: { name: WA.otpTemplate, language: { code: WA.templateLang }, components: [
+    { type: "body", parameters: [{ type: "text", text: code }] },
+    { type: "button", sub_type: "url", index: "0", parameters: [{ type: "text", text: code }] },
+  ] } });
 
 /** هل نافذة الـ 24 ساعة مفتوحة (آخر رسالة واردة من العميل خلال 24 ساعة)؟ */
 export async function windowOpen(clientId: number) {

@@ -6,6 +6,7 @@ import { fmt, SAMA } from "@/lib/engine";
 import { FINANCE_TYPE, SECTOR, SIMAH, BANKS, ELIGIBILITY, OBLIGATION_KIND, DOC_STATUS } from "@/lib/labels";
 import { Logo } from "@/components/logo";
 import PrintButton from "@/components/print-button";
+import { Icon } from "@/components/icon";
 
 export const dynamic = "force-dynamic";
 
@@ -24,20 +25,20 @@ export default async function Report({ params }: { params: Promise<{ id: string 
 
   return (
     <div className="max-w-[900px] mx-auto">
-      <div className="no-print flex justify-between mb-4"><a href={`/clients/${id}?tab=study`} className="btn-ghost">→ رجوع للملف</a><PrintButton /></div>
+      <div className="no-print flex justify-between mb-4"><a href={`/clients/${id}?tab=study`} className="btn-ghost"><Icon name="arrow-right" className="size-4" />الملف</a><PrintButton /></div>
       <article className="card p-10 print:p-0 print:border-0 text-[13px] leading-7">
-        <header className="flex items-start justify-between border-b-2 border-brand-700 pb-5 mb-6">
+        <header className="flex items-start justify-between border-b-2 border-gold pb-5 mb-6">
           <Logo />
-          <div className="text-left text-xs text-slate-500 leading-5"><div className="font-bold text-ink text-sm">تقرير دراسة تمويل</div><div className="num">{c.file_no}</div><div>{new Date().toLocaleDateString("ar-SA-u-ca-gregory-nu-latn", { dateStyle: "long" })}</div><div>سري — للاستخدام الداخلي</div></div>
+          <div className="text-left text-xs text-slate-500 leading-5"><div className="font-bold text-ink text-sm">تقرير دراسة تمويل</div><div className="num">{c.file_no}</div><div>{new Date().toLocaleDateString("ar-SA-u-ca-gregory-nu-latn", { dateStyle: "long" })}</div><div>سري، للاستخدام الداخلي</div></div>
         </header>
 
         <section className="grid grid-cols-[1fr_auto] gap-6 items-start mb-6">
           <div>
             <h1 className="text-2xl font-bold">{c.full_name}</h1>
-            <div className="text-slate-600">{FINANCE_TYPE[c.finance_type]} بمبلغ <b className="num">{fmt(c.requested_amount)}</b> ريال{c.requested_tenor ? <> لمدة <b className="num">{c.requested_tenor}</b> شهراً</> : null}{c.purpose ? ` — ${c.purpose}` : ""}</div>
+            <div className="text-slate-600">{FINANCE_TYPE[c.finance_type]} بمبلغ <b className="num">{fmt(c.requested_amount)}</b> ريال{c.requested_tenor ? <> لمدة <b className="num">{c.requested_tenor}</b> شهراً</> : null}{c.purpose ? `، ${c.purpose}` : ""}</div>
           </div>
           <div className={`rounded-2xl px-5 py-3 text-center ${verdict === "eligible" ? "bg-emerald-50 text-emerald-800" : verdict === "conditional" ? "bg-amber-50 text-amber-800" : verdict === "pending" ? "bg-slate-100" : "bg-rose-50 text-rose-800"}`}>
-            <div className="text-[11px]">الحكم</div><div className="text-lg font-bold">{ELIGIBILITY[verdict].emoji} {ELIGIBILITY[verdict].label}</div>
+            <div className="text-[11px]">الحكم</div><div className="text-lg font-bold flex items-center gap-1.5"><Icon name={ELIGIBILITY[verdict].icon} className="size-5" />{ELIGIBILITY[verdict].label}</div>
           </div>
         </section>
 
@@ -55,7 +56,7 @@ export default async function Report({ params }: { params: Promise<{ id: string 
         <H>2. القدرة التمويلية ونسبة الاستقطاع</H>
         <div className="grid grid-cols-4 gap-3 mb-3">
           {[["الدخل المعتمد", fmt(s.capacity.income)], ["الالتزامات الحالية", fmt(s.capacity.existingTotal)], ["نسبة الالتزامات", `${s.capacity.currentDbr}%`], ["القسط المتاح", fmt(s.capacity.available)]].map(([a, b]) => (
-            <div key={a} className="rounded-xl bg-slate-50 p-3"><div className="text-[11px] text-slate-500">{a}</div><div className="text-lg font-bold num text-start">{b}</div></div>
+            <div key={a} className="rounded-xl bg-slate-50 p-3"><div className="text-[11px] text-slate-500">{a}</div><div className="figure text-lg font-semibold">{b}</div></div>
           ))}
         </div>
         <p className="text-slate-600 mb-2">القاعدة الحاكمة: {s.capacity.bindingRule}. {s.capacity.warnings.join(" ")}</p>
@@ -64,7 +65,7 @@ export default async function Report({ params }: { params: Promise<{ id: string 
         <H>3. الخيارات التمويلية المتاحة</H>
         {top.length === 0 ? <p className="mb-6">لا توجد جهة مطابقة حالياً.</p> : (
           <table className="w-full mb-6 text-[12px]">
-            <thead><tr className="bg-slate-50">{["#", "الجهة / المنتج", "المبلغ", "المدة", "القسط", "النسبة", "ملاحظات"].map((h) => <th key={h} className="text-start p-2 font-semibold">{h}</th>)}</tr></thead>
+            <thead><tr className="bg-slate-50">{["#", "الجهة والمنتج", "المبلغ", "المدة", "القسط", "النسبة", "ملاحظات"].map((h) => <th key={h} className="text-start p-2 font-semibold">{h}</th>)}</tr></thead>
             <tbody>{top.map((m, i) => (
               <tr key={m.product.id} className="border-b border-slate-100 align-top">
                 <td className="p-2">{i + 1}</td><td className="p-2"><b>{m.product.lenderName}</b><br /><span className="text-slate-500">{m.product.name}</span></td>
@@ -85,14 +86,14 @@ export default async function Report({ params }: { params: Promise<{ id: string 
 
         {s.alerts.filter((x) => x.id !== "inquiries").length > 0 && <>
           <H>اشتراطات قد تطلبها الجهات</H>
-          <ul className="mb-6 space-y-1.5">{s.alerts.filter((x) => x.id !== "inquiries").map((x) => <li key={x.id}><b>{x.level === "block" ? "⛔" : x.level === "warn" ? "⚠️" : "•"} {x.title}:</b> {x.detail}{x.exit ? <span className="text-emerald-800"> — المخرج: {x.exit}</span> : null}</li>)}</ul>
+          <ul className="mb-6 space-y-1.5">{s.alerts.filter((x) => x.id !== "inquiries").map((x) => <li key={x.id}><b className={x.level === "block" ? "text-rose-700" : x.level === "warn" ? "text-amber-700" : ""}>{x.title}:</b> {x.detail}{x.exit ? <span className="text-emerald-800"> المخرج: {x.exit}</span> : null}</li>)}</ul>
         </>}
         {s.scenarios.length > 0 && <>
           <H>المخارج المحسوبة</H>
           <table className="w-full mb-6 text-sm"><tbody>{s.scenarios.map((x) => <tr key={x.key} className="border-b border-slate-100"><td className="py-1.5">{x.title}</td><td className="py-1.5 num text-left">{x.amount.toLocaleString("en-US")}</td><td className="py-1.5 num text-left text-emerald-700">{x.gain > 0 ? `+${x.gain.toLocaleString("en-US")}` : ""}</td></tr>)}</tbody></table>
         </>}
 
-        {approved?.analyst_opinion && <><H>7. رأي المحلل الائتماني</H><p className="mb-6 rounded-xl bg-slate-50 p-3">{approved.analyst_opinion}<br /><span className="text-xs text-slate-500">— {approved.name}</span></p></>}
+        {approved?.analyst_opinion && <><H>7. رأي المحلل الائتماني</H><p className="mb-6 rounded-xl bg-slate-50 p-3">{approved.analyst_opinion}<br /><span className="text-xs text-slate-500">{approved.name}</span></p></>}
 
         <H>8. حالة المستندات</H>
         <div className="grid grid-cols-2 gap-x-6 mb-8">{docs.map((d, i) => <div key={i} className="flex justify-between border-b border-slate-100 py-1"><span>{d.label}{!d.required && " (اختياري)"}</span><span className={d.status === "verified" ? "text-emerald-700" : d.status === "missing" ? "text-rose-600" : "text-slate-600"}>{DOC_STATUS[d.status].label}</span></div>)}</div>
@@ -108,4 +109,4 @@ export default async function Report({ params }: { params: Promise<{ id: string 
     </div>
   );
 }
-const H = ({ children }: { children: React.ReactNode }) => <h2 className="font-bold text-brand-800 text-[15px] mb-2">{children}</h2>;
+const H = ({ children }: { children: React.ReactNode }) => <h2 className="font-bold text-ink text-[15px] mb-2 flex items-center gap-2"><span className="h-3.5 w-[3px] rounded-full bg-gold" />{children}</h2>;

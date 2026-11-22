@@ -1,11 +1,18 @@
 "use client";
 import { useMemo, useState, useTransition } from "react";
-import { dealStudy, compareStructures, dealAlternatives, splitItems, STRUCTURES, STRUCTURE_KEYS, ITEM_KIND, FINANCE_BASE, FEE_MIN, FEE_MAX, type DealInput, type DealItem, type Borrower, type ItemKind, type FinanceBase } from "@/lib/deal";
+import { dealStudy, compareStructures, dealAlternatives, splitItems, STRUCTURES, STRUCTURE_KEYS, ITEM_KIND, FINANCE_BASE, FEE_MIN, FEE_MAX, type DealInput, type DealItem, type Borrower, type ItemKind, type FinanceBase, type DealStudy } from "@/lib/deal";
 import type { FormState } from "@/app/actions";
+import { Icon } from "@/components/icon";
+import { Fold, Callout } from "@/components/ui";
 
 const f0 = (n: number | null | undefined) => (n == null || !Number.isFinite(n) ? "—" : Math.round(n).toLocaleString("en-US"));
-const BG: Record<string, string> = { go: "from-emerald-700 to-emerald-900", tight: "from-amber-600 to-amber-800", short: "from-rose-700 to-rose-900", needs_info: "from-slate-600 to-slate-800" };
-const LVL: Record<string, string> = { block: "bg-rose-50 ring-rose-200 text-rose-900", warn: "bg-amber-50 ring-amber-200 text-amber-900", info: "bg-sky-50 ring-sky-200 text-sky-900" };
+const VERDICT: Record<string, { label: string; icon: string; chip: string; text: string }> = {
+  go: { label: "تُغلق", icon: "check-circle", chip: "bg-emerald-50 text-emerald-800", text: "text-emerald-700" },
+  tight: { label: "هامش ضيق", icon: "alert", chip: "bg-amber-50 text-amber-800", text: "text-amber-700" },
+  short: { label: "عجز", icon: "x-circle", chip: "bg-rose-50 text-rose-800", text: "text-rose-700" },
+  needs_info: { label: "بيانات ناقصة", icon: "info", chip: "bg-slate-100 text-slate-600", text: "text-slate-500" },
+};
+const PAYOFF = new Set<ItemKind>(["mortgage_payoff", "personal_payoff"]);
 
 export default function DealEditor({
   clientId, initial, borrower, credit, canEdit, save, banks,
@@ -19,68 +26,204 @@ export default function DealEditor({
   banks: Record<string, string>;
 }) {
   const [x, setX] = useState<DealInput>(initial);
+  const [saved, setSaved] = useState<DealInput>(initial);
   const [msg, setMsg] = useState<FormState>(undefined);
+  const [more, setMore] = useState(false);
   const [pending, start] = useTransition();
   const s = useMemo(() => dealStudy(x, borrower, credit), [x, borrower, credit]);
   const cmp = useMemo(() => compareStructures(x, borrower, credit), [x, borrower, credit]);
   const alts = useMemo(() => dealAlternatives(x, borrower, credit), [x, borrower, credit]);
   const st = STRUCTURES[s.structure];
+  const v = VERDICT[s.verdict];
   const keptIds = useMemo(() => new Set(splitItems(x).kept.map((i) => i.id)), [x]);
+  const dirty = x !== saved;
   const upd = (p: Partial<DealInput>) => { setX((o) => ({ ...o, ...p })); setMsg(undefined); };
   const updItem = (id: string, p: Partial<DealItem>) => upd({ items: x.items.map((i) => (i.id === id ? { ...i, ...p } : i)) });
+  const blocks = s.risks.filter((r) => r.level === "block");
+  const others = s.risks.filter((r) => r.level !== "block");
 
   return (
-    <div className="space-y-5">
-      <div className="card p-4">
-        <div className="text-xs font-semibold text-slate-500 mb-2">هيكل الصفقة (حسب رغبة العميل)</div>
-        <div className="flex flex-wrap gap-2">
-          {STRUCTURE_KEYS.map((k) => (
-            <button key={k} type="button" disabled={!canEdit && k !== s.structure} onClick={() => upd({ structure: k })}
-              className={`rounded-xl px-4 py-2 text-sm font-semibold ring-1 ${k === s.structure ? "bg-brand-700 text-white ring-brand-700" : "bg-white text-slate-600 ring-slate-200 hover:ring-slate-300"}`}>
-              {STRUCTURES[k].label}
-            </button>
-          ))}
-        </div>
-        <p className="text-xs text-slate-500 mt-2">{st.hint}</p>
-      </div>
-
-      <div className={`rounded-3xl bg-gradient-to-l ${BG[s.verdict]} text-white p-6`}>
-        <div className="flex flex-wrap items-start justify-between gap-6">
-          <div className="min-w-60">
-            <div className="text-xs text-white/70">{st.label}</div>
-            <div className="text-2xl font-bold mt-1">💼 {s.headline}</div>
-            <div className="mt-2 text-sm text-white/85">التمويل الجديد: {st.mortgage && <>عقاري <b className="num">{f0(s.financing.mortgage)}</b></>}{st.mortgage && st.personal && " + "}{st.personal && <>شخصي <b className="num">{f0(s.financing.personal)}</b></>} {s.financing.source === "bank" ? "(أرقام البنك)" : "(تقدير)"}{s.keptMonthly > 0 && <span className="text-white/70"> · أقساط تبقى قائمة <span className="num">{f0(s.keptMonthly)}</span>/شهر</span>}</div>
-          </div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 flex-1 max-w-3xl">
-            <Hero l="رأس المال المطلوب منا" v={f0(s.capital)} u="ريال — أقصى انكشاف" />
-            <Hero l="أتعابنا" v={f0(s.fee)} u={`سداد ${f0(s.feeSettle)} + تمويل ${f0(s.feeFinance)}`} />
-            <Hero l="العائد" v={s.roi != null ? `${s.roi}%` : "—"} u={s.annualized != null ? `≈ ${s.annualized}% سنوياً خلال ${s.days} يوماً` : ""} />
-            <Hero l="يبقى للعميل نقداً" v={f0(s.clientNet)} u={s.clientNet < 0 ? "عجز — الصفقة لا تُغلق" : "بعد سداد كل شيء"} />
-            <Hero l="تغطية الضمان" v={s.cover != null ? `${s.cover}x` : "—"} u={st.mortgage ? "قيمة العقار ÷ رأس المال" : "لا يوجد ضمان عقاري"} />
-            <Hero l="خصم التسوية المطلوب" v={s.breakEvenDiscount != null ? `${s.breakEvenDiscount}%` : "—"} u={s.breakEvenDiscount != null ? "على التنفيذ والتعثرات لسد العجز" : "لا يلزم"} />
+    <div className="space-y-4">
+      {/* الحكم */}
+      <section className="card p-5 sm:p-7">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <span className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 h-7 text-xs font-bold ${v.chip}`}><Icon name={v.icon} className="size-4" strokeWidth={2} />{v.label}</span>
+          <div className="seg">
+            {STRUCTURE_KEYS.map((k) => (
+              <button key={k} type="button" disabled={!canEdit && k !== s.structure} onClick={() => upd({ structure: k })} title={STRUCTURES[k].hint}
+                className={`seg-item ${k === s.structure ? "seg-on" : ""} disabled:opacity-40 disabled:cursor-default`}>{STRUCTURES[k].short}</button>
+            ))}
           </div>
         </div>
-      </div>
+        <h2 className="mt-4 text-[22px] sm:text-2xl font-bold leading-snug max-w-3xl">{s.headline}</h2>
+        {blocks.map((r, i) => <p key={i} className="mt-2 text-[13px] text-rose-800 leading-6 max-w-3xl">{r.text}</p>)}
 
-      <details className="card p-5 group" open>
-        <summary className="font-bold cursor-pointer list-none flex items-center justify-between">
-          <span>🧮 تفصيل الحساب سطراً بسطر</span><span className="text-xs text-slate-400 group-open:hidden">إظهار</span>
-        </summary>
-        <p className="text-xs text-slate-500 mt-1 mb-3">كل رقم فوق محسوب من هذه الأسطر. أي رقم تشك فيه عدّله في الجدول أو الحقول تحت، والحساب يتحدث فوراً.</p>
-        <div className="grid lg:grid-cols-2 gap-4">
+        <div className="mt-6 grid grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-5">
+          <Fig label="يبقى للعميل" value={f0(s.clientNet)} tone={s.clientNet < 0 ? "text-rose-700" : "text-emerald-700"} hint={s.clientNet < 0 ? "عجز" : "نقداً بعد كل شيء"} />
+          <Fig label="رأس المال منا" value={f0(s.capital)} hint={s.cover != null ? `ضمان ${s.cover}x` : "بلا ضمان عقاري"} />
+          <Fig label="أتعابنا" value={f0(s.fee)} tone="text-brand-700" hint={s.roi != null ? `عائد ${s.roi}% في ${s.days} يوماً` : undefined} />
+          <Fig label="التمويل الجديد" value={f0(s.summary.totalFinancing)} hint={s.financing.source === "bank" ? "حسب عرض الجهة" : "تقدير"} />
+        </div>
+
+        <div className="mt-7"><BridgeViz s={s} /></div>
+      </section>
+
+      {/* البنود */}
+      <section className="card overflow-hidden">
+        <div className="flex flex-wrap items-center justify-between gap-3 px-5 pt-5 pb-3">
+          <h3 className="font-bold text-[15px]">ما يُسدَّد عن العميل</h3>
+          <button type="button" onClick={() => setMore((m) => !m)} className="btn-quiet btn-sm"><Icon name="sliders" className="size-3.5" />{more ? "أعمدة أقل" : "كل الأعمدة"}</button>
+        </div>
+        <div className="overflow-x-auto">
+          <table className={`w-full text-sm ${more ? "min-w-[980px]" : "min-w-[620px]"}`}>
+            <thead><tr>
+              <th className="th ps-5">البند</th>
+              {more && <th className="th">النوع</th>}
+              {more && <th className="th">المسجّل</th>}
+              <th className="th w-24">الخصم %</th>
+              <th className="th w-36">سنسدد</th>
+              <th className="th w-44">يسدده</th>
+              {more && <th className="th w-28">القسط الشهري</th>}
+              {more && <th className="th text-center">بخطاب</th>}
+              <th className="th w-10" />
+            </tr></thead>
+            <tbody>
+              {x.items.map((i) => {
+                const out = keptIds.has(i.id);
+                return (
+                  <tr key={i.id} className={`border-b border-slate-100 ${out ? "bg-slate-50/60" : ""}`}>
+                    <td className="py-2 ps-5 pe-2 min-w-48">
+                      <input className={`input ${out ? "text-slate-500" : ""}`} disabled={!canEdit} defaultValue={i.label} onBlur={(e) => updItem(i.id, { label: e.target.value })} />
+                      {out && <div className="mt-1 text-[11px] font-medium text-amber-700 flex items-center gap-1">{i.by === "out" && i.kind === "execution" && <Icon name="ban" className="size-3" />}{i.by === "out" ? (i.kind === "execution" ? "خارج الصفقة، الإيقاف يبقى" : "خارج الصفقة") : "يبقى قائماً بقسطه"}</div>}
+                    </td>
+                    {more && <td className="pe-2"><select className="input" disabled={!canEdit} value={i.kind} onChange={(e) => updItem(i.id, { kind: e.target.value as ItemKind })}>{Object.entries(ITEM_KIND).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></td>}
+                    {more && <td className="pe-2 num text-slate-500 whitespace-nowrap">{f0(i.original)}</td>}
+                    <td className="pe-2">
+                      {PAYOFF.has(i.kind) || !i.original ? <span className="text-slate-300 px-3">—</span> : (
+                        <input key={`d${i.id}${i.pay}`} className="input num" inputMode="decimal" disabled={!canEdit} placeholder="0" defaultValue={i.pay < i.original ? Math.round((1 - i.pay / i.original) * 1000) / 10 : ""}
+                          onBlur={(e) => { const p = Math.min(100, Math.max(0, numIn(e.target.value) ?? 0)); updItem(i.id, { pay: Math.round(i.original * (1 - p / 100)) }); }} onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()} />
+                      )}
+                    </td>
+                    <td className="pe-2">
+                      <input key={`p${i.id}${i.pay}`} className="input num font-semibold" disabled={!canEdit} defaultValue={i.pay} onBlur={(e) => updItem(i.id, { pay: numIn(e.target.value) ?? 0 })} onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()} />
+                    </td>
+                    <td className="pe-2"><select className="input" disabled={!canEdit} value={i.by} onChange={(e) => updItem(i.id, { by: e.target.value as DealItem["by"] })}><option value="company">الشركة</option><option value="bank">الجهة الجديدة</option><option value="out">خارج الصفقة</option></select></td>
+                    {more && <td className="pe-2"><input key={`m${i.id}${i.monthly ?? ""}`} className="input num" disabled={!canEdit} defaultValue={i.monthly ?? ""} placeholder="—" onBlur={(e) => updItem(i.id, { monthly: numIn(e.target.value) })} /></td>}
+                    {more && <td className="text-center"><input type="checkbox" className="size-4 accent-brand-700" disabled={!canEdit} checked={!!i.confirmed} onChange={(e) => updItem(i.id, { confirmed: e.target.checked })} /></td>}
+                    <td className="pe-3">{canEdit && <button type="button" aria-label="حذف البند" className="size-8 grid place-items-center rounded-lg text-slate-400 hover:bg-rose-50 hover:text-rose-700 cursor-pointer" onClick={() => upd({ items: x.items.filter((y) => y.id !== i.id) })}><Icon name="trash" className="size-4" /></button>}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-2 px-5 py-3.5 text-[13px] text-slate-500">
+          {canEdit && <button type="button" className="btn-ghost btn-sm" onClick={() => upd({ items: [...x.items, { id: `n${Date.now()}`, kind: "other", label: "بند جديد", original: 0, pay: 0, by: "company" }] })}><Icon name="plus" className="size-3.5" />بند</button>}
+          <span className="ms-auto">من الشركة <b className="num text-ink">{f0(s.paidByCompany)}</b></span>
+          {s.paidByBank > 0 && <span>من الجهة الجديدة <b className="num text-ink">{f0(s.paidByBank)}</b></span>}
+          {s.summary.discountTotal > 0 && <span>وفّرنا بالتفاوض <b className="num text-emerald-700">{f0(s.summary.discountTotal)}</b></span>}
+        </div>
+      </section>
+
+      <Fold title="التمويل الجديد" icon="bank" meta={<span className="num">{[st.mortgage && `عقاري ${f0(s.financing.mortgage)}`, st.personal && `شخصي ${f0(s.financing.personal)}`].filter(Boolean).join(" · ")}</span>}>
+        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          {st.mortgage && <N disabled={!canEdit} label="عرض العقاري الفعلي" value={x.bankMortgage} onChange={(n) => upd({ bankMortgage: n })} hint="فارغ = تقدير" />}
+          {st.personal && <N disabled={!canEdit} label="عرض الشخصي الفعلي" value={x.bankPersonal} onChange={(n) => upd({ bankPersonal: n })} hint="فارغ = تقدير" />}
+          {st.personal && <T disabled={!canEdit} label="جهة عرض الشخصي" value={x.personalLender ?? ""} onChange={(t) => upd({ personalLender: t || null })} />}
+          {st.personal && (
+            <L label="نوعها"><select className="input" disabled={!canEdit} value={x.personalLenderKind ?? ""} onChange={(e) => upd({ personalLenderKind: (e.target.value || null) as DealInput["personalLenderKind"] })}><option value="">—</option><option value="bank">بنك</option><option value="finance_co">شركة تمويل</option></select></L>
+          )}
+          <L label="البنك المستهدف"><select className="input" disabled={!canEdit} value={x.targetBank ?? ""} onChange={(e) => upd({ targetBank: e.target.value || null })}><option value="">—</option>{Object.entries(banks).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></L>
+        </div>
+        <details className="mt-4 group">
+          <summary className="cursor-pointer list-none inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-ink"><Icon name="chevron-down" className="size-3.5 transition-transform group-open:rotate-180" />افتراضات التقدير</summary>
+          <div className="mt-3 grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <N disabled={!canEdit} label="هامش العقاري % (متناقص)" value={x.mortgageApr} onChange={(n) => upd({ mortgageApr: n ?? 5.5 })} />
+            <N disabled={!canEdit} label="هامش الشخصي % (ثابت)" value={x.personalFlat} onChange={(n) => upd({ personalFlat: n ?? 3 })} />
+            <N disabled={!canEdit} label="التمويل إلى القيمة %" value={x.ltvPct} onChange={(n) => upd({ ltvPct: n ?? 90 })} />
+            <N disabled={!canEdit} label="أقصى عمر بنهاية العقاري" value={x.mortgageMaxAge} onChange={(n) => upd({ mortgageMaxAge: n ?? 70 })} />
+          </div>
+          <dl className="mt-3 grid sm:grid-cols-2 gap-x-8 text-[13px]">
+            <Row k="العمر والتقاعد" v={`${s.financing.age ?? "—"} سنة، التقاعد بعد ${s.financing.monthsToRetire != null ? Math.round(s.financing.monthsToRetire / 12) : "—"} سنة`} />
+            <Row k="المعاش التقديري" v={f0(s.financing.pension)} num />
+            {st.personal && <Row k="قسط الشخصي" v={`${f0(s.financing.personalInstallment)} × ${s.financing.personalMonths} شهراً`} num />}
+            {st.mortgage && <Row k="قسط العقاري" v={`${f0(s.financing.mortgagePre)} ثم ${f0(s.financing.mortgagePost)} بعد التقاعد`} num />}
+            {st.mortgage && <Row k="حد الدخل / حد القيمة" v={`${f0(s.financing.mortgageByIncome)} / ${f0(s.financing.mortgageByLtv)}`} num />}
+            <Row k="الاستقطاع بعد التمويل" v={`${s.financing.dbrAfter ?? "—"}%`} num />
+          </dl>
+        </details>
+      </Fold>
+
+      <Fold title="الأتعاب" icon="coins" meta={<span className="num">{f0(s.fee)}</span>}>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <N disabled={!canEdit} label="على سداد المتعثرات %" value={x.fee.settlePct} onChange={(n) => upd({ fee: { ...x.fee, settlePct: n ?? 0 } })} hint={`= ${f0(s.feeSettle)}`} />
+          <N disabled={!canEdit} label="على استخراج التمويل %" value={x.fee.financePct} onChange={(n) => upd({ fee: { ...x.fee, financePct: n ?? 0 } })} hint={`= ${f0(s.feeFinance)}`} />
+          <L label="تُحسب نسبة التمويل على"><select className="input" disabled={!canEdit} value={x.fee.financeBase} onChange={(e) => upd({ fee: { ...x.fee, financeBase: e.target.value as FinanceBase } })}>{Object.entries(FINANCE_BASE).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></L>
+          <N disabled={!canEdit} label="مبلغ مقطوع إضافي" value={x.fee.fixed} onChange={(n) => upd({ fee: { ...x.fee, fixed: n ?? 0 } })} />
+        </div>
+        <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 text-[13px] text-slate-600">
+          <label className="inline-flex items-center gap-2"><input type="checkbox" className="size-4 accent-brand-700" disabled={!canEdit} checked={x.fee.settleIncludesPayoff} onChange={(e) => upd({ fee: { ...x.fee, settleIncludesPayoff: e.target.checked } })} />نسبة السداد تشمل مخالصة العقار</label>
+          <span className="ms-auto text-slate-500">المقترح لهذا العميل <b className="num text-ink">{s.suggestedPct}%</b>{s.suggestedWhy.length ? ` (${s.suggestedWhy.join("، ")})` : ""} · الحدود {FEE_MIN} إلى {FEE_MAX}%</span>
+          {canEdit && <button type="button" className="btn-ghost btn-sm" onClick={() => upd({ fee: { ...x.fee, settlePct: s.suggestedPct, financePct: s.suggestedPct } })}>تطبيق المقترح</button>}
+        </div>
+      </Fold>
+
+      {st.mortgage && (
+        <Fold title="العقار والتكاليف" icon="building" meta={<span className="num">{f0(x.propertyValue)}</span>}>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <N disabled={!canEdit} label="قيمة العقار (التقييم)" value={x.propertyValue} onChange={(n) => upd({ propertyValue: n })} />
+            <N disabled={!canEdit} label="ضريبة الإفراغ لطرفنا %" value={x.transferTaxPct} onChange={(n) => upd({ transferTaxPct: n ?? 0 })} />
+            <N disabled={!canEdit} label="ضريبة البيع للبنك %" value={x.saleTaxPct} onChange={(n) => upd({ saleTaxPct: n ?? 0 })} hint="0 للمسكن الأول" />
+            <N disabled={!canEdit} label="تكاليف ثابتة" value={x.fixedCosts} onChange={(n) => upd({ fixedCosts: n ?? 0 })} hint="تقييم، سعي، رسوم" />
+          </div>
+        </Fold>
+      )}
+
+      {(alts.length > 0 || cmp.length > 1) && (
+        <Fold title="بدائل وحلول" icon="bulb" open={s.verdict === "short"} meta={alts.filter((a) => a.tone === "good").length ? <span className="text-emerald-700 font-semibold">{alts.filter((a) => a.tone === "good").length} حل ممكن</span> : undefined}>
+          {alts.length > 0 && (
+            <ul className="space-y-2 mb-5">
+              {alts.map((a, i) => (
+                <li key={i} className="flex items-start gap-3 rounded-xl border border-slate-200/70 p-3.5">
+                  <Icon name={a.tone === "good" ? "check-circle" : a.tone === "maybe" ? "alert" : "x-circle"} className={`size-[18px] mt-0.5 ${a.tone === "good" ? "text-emerald-600" : a.tone === "maybe" ? "text-amber-600" : "text-slate-400"}`} />
+                  <div className="flex-1 min-w-0"><div className={`text-sm font-semibold ${a.tone === "no" ? "text-slate-500" : ""}`}>{a.title}</div><div className="text-[13px] text-slate-500 mt-0.5 leading-6">{a.detail}</div></div>
+                  {a.patch && canEdit && <button type="button" className="btn-ghost btn-sm" onClick={() => upd(a.patch!)}>جرّب</button>}
+                </li>
+              ))}
+            </ul>
+          )}
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm min-w-[640px]">
+              <thead><tr><th className="th ps-0" />{cmp.map(({ structure }) => <th key={structure} className={`th ${structure === s.structure ? "!text-brand-800" : ""}`}>{STRUCTURES[structure].short}{structure === s.structure && <span className="ms-1.5 inline-block size-1.5 rounded-full bg-gold align-middle" />}</th>)}</tr></thead>
+              <tbody>
+                <CmpRow l="الحكم" cells={cmp.map(({ s: y }) => <span className={`font-semibold ${VERDICT[y.verdict].text}`}>{VERDICT[y.verdict].label}</span>)} />
+                <CmpRow l="يبقى للعميل" cells={cmp.map(({ s: y }) => <b className={`num ${y.clientNet < 0 ? "text-rose-700" : "text-emerald-700"}`}>{f0(y.clientNet)}</b>)} />
+                <CmpRow l="التمويل" cells={cmp.map(({ s: y }) => <span className="num">{f0(y.summary.totalFinancing)}</span>)} />
+                <CmpRow l="رأس المال" cells={cmp.map(({ s: y }) => <span className="num">{f0(y.capital)}</span>)} />
+                <CmpRow l="أتعابنا" cells={cmp.map(({ s: y }) => <span className="num">{f0(y.fee)}</span>)} />
+                <CmpRow l="الاستقطاع" cells={cmp.map(({ s: y }) => <span className="num">{y.financing.dbrAfter ?? "—"}%</span>)} />
+                {canEdit && <CmpRow l="" cells={cmp.map(({ structure }) => structure === s.structure ? null : <button type="button" className="btn-ghost btn-sm" onClick={() => upd({ structure })}>اختيار</button>)} />}
+              </tbody>
+            </table>
+          </div>
+        </Fold>
+      )}
+
+      <Fold title="تفصيل الحساب" icon="calc">
+        <div className="grid lg:grid-cols-2 gap-x-10 gap-y-6">
           {[...new Set(s.explain.map((e) => e.group))].map((g) => (
-            <div key={g} className="rounded-xl ring-1 ring-slate-200 p-3">
-              <div className="text-xs font-bold text-slate-500 mb-2">{g}</div>
-              <table className="w-full text-sm">
+            <div key={g}>
+              <div className="eyebrow mb-2">{g}</div>
+              <table className="w-full text-[13px]">
                 <tbody>
                   {s.explain.filter((e) => e.group === g).map((e, i) => (
                     <tr key={i} className={e.tone === "total" ? "border-t border-slate-200 font-bold" : ""}>
-                      <td className="py-1 pe-2 align-top">
+                      <td className="py-1.5 pe-2 align-top">
                         <div className={e.tone === "total" ? "" : "text-slate-700"}>{e.label}</div>
                         {e.note && <div className="text-[11px] text-slate-400">{e.note}</div>}
-                        {e.calc && <div className="text-[11px] text-slate-500 num text-start" dir="ltr" style={{ unicodeBidi: "plaintext" }}>{e.calc}</div>}
+                        {e.calc && <div className="text-[11px] text-slate-400 text-right" dir="ltr" style={{ unicodeBidi: "plaintext" }}>{e.calc}</div>}
                       </td>
-                      <td className={`py-1 text-end num whitespace-nowrap align-top ${e.tone === "minus" || (e.tone === "total" && e.value < 0) ? "text-rose-700" : e.tone === "total" ? "text-emerald-800" : ""}`}>{f0(e.value)}</td>
+                      <td className={`py-1.5 text-left num whitespace-nowrap align-top ${e.tone === "minus" || (e.tone === "total" && e.value < 0) ? "text-rose-700" : e.tone === "total" ? "text-emerald-800" : ""}`}>{f0(e.value)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -88,207 +231,97 @@ export default function DealEditor({
             </div>
           ))}
         </div>
-      </details>
+      </Fold>
 
-      {alts.length > 0 && (
-        <div className="card p-5">
-          <h3 className="font-bold mb-1">💡 حلول بديلة</h3>
-          <p className="text-xs text-slate-500 mb-3">تُحسب تلقائياً من أرقام هذا الملف. «تطبيق» يغيّر الأرقام هنا فقط حتى تحفظ.</p>
-          <div className="grid md:grid-cols-2 gap-3">
-            {alts.map((a, i) => (
-              <div key={i} className={`rounded-xl ring-1 p-3 text-sm leading-6 ${a.tone === "good" ? "bg-emerald-50 ring-emerald-200" : a.tone === "maybe" ? "bg-amber-50 ring-amber-200" : "bg-slate-50 ring-slate-200 text-slate-600"}`}>
-                <div className="font-semibold">{a.tone === "good" ? "✅ " : a.tone === "maybe" ? "🟡 " : "✖️ "}{a.title}</div>
-                <div className="text-xs mt-0.5">{a.detail}</div>
-                {a.patch && canEdit && <button type="button" className="btn-ghost btn-sm mt-2" onClick={() => upd(a.patch!)}>تطبيق</button>}
-              </div>
-            ))}
-          </div>
-        </div>
+      {others.length > 0 && (
+        <Fold title="تنبيهات" icon="shield" meta={<span className="num">{others.length}</span>}>
+          <ul className="space-y-2">{others.map((r, i) => <li key={i}><Callout tone={r.level === "warn" ? "amber" : "slate"}>{r.text}</Callout></li>)}</ul>
+        </Fold>
       )}
 
-      <div className="card p-5">
-        <h3 className="font-bold mb-3">مقارنة الهياكل</h3>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm min-w-[720px]">
-            <thead><tr className="text-xs text-slate-500"><th className="text-start py-2" />{cmp.map(({ structure }) => <th key={structure} className={`text-start ${structure === s.structure ? "text-brand-800" : ""}`}>{STRUCTURES[structure].short}{structure === s.structure ? " ●" : ""}</th>)}</tr></thead>
-            <tbody className="divide-y divide-slate-100">
-              <CmpRow l="الحكم" cells={cmp.map(({ s: y }) => <span className={y.verdict === "go" ? "text-emerald-700 font-bold" : y.verdict === "tight" ? "text-amber-700 font-bold" : y.verdict === "short" ? "text-rose-700 font-bold" : "text-slate-500"}>{VERDICT[y.verdict]}</span>)} />
-              <CmpRow l="يبقى للعميل" cells={cmp.map(({ s: y }) => <b className={`num ${y.clientNet < 0 ? "text-rose-700" : "text-emerald-700"}`}>{f0(y.clientNet)}</b>)} />
-              <CmpRow l="التمويل الجديد" cells={cmp.map(({ structure, s: y }) => <span className="num text-xs">{[STRUCTURES[structure].mortgage && `عقاري ${f0(y.financing.mortgage)}`, STRUCTURES[structure].personal && `شخصي ${f0(y.financing.personal)}`].filter(Boolean).join(" + ")}</span>)} />
-              <CmpRow l="رأس المال منا" cells={cmp.map(({ s: y }) => <span className="num">{f0(y.capital)}</span>)} />
-              <CmpRow l="أتعابنا" cells={cmp.map(({ s: y }) => <span className="num">{f0(y.fee)}</span>)} />
-              <CmpRow l="العائد / المدة" cells={cmp.map(({ s: y }) => <span className="num">{y.roi ?? "—"}% · {y.days} يوماً</span>)} />
-              <CmpRow l="الضمان" cells={cmp.map(({ s: y }) => <span className="num">{y.cover != null ? `${y.cover}x` : "بدون عقار"}</span>)} />
-              <CmpRow l="الاستقطاع بعده" cells={cmp.map(({ s: y }) => <span className="num">{y.financing.dbrAfter ?? "—"}%</span>)} />
-              {canEdit && <CmpRow l="" cells={cmp.map(({ structure }) => structure === s.structure ? <span className="text-xs text-brand-700">الهيكل الحالي</span> : <button type="button" className="btn-ghost btn-sm" onClick={() => upd({ structure })}>اختيار</button>)} />}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      <Fold title="ملاحظات" icon="edit" open={!!x.notes}>
+        <textarea className="input min-h-24" disabled={!canEdit} defaultValue={x.notes} onBlur={(e) => upd({ notes: e.target.value })} placeholder="نتيجة التفاوض، رد البنك، اتفاق العميل" />
+      </Fold>
 
-      <div className="card p-5">
-        <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
-          <h3 className="font-bold">ما سيُسدَّد عن العميل</h3>
-          <div className="text-sm text-slate-500">منّا: <b className="num text-slate-800">{f0(s.paidByCompany)}</b> · يعيد البنك تمويله: <b className="num text-slate-800">{f0(s.paidByBank)}</b>{s.summary.discountTotal > 0 && <> · وفّرنا بالتفاوض: <b className="num text-emerald-700">{f0(s.summary.discountTotal)}</b></>}</div>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm min-w-[960px]">
-            <thead><tr className="text-xs text-slate-500 text-start"><th className="text-start py-2">البند</th><th className="text-start">النوع</th><th className="text-start">المسجّل</th><th className="text-start">الخصم %</th><th className="text-start">سنسدد</th><th className="text-start">يسدده</th><th className="text-start">القسط الشهري</th><th>مؤكد بخطاب</th><th /></tr></thead>
-            <tbody className="divide-y divide-slate-100">
-              {x.items.map((i) => (
-                <tr key={i.id} className={keptIds.has(i.id) ? "opacity-60" : ""}>
-                  <td className="py-1.5 pe-2">
-                    <input className="input" disabled={!canEdit} defaultValue={i.label} onBlur={(e) => updItem(i.id, { label: e.target.value })} />
-                    {keptIds.has(i.id) && <span className="text-[11px] text-amber-700">{i.by === "out" ? (i.kind === "execution" ? "⛔ خارج الصفقة — الإيقاف يبقى ما لم يُسدد" : "خارج الصفقة — لا يُسدد فيها") : "يبقى قائماً بقسطه في هذا الهيكل"}</span>}
-                  </td>
-                  <td className="pe-2"><select className="input" disabled={!canEdit} value={i.kind} onChange={(e) => updItem(i.id, { kind: e.target.value as ItemKind })}>{Object.entries(ITEM_KIND).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></td>
-                  <td className="pe-2 num text-slate-500 whitespace-nowrap">{f0(i.original)}</td>
-                  <td className="pe-2 w-24">
-                    {PAYOFF.has(i.kind) || !i.original ? <span className="text-xs text-slate-300" title="المخالصة حسب خطاب المديونية">—</span> : (
-                      <input key={`d${i.id}${i.pay}`} className="input num" inputMode="decimal" disabled={!canEdit} placeholder="0" defaultValue={i.pay < i.original ? Math.round((1 - i.pay / i.original) * 1000) / 10 : ""}
-                        onBlur={(e) => { const p = Math.min(100, Math.max(0, numIn(e.target.value) ?? 0)); updItem(i.id, { pay: Math.round(i.original * (1 - p / 100)) }); }} onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()} />
-                    )}
-                  </td>
-                  <td className="pe-2 w-36">
-                    <input key={`p${i.id}${i.pay}`} className="input num" disabled={!canEdit} defaultValue={i.pay} onBlur={(e) => updItem(i.id, { pay: numIn(e.target.value) ?? 0 })} onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()} />
-                    {!PAYOFF.has(i.kind) && i.original > i.pay + 1 && <span className="text-[11px] text-emerald-700">خصم <span className="num">{f0(i.original - i.pay)}</span></span>}
-                  </td>
-                  <td className="pe-2"><select className="input" disabled={!canEdit} value={i.by} onChange={(e) => updItem(i.id, { by: e.target.value as DealItem["by"] })}><option value="company">الشركة</option><option value="bank">البنك الجديد (من الشخصي)</option><option value="out">خارج الصفقة</option></select></td>
-                  <td className="pe-2 w-28"><input key={`m${i.id}${i.monthly ?? ""}`} className="input num" disabled={!canEdit} defaultValue={i.monthly ?? ""} placeholder="—" onBlur={(e) => updItem(i.id, { monthly: numIn(e.target.value) })} /></td>
-                  <td className="text-center"><input type="checkbox" disabled={!canEdit} checked={!!i.confirmed} onChange={(e) => updItem(i.id, { confirmed: e.target.checked })} /></td>
-                  <td>{canEdit && <button type="button" className="text-rose-600 text-xs" onClick={() => upd({ items: x.items.filter((y) => y.id !== i.id) })}>حذف</button>}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        {canEdit && <button type="button" className="btn-ghost mt-3" onClick={() => upd({ items: [...x.items, { id: `n${Date.now()}`, kind: "other", label: "بند جديد", original: 0, pay: 0, by: "company" }] })}>+ بند</button>}
-        <p className="text-xs text-slate-500 mt-2">اكتب نسبة الخصم المتفق عليها مع كل دائن (أو المبلغ مباشرة في «سنسدد»)، والحساب يتحدث فوراً. المخالصة التي يعيد البنك الجديد تمويلها تُخصم من التمويل الشخصي لا من رأس مالنا. «خارج الصفقة» لبند لن يُسدد فيها، وقرار التنفيذ خارج الصفقة يُبقي الإيقاف.</p>
-      </div>
-
-      <div className="grid lg:grid-cols-3 gap-4">
-        <div className="card p-5 space-y-3">
-          <h3 className="font-bold">العقار والتكاليف والأتعاب</h3>
-          {!st.mortgage && <p className="text-xs rounded-lg bg-slate-50 p-2 text-slate-500">العقار خارج هذا الهيكل: لا مخالصة ولا إفراغ ولا ضريبة تصرفات.</p>}
-          <N disabled={!canEdit} label="قيمة العقار (التقييم = سعر البيع للبنك)" value={x.propertyValue} onChange={(v) => upd({ propertyValue: v })} />
-          <div className="grid grid-cols-2 gap-3">
-            <N disabled={!canEdit} label="ضريبة الإفراغ لطرفنا %" value={x.transferTaxPct} onChange={(v) => upd({ transferTaxPct: v ?? 0 })} />
-            <N disabled={!canEdit} label="ضريبة البيع للبنك %" value={x.saleTaxPct} onChange={(v) => upd({ saleTaxPct: v ?? 0 })} hint="0 إن كان مسكناً أول للمواطن" />
-          </div>
-          <N disabled={!canEdit} label="تكاليف ثابتة (تقييم، سعي، رسوم الإفراغ)" value={x.fixedCosts} onChange={(v) => upd({ fixedCosts: v ?? 0 })} hint="تُحسب في هياكل العقار فقط" />
-          <div className="rounded-xl bg-brand-50 p-3 space-y-3">
-            <div className="text-xs font-bold text-brand-800">الأتعاب (من {FEE_MIN}% إلى {FEE_MAX}%) — النسبة المقترحة لهذا العميل: {s.suggestedPct}%{s.suggestedWhy.length ? ` (${s.suggestedWhy.join("، ")})` : ""}</div>
-            <div className="grid grid-cols-2 gap-3">
-              <N disabled={!canEdit} label="نسبة سداد المتعثرات %" value={x.fee.settlePct} onChange={(v) => upd({ fee: { ...x.fee, settlePct: v ?? 0 } })} />
-              <N disabled={!canEdit} label="نسبة استخراج التمويل %" value={x.fee.financePct} onChange={(v) => upd({ fee: { ...x.fee, financePct: v ?? 0 } })} />
-            </div>
-            <label className="block"><span className="text-xs font-semibold text-slate-500">نسبة التمويل تُحسب على</span>
-              <select className="input mt-1" disabled={!canEdit} value={x.fee.financeBase} onChange={(e) => upd({ fee: { ...x.fee, financeBase: e.target.value as FinanceBase } })}>{Object.entries(FINANCE_BASE).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
-            </label>
-            <label className="flex items-center gap-2 text-xs text-slate-600"><input type="checkbox" disabled={!canEdit} checked={x.fee.settleIncludesPayoff} onChange={(e) => upd({ fee: { ...x.fee, settleIncludesPayoff: e.target.checked } })} /> نسبة السداد تشمل مخالصة العقار أيضاً</label>
-            <N disabled={!canEdit} label="مبلغ مقطوع إضافي" value={x.fee.fixed} onChange={(v) => upd({ fee: { ...x.fee, fixed: v ?? 0 } })} />
-            {canEdit && <button type="button" className="btn-ghost text-xs" onClick={() => upd({ fee: { ...x.fee, settlePct: s.suggestedPct, financePct: s.suggestedPct } })}>تطبيق النسبة المقترحة على البندين</button>}
-          </div>
-        </div>
-
-        <div className="card p-5 space-y-3">
-          <h3 className="font-bold">التمويل الجديد</h3>
-          <label className="block"><span className="text-xs font-semibold text-slate-500">البنك المستهدف</span>
-            <select className="input mt-1" disabled={!canEdit} value={x.targetBank ?? ""} onChange={(e) => upd({ targetBank: e.target.value || null })}><option value="">—</option>{Object.entries(banks).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
-          </label>
-          <div className="grid grid-cols-2 gap-3">
-            <N disabled={!canEdit} label="هامش العقاري % (متناقص)" value={x.mortgageApr} onChange={(v) => upd({ mortgageApr: v ?? 5.5 })} />
-            <N disabled={!canEdit} label="هامش الشخصي % (ثابت)" value={x.personalFlat} onChange={(v) => upd({ personalFlat: v ?? 3 })} />
-            <N disabled={!canEdit} label="نسبة التمويل للقيمة %" value={x.ltvPct} onChange={(v) => upd({ ltvPct: v ?? 90 })} />
-            <N disabled={!canEdit} label="أقصى عمر عند نهاية العقاري" value={x.mortgageMaxAge} onChange={(v) => upd({ mortgageMaxAge: v ?? 70 })} />
-          </div>
-          <div className="rounded-xl bg-slate-50 p-3 text-xs text-slate-600 space-y-1">
-            <div>العمر {s.financing.age ?? "—"} · التقاعد بعد {s.financing.monthsToRetire != null ? `${Math.round(s.financing.monthsToRetire / 12)} سنة` : "—"} · المعاش التقديري <span className="num">{f0(s.financing.pension)}</span></div>
-            <div>الشخصي: قسط <span className="num">{f0(s.financing.personalInstallment)}</span> × {s.financing.personalMonths} شهراً</div>
-            <div>العقاري: قسط <span className="num">{f0(s.financing.mortgagePre)}</span> قبل التقاعد ثم <span className="num">{f0(s.financing.mortgagePost)}</span> · {s.financing.mortgageMonths} شهراً</div>
-            <div>حد الدخل <span className="num">{f0(s.financing.mortgageByIncome)}</span> · حد القيمة <span className="num">{f0(s.financing.mortgageByLtv)}</span> · الاستقطاع بعد التمويل {s.financing.dbrAfter ?? "—"}%</div>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <N disabled={!canEdit} label="عقاري حسب عرض البنك" value={x.bankMortgage} onChange={(v) => upd({ bankMortgage: v })} hint="يُلغي التقدير" />
-            <N disabled={!canEdit} label="شخصي حسب العرض الفعلي" value={x.bankPersonal} onChange={(v) => upd({ bankPersonal: v })} hint="يُلغي التقدير" />
-          </div>
-          {st.personal && (
-            <div className="grid grid-cols-2 gap-3">
-              <label className="block"><span className="text-xs font-semibold text-slate-500">جهة عرض الشخصي</span>
-                <input key={x.personalLender ?? ""} className="input mt-1" disabled={!canEdit} defaultValue={x.personalLender ?? ""} placeholder="مثل: الأهلي، إمكان" onBlur={(e) => upd({ personalLender: e.target.value.trim() || null })} />
-              </label>
-              <label className="block"><span className="text-xs font-semibold text-slate-500">نوعها</span>
-                <select className="input mt-1" disabled={!canEdit} value={x.personalLenderKind ?? ""} onChange={(e) => upd({ personalLenderKind: (e.target.value || null) as DealInput["personalLenderKind"] })}>
-                  <option value="">—</option><option value="bank">بنك</option><option value="finance_co">شركة تمويل</option>
-                </select>
-              </label>
-            </div>
-          )}
-        </div>
-
-        <div className="card p-5">
-          <h3 className="font-bold mb-3">مسار الأموال</h3>
-          <ul className="space-y-2 text-sm">
-            {s.waterfall.map((w, i) => (
-              <li key={i} className="flex items-start justify-between gap-3">
-                <span className="text-slate-600">{w.label}</span>
-                <b className={`num whitespace-nowrap ${w.tone === "out" ? "text-rose-700" : w.tone === "net" ? "text-brand-700" : "text-emerald-700"}`}>{f0(w.amount)}</b>
-              </li>
-            ))}
-            <li className="border-t pt-2 flex justify-between"><span className="text-slate-600">صافي الشخصي للعميل (بعد إعادة التمويل والرسوم)</span><b className="num">{f0(s.personalCash)}</b></li>
-            {st.mortgage && <li className="flex justify-between"><span className="text-slate-600">الدفعة الأولى للعقار (من الشخصي)</span><b className="num">{f0(s.downPayment)}</b></li>}
-            <li className="flex justify-between border-t pt-2"><span className="font-bold">يبقى للعميل</span><b className={`num ${s.clientNet < 0 ? "text-rose-700" : "text-emerald-700"}`}>{f0(s.clientNet)}</b></li>
-          </ul>
-        </div>
-      </div>
-
-      <div className="card p-5">
-        <h3 className="font-bold mb-3">المخاطر والضمانات</h3>
-        <div className="grid md:grid-cols-2 gap-3">
-          {s.risks.map((r, i) => <div key={i} className={`rounded-xl ring-1 p-3 text-sm leading-6 ${LVL[r.level]}`}>{r.level === "block" ? "⛔ " : r.level === "warn" ? "⚠️ " : "ℹ️ "}{r.text}</div>)}
-        </div>
-      </div>
-
-      <div className="card p-5">
-        <h3 className="font-bold mb-2">ملاحظات الصفقة</h3>
-        <textarea className="input min-h-24" disabled={!canEdit} defaultValue={x.notes} onBlur={(e) => upd({ notes: e.target.value })} placeholder="نتيجة التفاوض مع الدائنين، رد البنك، اتفاق العميل..." />
-      </div>
-
-      {canEdit && (
-        <div className="sticky bottom-3 flex items-center gap-3 rounded-2xl bg-white/90 backdrop-blur ring-1 ring-slate-200 p-3 shadow-sm">
-          <button type="button" className="btn-primary" disabled={pending} onClick={() => start(async () => setMsg(await save(clientId, JSON.stringify(x))))}>{pending ? "جارٍ الحفظ..." : "💾 حفظ دراسة الصفقة"}</button>
-          {msg?.ok && <span className="text-sm text-emerald-700">{msg.ok}</span>}
-          {msg?.error && <span className="text-sm text-rose-700">{msg.error}</span>}
-          <span className="text-xs text-slate-400 ms-auto">الأرقام تتحدث فوراً؛ الحفظ يثبتها في الملف ولوحة الصفقات.</span>
+      {canEdit && (dirty || msg) && (
+        <div className="no-print sticky bottom-[74px] lg:bottom-4 z-20 flex items-center gap-3 rounded-2xl bg-ink text-white ps-5 pe-2.5 py-2.5 shadow-[0_18px_40px_-12px_rgba(20,28,24,.5)] animate-rise">
+          <span className="flex-1 text-sm">{msg?.error ? <span className="text-rose-300">{msg.error}</span> : msg?.ok && !dirty ? <span className="inline-flex items-center gap-2"><Icon name="check" className="size-4 text-gold" />{msg.ok}</span> : "تغييرات غير محفوظة"}</span>
+          {dirty && <button type="button" className="btn btn-sm text-white/70 hover:text-white" onClick={() => { setX(saved); setMsg(undefined); }}>تراجع</button>}
+          {dirty && <button type="button" className="btn h-9 bg-gold text-ink hover:bg-gold-soft" disabled={pending} onClick={() => start(async () => { const snap = x; const r = await save(clientId, JSON.stringify(snap)); setMsg(r); if (r?.ok) setSaved(snap); })}>{pending ? "جارٍ الحفظ" : "حفظ"}</button>}
         </div>
       )}
     </div>
   );
 }
 
-const PAYOFF = new Set<ItemKind>(["mortgage_payoff", "personal_payoff"]);
-const VERDICT: Record<string, string> = { go: "✅ تقفل", tight: "🟡 هامش ضيق", short: "🔴 عجز", needs_info: "⚪ ناقصة" };
-function CmpRow({ l, cells }: { l: string; cells: React.ReactNode[] }) {
-  return <tr><td className="py-2 text-xs font-semibold text-slate-500 whitespace-nowrap pe-3">{l}</td>{cells.map((c, i) => <td key={i} className="py-2 pe-3">{c}</td>)}</tr>;
-}
-
-function Hero({ l, v, u }: { l: string; v: string; u?: string }) {
+/** الجسر: ما يدخل من التمويل مقابل ما يخرج. الفجوة = العجز، والزيادة = ما يبقى للعميل. */
+function BridgeViz({ s }: { s: DealStudy }) {
+  const costs = s.summary.costs.reduce((a, c) => a + c.amount, 0);
+  const have = s.summary.totalFinancing;
+  const need = s.summary.totalObligations + costs + s.fee;
+  const scale = Math.max(have, need, 1);
+  const gap = Math.max(0, need - have);
+  const surplus = Math.max(0, have - need);
+  const FIN = ["bg-brand-700", "bg-brand-400", "bg-brand-300"];
+  const inflow = s.summary.financing.filter((f) => f.amount > 0).map((f, i) => ({ label: f.label, amount: f.amount, cls: FIN[i % FIN.length] }));
+  const outflow = [
+    { label: "الالتزامات", amount: s.summary.totalObligations, cls: "bg-slate-700" },
+    { label: "تكاليف", amount: costs, cls: "bg-slate-400" },
+    { label: "أتعابنا", amount: s.fee, cls: "bg-gold" },
+  ].filter((p) => p.amount > 0);
+  if (have <= 0 && need <= 0) return null;
+  const w = (n: number) => `${(n / scale) * 100}%`;
   return (
-    <div className="rounded-2xl bg-white/10 p-3">
-      <div className="text-[11px] text-white/70">{l}</div>
-      <div className="text-xl font-bold num mt-0.5">{v}</div>
-      {u && <div className="text-[11px] text-white/70 mt-0.5">{u}</div>}
+    <div>
+      <div className="flex items-baseline justify-between text-xs mb-2"><span className="font-semibold text-slate-600">يدخل من التمويل</span><span className="num font-semibold">{f0(have)}</span></div>
+      <div className="flex h-3.5 gap-[3px]">
+        {inflow.map((p, i) => <div key={p.label} className={`${p.cls} rounded-[5px] origin-right grow-x`} style={{ width: w(p.amount), animationDelay: `${i * 120}ms` }} title={`${p.label}: ${f0(p.amount)}`} />)}
+        {gap > 0 && <div className="rounded-[5px] border-[1.5px] border-dashed border-rose-400 bg-rose-50 fade" style={{ width: w(gap), animationDelay: ".5s" }} title={`عجز: ${f0(gap)}`} />}
+      </div>
+      <svg viewBox="0 0 400 22" preserveAspectRatio="none" className="w-full h-6 my-1 text-slate-300" aria-hidden>
+        {Array.from({ length: 8 }).map((_, i) => <path key={i} d={`M${i * 50} 22 A25 20 0 0 1 ${i * 50 + 50} 22`} fill="none" stroke="currentColor" strokeWidth="1.2" vectorEffect="non-scaling-stroke" />)}
+        <path d="M0 1 H400" stroke="currentColor" strokeWidth="1.2" vectorEffect="non-scaling-stroke" />
+      </svg>
+      <div className="flex h-3.5 gap-[3px]">
+        {outflow.map((p, i) => <div key={p.label} className={`${p.cls} rounded-[5px] origin-right grow-x`} style={{ width: w(p.amount), animationDelay: `${200 + i * 120}ms` }} title={`${p.label}: ${f0(p.amount)}`} />)}
+        {surplus > 0 && <div className="rounded-[5px] bg-emerald-500 origin-right grow-x" style={{ width: w(surplus), animationDelay: ".6s" }} title={`يبقى للعميل: ${f0(surplus)}`} />}
+      </div>
+      <div className="flex items-baseline justify-between text-xs mt-2"><span className="font-semibold text-slate-600">يخرج</span><span className="num font-semibold">{f0(need)}</span></div>
+      <ul className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-xs text-slate-600">
+        {[...inflow, ...outflow].map((p) => <li key={p.label} className="inline-flex items-center gap-1.5"><span className={`size-2.5 rounded-[3px] ${p.cls}`} />{p.label}<b className="num text-ink">{f0(p.amount)}</b></li>)}
+        {gap > 0 && <li className="inline-flex items-center gap-1.5 text-rose-700 font-semibold"><span className="size-2.5 rounded-[3px] border-[1.5px] border-dashed border-rose-400" />العجز<b className="num">{f0(gap)}</b></li>}
+        {surplus > 0 && <li className="inline-flex items-center gap-1.5 text-emerald-700 font-semibold"><span className="size-2.5 rounded-[3px] bg-emerald-500" />يبقى للعميل<b className="num">{f0(surplus)}</b></li>}
+      </ul>
     </div>
   );
 }
 
+function Fig({ label, value, hint, tone = "text-ink" }: { label: string; value: string; hint?: string; tone?: string }) {
+  return (
+    <div className="min-w-0">
+      <div className="eyebrow">{label}</div>
+      <div className={`figure text-[26px] sm:text-[28px] font-semibold leading-none mt-1.5 ${tone}`}>{value}</div>
+      {hint && <div className="text-xs text-slate-500 mt-1.5">{hint}</div>}
+    </div>
+  );
+}
+function CmpRow({ l, cells }: { l: string; cells: React.ReactNode[] }) {
+  return <tr className="border-b border-slate-100 last:border-0"><td className="py-2.5 text-xs font-semibold text-slate-500 whitespace-nowrap pe-3">{l}</td>{cells.map((c, i) => <td key={i} className="py-2.5 px-4">{c}</td>)}</tr>;
+}
+function Row({ k, v, num }: { k: string; v: string; num?: boolean }) {
+  return <div className="flex justify-between gap-4 py-1.5 border-b border-slate-100"><dt className="text-slate-500">{k}</dt><dd className={`font-medium ${num ? "tabular-nums" : ""}`}>{v}</dd></div>;
+}
+function L({ label, children, hint }: { label: string; children: React.ReactNode; hint?: string }) {
+  return <label className="block"><span className="label">{label}</span>{children}{hint && <span className="block mt-1 text-[11px] text-slate-400">{hint}</span>}</label>;
+}
 const numIn = (v: string) => (v.trim() === "" ? null : Number(v.replace(/[,،\s]/g, "")));
 function N({ label, value, onChange, hint, disabled }: { label: string; value: number | null; onChange: (n: number | null) => void; hint?: string; disabled?: boolean }) {
   return (
-    <label className="block">
-      <span className="text-xs font-semibold text-slate-500">{label}</span>
-      <input key={String(value ?? "")} className="input mt-1 num" inputMode="decimal" disabled={disabled} defaultValue={value ?? ""} onBlur={(e) => onChange(numIn(e.target.value))} onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()} />
-      {hint && <span className="text-[11px] text-slate-400">{hint}</span>}
-    </label>
+    <L label={label} hint={hint}>
+      <input key={String(value ?? "")} className="input num" inputMode="decimal" disabled={disabled} defaultValue={value ?? ""} onBlur={(e) => onChange(numIn(e.target.value))} onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()} />
+    </L>
   );
+}
+function T({ label, value, onChange, disabled }: { label: string; value: string; onChange: (t: string) => void; disabled?: boolean }) {
+  return <L label={label}><input key={value} className="input" disabled={disabled} defaultValue={value} onBlur={(e) => onChange(e.target.value.trim())} /></L>;
 }

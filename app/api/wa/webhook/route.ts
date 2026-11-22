@@ -26,7 +26,7 @@ export async function POST(req: Request) {
       if (await get("SELECT id FROM wa_messages WHERE wa_id = ?", m.id)) continue; // مكرر
       const clientId = await clientByPhone(m.from);
       const name = v.contacts?.find((c) => c.wa_id === m.from)?.profile?.name ?? null;
-      const text = m.text?.body ?? m.image?.caption ?? m.document?.caption ?? m.button?.text ?? m.interactive?.button_reply?.title ?? (m.type === "image" ? "📷 صورة" : m.type === "document" ? "📄 مستند" : `[${m.type}]`);
+      const text = m.text?.body ?? m.image?.caption ?? m.document?.caption ?? m.button?.text ?? m.interactive?.button_reply?.title ?? (m.type === "image" ? "صورة" : m.type === "document" ? "مستند" : `[${m.type}]`);
       let docId: number | null = null;
       if (clientId && (m.image || m.document)) {
         const media = m.image ?? m.document!;
@@ -34,7 +34,7 @@ export async function POST(req: Request) {
       }
       await run("INSERT INTO wa_messages (client_id, direction, wa_id, phone, name, type, body, doc_id, status) VALUES (?, 'in', ?, ?, ?, ?, ?, ?, 'received')",
         clientId, m.id, m.from, name, m.type, text.slice(0, 4000), docId);
-      if (clientId) await run("INSERT INTO notes (client_id, kind, body) VALUES (?, 'whatsapp', ?)", clientId, `⬅️ من العميل: ${text.slice(0, 3000)}`);
+      if (clientId) await run("INSERT INTO notes (client_id, kind, body) VALUES (?, 'whatsapp', ?)", clientId, `من العميل: ${text.slice(0, 3000)}`);
     }
   }
   return new Response("OK", { status: 200 });

@@ -164,7 +164,7 @@ export function capacity(p: Profile): Capacity {
   const rules: { avail: number; label: string; cap: number }[] = [];
   if (p.financeType === "mortgage") {
     const c = totalCap ?? 0.65;
-    if (totalCap === null) warnings.push("الدخل 25,000 فأكثر: السقف الكلي حسب سياسة الجهة؛ استُخدم 65% افتراضاً ⚠️");
+    if (totalCap === null) warnings.push("الدخل 25,000 فأكثر: السقف الكلي حسب سياسة الجهة؛ استُخدم 65% افتراضاً");
     rules.push({ avail: total * c - existingTotal, label: `السقف الكلي ${round(c * 100)}% من الدخل (يشمل العقاري)`, cap: c });
   } else {
     // ف15–17(أ): الاستقطاع المرتبط بالراتب يشمل كل الأقساط الاستهلاكية والبطاقات
@@ -458,7 +458,7 @@ export function study(p: Profile, products: Product[]): Study {
   if (best) {
     recs.unshift(`أفضل خيار حالي: ${best.product.lenderName} — ${best.product.name} بمبلغ تقريبي ${fmt(best.offerPrincipal)} ريال وقسط ${fmt(best.installment)} لمدة ${best.tenor} شهراً.`);
     const order = matches.filter((m) => m.verdict !== "fail").slice(0, 3).map((m) => m.product.lenderName);
-    if (order.length > 1) recs.push(`ترتيب التقديم المقترح: ${order.join(" ← ")} (تقديم متتابع لا متزامن لتجنب كثرة الاستعلامات في سمة).`);
+    if (order.length > 1) recs.push(`ترتيب التقديم المقترح: ${order.join(" ثم ")} (تقديم متتابع لا متزامن لتجنب كثرة الاستعلامات في سمة).`);
     if (p.requestedAmount && best.maxPrincipal < p.requestedAmount)
       recs.push(`المبلغ المطلوب (${fmt(p.requestedAmount)}) أعلى من الممكن (${fmt(best.maxPrincipal)}). خيارات: إضافة متضامن، أو مدة أطول، أو خفض المبلغ.`);
   }

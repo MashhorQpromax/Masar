@@ -1,4 +1,4 @@
-// رسائل واتساب جاهزة — نص عادي بتنسيق واتساب (*عريض* _مائل_) يُرسل عبر wa.me.
+// رسائل واتساب جاهزة: نص عادي بتنسيق واتساب (*عريض* _مائل_) بلا رموز تعبيرية.
 // قاعدة صارمة: رسائل العميل لا تحتوي أتعاب الشركة ولا رأس مالها ولا تحليلها الداخلي.
 
 import type { Stage } from "./deal";
@@ -8,7 +8,7 @@ export const WA_TEMPLATES: Record<WaTemplate, { label: string; hint: string; cli
   study: { label: "ملخص الدراسة", hint: "للعميل: وضعه، الحل، المتوقع، والمطلوب منه", client: true },
   docs: { label: "طلب النواقص", hint: "للعميل: قائمة المستندات الناقصة مع رابط الرفع", client: true },
   stage: { label: "تحديث المرحلة", hint: "للعميل: أين وصل ملفه والخطوة التالية", client: true },
-  internal: { label: "ملخص الصفقة (داخلي)", hint: "لشريك أو ممول — يحتوي الأرقام الداخلية، لا يُرسل للعميل", client: false },
+  internal: { label: "ملخص الصفقة", hint: "لشريك أو ممول، وفيه الأرقام الداخلية", client: false },
 };
 
 export interface WaContext {
@@ -91,10 +91,10 @@ function offerBlock(c: WaContext) {
   const amt = `*${approx(o.amount)}* ريال${term}`;
   // الصياغة حسب حالة الطلب فعلاً — لا نوحي بموافقة لم تصدر
   if (o.status === "approved" || o.status === "disbursed")
-    return `🎉 *بشارة: صدرت الموافقة على تمويلك*\nحصلنا لك على موافقة جهة تمويلية (${who}) بمبلغ ${amt}.${kind}`;
+    return `*بشارة: صدرت الموافقة على تمويلك*\nحصلنا لك على موافقة جهة تمويلية (${who}) بمبلغ ${amt}.${kind}`;
   if (o.status === "draft")
-    return `🎉 *بشارة: وفرنا لك جهة تمويلية*\nبعد دراسة ملفك حددنا لك جهة تمويلية (${who}) قادرة توصلك إلى تمويل يصل إلى ${amt}.${kind}\nنستكمل معك المتطلبات ونقدّم ملفك حتى نثبت العرض.`;
-  return `🎉 *بشارة: ملفك الآن لدى جهة تمويلية*\nقدّمنا ملفك لدى جهة تمويلية (${who}) لتمويل يصل إلى ${amt}، والملف قيد الدراسة لديها.${kind}\nنستكمل معك المتطلبات حتى نسرّع الموافقة.`;
+    return `*بشارة: وفرنا لك جهة تمويلية*\nبعد دراسة ملفك حددنا لك جهة تمويلية (${who}) قادرة توصلك إلى تمويل يصل إلى ${amt}.${kind}\nنستكمل معك المتطلبات ونقدّم ملفك حتى نثبت العرض.`;
+  return `*بشارة: ملفك الآن لدى جهة تمويلية*\nقدّمنا ملفك لدى جهة تمويلية (${who}) لتمويل يصل إلى ${amt}، والملف قيد الدراسة لديها.${kind}\nنستكمل معك المتطلبات حتى نسرّع الموافقة.`;
 }
 
 const n = (v: number) => Math.round(v).toLocaleString("en-US");
@@ -103,7 +103,6 @@ const approx = (v: number) => {
   if (v >= 10_000) return `${n(Math.round(v / 1000) * 1000)}`;
   return n(v);
 };
-const LINE = "━━━━━━━━━━━━";
 
 /** مراحل مبسطة يفهمها العميل (بدون تفاصيل داخلية) */
 export const CLIENT_STEPS: { title: string; stages: Stage[] }[] = [
@@ -124,7 +123,7 @@ export const STAGE_NEXT: Partial<Record<Stage, string>> = {
   agreement: "بعد التوقيع نبدأ مباشرة بتسوية الالتزامات.",
   settlement: "نسدد القرارات والمتعثرات ونتابع رفع الإيقاف.",
   clearance: "نستلم خطابات المخالصة ونتأكد من رفع الإيقاف.",
-  simah_update: "ننتظر تحديث سمة — يستغرق عادة من أسبوع إلى أسبوعين.",
+  simah_update: "ننتظر تحديث سمة، ويستغرق عادة من أسبوع إلى أسبوعين.",
   payoff: "نُنهي مخالصة التمويل العقاري مع البنك.",
   transfer: "نُنهي إجراءات العقار تمهيداً للتقديم للبنك.",
   bank_submit: "رُفع طلبك للبنك، وسيتواصل معك البنك للتوقيع والتقييم.",
@@ -135,12 +134,12 @@ export const STAGE_NEXT: Partial<Record<Stage, string>> = {
 };
 
 function greeting(c: WaContext) {
-  return `السلام عليكم ورحمة الله${c.firstName ? ` ${c.firstName}` : ""} 🌿\nمعك ${c.staffName} من *مسار للحلول التمويلية*.`;
+  return `السلام عليكم ورحمة الله${c.firstName ? ` ${c.firstName}` : ""}\nمعك ${c.staffName} من *مسار للحلول التمويلية*.`;
 }
 function footer(c: WaContext) {
   const parts: string[] = [];
-  if (c.link) parts.push(`🔗 *ملفك ومتابعته ورفع المستندات:*\n${c.link}\n_(رابط خاص بك، صالح ${c.linkDays ?? 14} يوماً)_`);
-  parts.push("أي استفسار أنا حاضر هنا 🤝");
+  if (c.link) parts.push(`*رابط ملفك للمتابعة ورفع المستندات:*\n${c.link}\n_رابط خاص بك، صالح ${c.linkDays ?? 14} يوماً_`);
+  parts.push("أي استفسار أنا حاضر هنا.");
   return parts.join("\n\n");
 }
 
@@ -157,35 +156,35 @@ function study(c: WaContext) {
   // الوضع الحالي
   const now: string[] = [];
   if (c.credit) {
-    if (c.credit.executions) now.push(`• ${c.credit.executions === 1 ? "قرار تنفيذ واحد" : c.credit.executions === 2 ? "قرارا تنفيذ" : `${c.credit.executions} قرارات تنفيذ`} بإجمالي *${n(c.credit.executionsAmount)}* ريال`);
-    if (c.credit.defaults) now.push(`• ${c.credit.defaults === 1 ? "تعثر واحد قائم" : `${c.credit.defaults} تعثرات قائمة`} بإجمالي *${n(c.credit.defaultsAmount)}* ريال`);
-    if (c.credit.suspension) now.push("• يوجد إيقاف خدمات مرتبط بقرارات التنفيذ");
+    if (c.credit.executions) now.push(`- ${c.credit.executions === 1 ? "قرار تنفيذ واحد" : c.credit.executions === 2 ? "قرارا تنفيذ" : `${c.credit.executions} قرارات تنفيذ`} بإجمالي *${n(c.credit.executionsAmount)}* ريال`);
+    if (c.credit.defaults) now.push(`- ${c.credit.defaults === 1 ? "تعثر واحد قائم" : `${c.credit.defaults} تعثرات قائمة`} بإجمالي *${n(c.credit.defaultsAmount)}* ريال`);
+    if (c.credit.suspension) now.push("- يوجد إيقاف خدمات مرتبط بقرارات التنفيذ");
   }
-  if (c.currentDbr != null && c.currentDbr > 0) now.push(`• التزاماتك الشهرية تأخذ *${c.currentDbr}%* من راتبك`);
-  if (now.length && !c.isProject) out.push(`${LINE}\n📌 *وضعك الحالي*\n${now.join("\n")}`);
+  if (c.currentDbr != null && c.currentDbr > 0) now.push(`- التزاماتك الشهرية تأخذ *${c.currentDbr}%* من راتبك`);
+  if (now.length && !c.isProject) out.push(`*وضعك الحالي*\n${now.join("\n")}`);
 
   if (c.isProject) {
-    if (!offer && c.projectHeadline) out.push(`${LINE}\n🧭 *نتيجة الدراسة*\n${c.projectHeadline}`);
+    if (!offer && c.projectHeadline) out.push(`*نتيجة الدراسة*\n${c.projectHeadline}`);
   } else if (c.deal) {
     const d = c.deal;
     const steps: string[] = [];
-    if (d.settleTotal > 0) steps.push(`نسدد عنك قرارات التنفيذ والمتعثرات (≈ ${approx(d.settleTotal)} ريال) ونرفع الإيقاف`);
+    if (d.settleTotal > 0) steps.push(`نسدد عنك قرارات التنفيذ والمتعثرات (نحو ${approx(d.settleTotal)} ريال) ونرفع الإيقاف`);
     if (d.payoffTotal > 0) steps.push(`نُنهي مخالصة تمويلك الحالي${d.payoffLenders.length ? ` لدى ${d.payoffLenders.join(" و")}` : ""}`);
     steps.push("نحدّث سجلك في سمة بعد التسوية");
-    const kinds = [d.mortgage > 0 ? "عقاري" : "", d.personal > 0 ? "شخصي" : ""].filter(Boolean).join(" + ") || "جديد";
+    const kinds = [d.mortgage > 0 ? "عقاري" : "", d.personal > 0 ? "شخصي" : ""].filter(Boolean).join(" و") || "جديد";
     steps.push(`نتقدم لك${d.bankName ? ` على *${d.bankName}*` : " على البنك المناسب"} بتمويل ${kinds} جديد`);
-    out.push(`${LINE}\n🧭 *الحل المقترح*\n${steps.map((s, i) => `${i + 1}. ${s}`).join("\n")}`);
+    out.push(`*الحل المقترح*\n${steps.map((s, i) => `${i + 1}. ${s}`).join("\n")}`);
     if (d.verdict === "go" || d.verdict === "tight") {
       const exp: string[] = [];
-      if (d.mortgage > 0) exp.push(`• تمويل عقاري تقريباً *${approx(d.mortgage)}* ريال`);
-      if (d.personal > 0) exp.push(`• تمويل شخصي تقريباً *${approx(d.personal)}* ريال`);
-      if (d.clientNet > 0) exp.push(`• يبقى لك نقداً بعد إنهاء كل الالتزامات تقريباً *${approx(d.clientNet)}* ريال`);
-      exp.push("• التزامات أقل وملف ائتماني نظيف بإذن الله");
-      out.push(`💰 *المتوقع لك*\n${exp.join("\n")}`);
+      if (d.mortgage > 0) exp.push(`- تمويل عقاري تقريباً *${approx(d.mortgage)}* ريال`);
+      if (d.personal > 0) exp.push(`- تمويل شخصي تقريباً *${approx(d.personal)}* ريال`);
+      if (d.clientNet > 0) exp.push(`- يبقى لك نقداً بعد إنهاء كل الالتزامات تقريباً *${approx(d.clientNet)}* ريال`);
+      exp.push("- التزامات أقل وملف ائتماني نظيف بإذن الله");
+      out.push(`*المتوقع لك*\n${exp.join("\n")}`);
     }
-    out.push(`⏱️ *المدة المتوقعة:* من ${Math.max(4, Math.round(d.days / 7) - 2)} إلى ${Math.round(d.days / 7) + 2} أسابيع تقريباً`);
+    out.push(`*المدة المتوقعة:* من ${Math.max(4, Math.round(d.days / 7) - 2)} إلى ${Math.round(d.days / 7) + 2} أسابيع تقريباً`);
   }
-  if (c.missingDocs.length) out.push(`${LINE}\n📎 *${offer ? "المطلوب لتثبيت العرض" : "المطلوب منك الآن"}*\n${c.missingDocs.slice(0, 8).map((d, i) => `${i + 1}. ${d.label}`).join("\n")}`);
+  if (c.missingDocs.length) out.push(`*${offer ? "المطلوب لتثبيت العرض" : "المطلوب منك الآن"}*\n${c.missingDocs.slice(0, 8).map((d, i) => `${i + 1}. ${d.label}`).join("\n")}`);
   out.push("_الأرقام تقديرية وتعتمد على موافقة البنك والتقييم الرسمي._");
   out.push(footer(c));
   return out.join("\n\n");
@@ -194,10 +193,10 @@ function study(c: WaContext) {
 function docs(c: WaContext) {
   const out = [greeting(c)];
   if (!c.missingDocs.length) {
-    out.push("وصلتنا كل المستندات المطلوبة، شكراً لتعاونك ✅\nنكمل الآن على ملفك وأبلغك بأي جديد.");
+    out.push("وصلتنا كل المستندات المطلوبة، شكراً لتعاونك.\nنكمل الآن على ملفك وأبلغك بأي جديد.");
   } else {
     out.push(`حتى نكمل ملفك بأسرع وقت، نحتاج منك المستندات التالية:\n\n${c.missingDocs.map((d, i) => `${i + 1}. *${d.label}*${d.why ? `\n   _${d.why}_` : ""}`).join("\n")}`);
-    out.push(c.link ? "📲 تقدر ترفعها مباشرة من الرابط بالأسفل (صورة واضحة أو PDF)، أو ترسلها هنا." : "📲 أرسلها هنا على الواتساب (صورة واضحة أو PDF).");
+    out.push(c.link ? "تقدر ترفعها مباشرة من الرابط بالأسفل (صورة واضحة أو PDF)، أو ترسلها هنا." : "أرسلها هنا على الواتساب (صورة واضحة أو PDF).");
   }
   out.push(footer(c));
   return out.join("\n\n");
@@ -207,16 +206,16 @@ function stage(c: WaContext) {
   const out = [greeting(c)];
   const st = c.deal?.stage ?? "study";
   const idx = clientStepIndex(st);
-  out.push(`تحديث على ملفك 📋\n\n${CLIENT_STEPS.map((s, i) => `${i < idx ? "✅" : i === idx ? "🔵" : "⚪"} ${s.title}`).join("\n")}`);
+  out.push(`*تحديث على ملفك*\n\n${CLIENT_STEPS.map((s, i) => `${i + 1}. ${i === idx ? `*${s.title}* (الآن)` : i < idx ? `${s.title} (تم)` : s.title}`).join("\n")}`);
   const next = STAGE_NEXT[st];
   if (next) out.push(`*الخطوة الحالية:* ${next}`);
-  if (c.missingDocs.length) out.push(`📎 ما زال ينقصنا: ${c.missingDocs.slice(0, 4).map((d) => d.label).join("، ")}`);
+  if (c.missingDocs.length) out.push(`ما زال ينقصنا: ${c.missingDocs.slice(0, 4).map((d) => d.label).join("، ")}`);
   out.push(footer(c));
   return out.join("\n\n");
 }
 
 function internal(c: WaContext) {
-  const out = [`🔒 *ملخص صفقة — داخلي*\n${c.fullName} · ${c.fileNo}`];
+  const out = [`*ملخص صفقة، داخلي*\n${c.fullName} · ${c.fileNo}`];
   const d = c.deal;
   if (!d) {
     out.push(c.projectHeadline ?? "لا توجد دراسة صفقة محفوظة.");
@@ -227,33 +226,33 @@ function internal(c: WaContext) {
   if (d.structureLabel) out[0] += `\nالهيكل: ${d.structureLabel}`;
 
   // 1) الالتزامات
-  const ob = m.obligations.map((o) => `• ${o.label}${o.byBank ? " _(تسدده جهة التمويل الجديدة)_" : ""}: ${n(o.amount)}${!o.byBank && o.original > o.amount + 1 && !/^مخالصة/.test(o.label) ? ` _(بعد خصم من ${n(o.original)})_` : ""}`);
+  const ob = m.obligations.map((o) => `- ${o.label}${o.byBank ? " _(تسدده جهة التمويل الجديدة)_" : ""}: ${n(o.amount)}${!o.byBank && o.original > o.amount + 1 && !/^مخالصة/.test(o.label) ? ` _(بعد خصم من ${n(o.original)})_` : ""}`);
   const kept = m.kept.length ? `\n_يبقى قائماً بدون سداد: ${m.kept.map((k) => `${k.label}${k.monthly ? ` بقسط ${n(k.monthly)} شهرياً` : k.amount ? ` (${n(k.amount)})` : ""}`).join("، ")}_` : "";
   const disc = m.discountTotal ? `\n_وفّرنا بالتفاوض: ${n(m.discountTotal)}_` : "";
-  out.push(`${LINE}\n*1) الالتزامات اللي تتسدد*\n${ob.join("\n")}\n*الإجمالي: ${n(m.totalObligations)}*${disc}${kept}`);
+  out.push(`*1) الالتزامات اللي تتسدد*\n${ob.join("\n")}\n*الإجمالي: ${n(m.totalObligations)}*${disc}${kept}`);
 
   // 2) التمويل الجديد
-  out.push(`*2) التمويل الجديد*\n${m.financing.map((f) => `• ${f.label}: ${n(f.amount)}`).join("\n")}${m.financing.length > 1 ? `\n*الإجمالي: ${n(m.totalFinancing)}*` : ""}`);
+  out.push(`*2) التمويل الجديد*\n${m.financing.map((f) => `- ${f.label}: ${n(f.amount)}`).join("\n")}${m.financing.length > 1 ? `\n*الإجمالي: ${n(m.totalFinancing)}*` : ""}`);
 
   // 3) بعد السداد
   const after = [`التمويل ${n(m.totalFinancing)}`, `ناقص الالتزامات ${n(m.totalObligations)}`, ...m.costs.map((c) => `ناقص ${c.label} ${n(c.amount)}`)];
-  out.push(`*3) بعد سداد كل الالتزامات*\n${after.join("\n")}\n${m.afterSettle >= 0 ? `= يتبقى *${n(m.afterSettle)}*` : `= ينقص *${n(-m.afterSettle)}* ❗ التمويل ما يكفي حتى لسداد الالتزامات`}`);
+  out.push(`*3) بعد سداد كل الالتزامات*\n${after.join("\n")}\n${m.afterSettle >= 0 ? `= يتبقى *${n(m.afterSettle)}*` : `= ينقص *${n(-m.afterSettle)}*، التمويل ما يكفي حتى لسداد الالتزامات`}`);
 
   // 4) أتعابنا
   const p = d.feePct;
-  out.push(`*4) أتعابنا*\n• سداد المتعثرات${p ? ` ${p.settle}%` : ""}: ${n(d.feeSettle)}\n• استخراج التمويل${p ? ` ${p.finance}%` : ""}: ${n(d.feeFinance)}${d.fee !== d.feeSettle + d.feeFinance ? `\n• مقطوع: ${n(d.fee - d.feeSettle - d.feeFinance)}` : ""}\n*الإجمالي: ${n(d.fee)}*`);
+  out.push(`*4) أتعابنا*\n- سداد المتعثرات${p ? ` ${p.settle}%` : ""}: ${n(d.feeSettle)}\n- استخراج التمويل${p ? ` ${p.finance}%` : ""}: ${n(d.feeFinance)}${d.fee !== d.feeSettle + d.feeFinance ? `\n- مقطوع: ${n(d.fee - d.feeSettle - d.feeFinance)}` : ""}\n*الإجمالي: ${n(d.fee)}*`);
 
   // 5) النتيجة
   const res = m.net >= 0
-    ? `${m.net < 20000 ? "🟡" : "✅"} *يبقى للعميل ${n(m.net)} ريال* بعد أتعابنا${m.net < 20000 ? " (هامش ضيق)" : ""}`
-    : `🔴 *عجز ${n(-m.net)} ريال*`;
+    ? `*يبقى للعميل ${n(m.net)} ريال* بعد أتعابنا${m.net < 20000 ? " (هامش ضيق)" : ""}`
+    : `*عجز ${n(-m.net)} ريال*`;
   out.push(`*5) النتيجة*\n${m.afterSettle >= 0 ? `يتبقى ${n(m.afterSettle)} ناقص أتعابنا ${n(d.fee)}` : `ينقص ${n(-m.afterSettle)} وفوقه أتعابنا ${n(d.fee)}`}\n${res}`);
 
-  const extra = [`💼 رأس المال اللي ندفعه مؤقتاً: ${n(d.capital)} · المدة ≈ ${d.days} يوماً${d.cover ? ` · تغطية الضمان ${d.cover}x` : ""}`];
-  if (m.keptExecutions) extra.push(`⛔ قرارات تنفيذ خارج الحساب بـ ${n(m.keptExecutions)}: الإيقاف ما يرتفع إلا بسدادها كلها، وبدون رفعه ما فيه جهة تصرف`);
-  if (m.net < 0 && d.breakEvenDiscount) extra.push(`⚠️ لسد العجز يلزم خصم ≈ ${Math.ceil(d.breakEvenDiscount)}% على التنفيذ والتعثرات`);
-  if (d.bestAlt) extra.push(`💡 ${d.bestAlt}`);
-  out.push(`${LINE}\n${extra.join("\n")}`);
+  const extra = [`رأس المال اللي ندفعه مؤقتاً: ${n(d.capital)} · المدة نحو ${d.days} يوماً${d.cover ? ` · تغطية الضمان ${d.cover}x` : ""}`];
+  if (m.keptExecutions) extra.push(`تنبيه: قرارات تنفيذ خارج الحساب بـ ${n(m.keptExecutions)}: الإيقاف ما يرتفع إلا بسدادها كلها، وبدون رفعه ما فيه جهة تصرف`);
+  if (m.net < 0 && d.breakEvenDiscount) extra.push(`لسد العجز يلزم خصم نحو ${Math.ceil(d.breakEvenDiscount)}% على التنفيذ والتعثرات`);
+  if (d.bestAlt) extra.push(`بديل: ${d.bestAlt}`);
+  out.push(extra.join("\n"));
   return out.join("\n\n");
 }
 

@@ -152,10 +152,10 @@ export function projectStudy(x: ProjectInput, requested: number): ProjectStudy {
   const critical = missing.filter((m) => m.critical).length;
   const verdict: ProjectStudy["verdict"] = critical >= 4 ? "needs_info" : (ltv ?? 0) > 70 ? "weak" : (cashoutPart ?? 0) > 0 || (ltv ?? 0) > 50 ? "feasible_restructure" : "feasible";
   const headline = {
-    needs_info: "قابل للدراسة — نحتاج النواقص الأساسية قبل الحكم",
+    needs_info: "قابل للدراسة، نحتاج النواقص الأساسية قبل الحكم",
     feasible_restructure: "ممكن بعد إعادة هيكلة الطلب (بناء على مراحل + سيولة محدودة)",
     feasible: "ممكن بالهيكل المقترح",
-    weak: "ضعيف بصيغته الحالية — يحتاج رأس مال أو شريك",
+    weak: "ضعيف بصيغته الحالية، يحتاج رأس مال أو شريك",
   }[verdict];
 
   return { requested, totalCost, ltv, ltc, equityPct, pricePerM2, cashoutPart, noi, dscr, verdict, headline, alerts, structures, missing };

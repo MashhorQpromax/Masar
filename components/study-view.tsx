@@ -2,14 +2,10 @@ import { fmt, SAMA, type Match } from "@/lib/engine";
 import type { DeepStudy, Alert } from "@/lib/advisor";
 import type { Experience, LenderRule } from "@/lib/data";
 import { ELIGIBILITY, OUTCOME_CONDITIONS, REJECT_REASONS, RULE_KIND } from "@/lib/labels";
-import { Badge } from "@/components/ui";
+import { Badge, Fold, Callout, Empty } from "@/components/ui";
+import { Icon } from "@/components/icon";
 
-const VERDICT_BG: Record<string, string> = {
-  eligible: "from-emerald-700 to-emerald-900",
-  conditional: "from-amber-600 to-amber-800",
-  pending: "from-slate-600 to-slate-800",
-  not_eligible: "from-rose-700 to-rose-900",
-};
+const CHIP: Record<string, string> = { eligible: "bg-emerald-50 text-emerald-800", conditional: "bg-amber-50 text-amber-800", pending: "bg-slate-100 text-slate-600", not_eligible: "bg-rose-50 text-rose-800" };
 
 export default function StudyView({ s, exp, rules, requested }: { s: DeepStudy; exp: Map<number, Experience>; rules: LenderRule[]; requested: number | null }) {
   const ok = s.matches.filter((m) => m.verdict !== "fail");
@@ -19,233 +15,191 @@ export default function StudyView({ s, exp, rules, requested }: { s: DeepStudy; 
   const capPct = Math.round((cap.capUsed || 0) * 100);
   const afterDbr = cap.income > 0 && best ? Math.round(((cap.existingTotal + best.installment) / cap.income) * 1000) / 10 : cap.currentDbr;
   const generalRules = rules.filter((r) => r.lender_id == null);
+  const el = ELIGIBILITY[s.verdict];
+  const blocking = s.alerts.filter((a) => a.level === "block").length;
+
+  const conds = [
+    ...s.alerts.map((a) => <AlertItem key={a.id} a={a} />),
+    ...generalRules.map((r) => (
+      <li key={`r${r.id}`} className="flex gap-3 rounded-xl border border-slate-200/70 p-4">
+        <Icon name={RULE_KIND[r.kind].icon} className="size-[18px] mt-0.5 text-brand-700" />
+        <div className="flex-1 min-w-0"><div className="text-sm font-semibold flex flex-wrap items-center gap-2">{r.title}<Badge tone="brand">خبرة الفريق</Badge></div>{r.body && <p className="text-[13px] text-slate-600 mt-1 leading-6">{r.body}</p>}</div>
+      </li>
+    )),
+  ];
 
   return (
-    <div className="space-y-5">
-      {/* ===== الحكم ===== */}
-      <div className={`rounded-3xl bg-gradient-to-l ${VERDICT_BG[s.verdict]} text-white p-6 shadow-sm relative overflow-hidden`}>
-        <div className="absolute -left-10 -top-10 size-48 rounded-full bg-white/5" />
-        <div className="relative flex flex-wrap items-start justify-between gap-6">
-          <div className="min-w-60">
-            <div className="text-xs text-white/70">حكم الدراسة</div>
-            <div className="text-2xl font-bold mt-1">{ELIGIBILITY[s.verdict].emoji} {s.headline}</div>
-            {best && <div className="mt-2 text-sm text-white/85">الأنسب: <b>{best.product.lenderName}</b> — {best.product.name}</div>}
-            {requested ? <div className="mt-1 text-xs text-white/70">المطلوب <span className="num">{fmt(requested)}</span> ريال · الممكن <span className="num">{fmt(s.baseAmount)}</span> ({requested ? Math.min(100, Math.round((s.baseAmount / requested) * 100)) : 0}%)</div> : null}
-          </div>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 flex-1 max-w-3xl">
-            <Hero label="أعلى مبلغ ممكن" v={fmt(s.baseAmount)} u="ريال" />
-            <Hero label="القسط المتاح" v={fmt(cap.available)} u="ريال / شهر" />
-            <Hero label="النسبة الفعلية (APR)" v={best ? `${best.apr}%` : "—"} u={best ? `${best.product.rate}% ${best.product.rateType === "flat" ? "ثابتة معلنة" : "متناقصة"}` : ""} />
-            <Hero label="الاستقطاع بعد التمويل" v={`${afterDbr}%`} u={`من ${capPct}% مسموح`} />
-          </div>
-        </div>
-      </div>
-
-      {/* ===== الحسبة ===== */}
-      <div className="card p-5">
-        <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
-          <h3 className="font-bold">كيف حُسبت؟</h3>
-          <span className="text-[11px] text-slate-400 max-w-xl leading-4">{SAMA.source}</span>
-        </div>
-        <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-4">
-          <Big label="الدخل المعتمد" v={fmt(cap.income)} unit={cap.incomeBasis} />
-          <Big label="التزامات غير عقارية" v={fmt(cap.existingNonRealEstate)} unit="ريال شهرياً" />
-          <Big label="التزامات عقارية" v={fmt(cap.existingMortgage)} unit="ريال شهرياً" />
-          <Big label="سقف الأقساط" v={fmt(cap.maxInstallment)} unit={cap.bindingRule} />
-          <Big label="القسط الجديد المتاح" v={fmt(cap.available)} unit="ريال شهرياً" tone="brand" />
+    <div className="space-y-4">
+      <section className="card p-5 sm:p-7">
+        <span className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 h-7 text-xs font-bold ${CHIP[s.verdict]}`}><Icon name={el.icon} className="size-4" strokeWidth={2} />{el.label}</span>
+        <h2 className="mt-4 text-[22px] sm:text-2xl font-bold leading-snug max-w-3xl">{s.headline}</h2>
+        {best && <p className="mt-2 text-sm text-slate-500">الأنسب: <b className="text-ink">{best.product.lenderName}</b> · {best.product.name}</p>}
+        <div className="mt-6 grid grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-5">
+          <Fig label="أعلى مبلغ ممكن" v={fmt(s.baseAmount)} hint={requested ? `${Math.min(100, Math.round((s.baseAmount / requested) * 100))}% من المطلوب` : undefined} tone="text-brand-700" />
+          <Fig label="القسط المتاح" v={fmt(cap.available)} hint="شهرياً" />
+          <Fig label="النسبة الفعلية" v={best ? `${best.apr}%` : "—"} hint={best ? `${best.product.rate}% ${best.product.rateType === "flat" ? "ثابتة معلنة" : "متناقصة"}` : undefined} />
+          <Fig label="الاستقطاع بعد التمويل" v={`${afterDbr}%`} hint={`السقف ${capPct}%`} />
         </div>
         <DbrBar current={cap.currentDbr} after={afterDbr} cap={capPct} />
-        {cap.warnings.length > 0 && <div className="mt-3 text-xs text-amber-800 bg-amber-50 rounded-xl px-3 py-2">{cap.warnings.join(" · ")}</div>}
-      </div>
+      </section>
 
-      {/* ===== الاشتراطات الخفية ===== */}
-      {s.alerts.length > 0 && (
-        <div className="card p-5">
-          <h3 className="font-bold">ما لا تُظهره الحسبة — اشتراطات قد تُطلب</h3>
-          <p className="text-xs text-slate-500 mt-1 mb-4">تنبيهات مبنية على الأنظمة وممارسة السوق وخبرة الفريق. راجعها مع العميل قبل التقديم.</p>
-          <div className="grid md:grid-cols-2 gap-3">
-            {s.alerts.map((a) => <AlertCard key={a.id} a={a} />)}
-            {generalRules.map((r) => (
-              <div key={`r${r.id}`} className="rounded-2xl ring-1 ring-brand-200 bg-brand-50/40 p-4">
-                <div className="flex items-center gap-2 text-sm font-bold">{RULE_KIND[r.kind].emoji} {r.title}<Badge tone="brand">خبرة الفريق</Badge></div>
-                {r.body && <p className="text-sm text-slate-600 mt-1.5 leading-6">{r.body}</p>}
-                <div className="text-[11px] text-slate-400 mt-2">{r.author}</div>
-              </div>
-            ))}
+      <section>
+        <h3 className="font-bold text-[15px] mb-3 flex items-center gap-2">الجهات المناسبة<span className="num text-xs font-medium text-slate-400">{ok.length}</span></h3>
+        {ok.length === 0 ? <div className="card"><Empty art="search" title="لا جهة مؤهلة بهذه المعطيات">راجع المخارج بالأسفل.</Empty></div> : (
+          <div className="card overflow-hidden">
+            {ok.map((m, i) => <LenderRow key={m.product.id} m={m} rank={i + 1} exp={exp.get(Number(m.product.lenderId))} rules={rules.filter((r) => String(r.lender_id) === m.product.lenderId)} />)}
           </div>
-        </div>
-      )}
+        )}
+      </section>
 
-      {/* ===== المخارج ===== */}
-      <div className="card p-5">
-        <h3 className="font-bold">المخارج — كيف نرفع المبلغ أو نحوّل الرفض لقبول</h3>
-        <p className="text-xs text-slate-500 mt-1 mb-4">كل مخرج أُعيد حسابه فعلياً على المحرك بنفس معايير الجهات.</p>
-        {s.scenarios.length === 0 ? (
-          <p className="text-sm text-slate-500">لا توجد مخارج ترفع المبلغ حالياً — الوضع الحالي هو الأفضل بالمعطيات المدخلة.</p>
-        ) : (
-          <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-3">
+      {s.scenarios.length > 0 && (
+        <Fold title="مخارج لرفع المبلغ" icon="trend" meta={<span className="num">{s.scenarios.length}</span>}>
+          <ul className="grid md:grid-cols-2 gap-3">
             {s.scenarios.map((x) => (
-              <div key={x.key} className="rounded-2xl ring-1 ring-slate-200 p-4 flex flex-col">
+              <li key={x.key} className="rounded-xl border border-slate-200/70 p-4">
                 <div className="flex items-start justify-between gap-2">
-                  <div className="font-bold text-sm leading-6">{x.title}</div>
+                  <div className="font-semibold text-sm leading-6">{x.title}</div>
                   <Badge tone={x.effort === "سهل" ? "green" : x.effort === "متوسط" ? "amber" : "red"}>{x.effort}</Badge>
                 </div>
-                <div className="mt-3 flex items-baseline gap-2">
-                  <span className="text-2xl font-bold num text-brand-700">{fmt(x.amount)}</span>
+                <div className="mt-2 flex items-baseline gap-2">
+                  <span className="figure text-2xl font-semibold text-brand-700">{fmt(x.amount)}</span>
                   {x.gain > 0 && <span className="text-xs font-bold text-emerald-700 num">+{fmt(x.gain)}</span>}
                   {x.verdictAfter !== s.verdict && <Badge tone={ELIGIBILITY[x.verdictAfter].tone}>{ELIGIBILITY[x.verdictAfter].label}</Badge>}
                 </div>
-                <p className="text-xs text-slate-600 mt-2 leading-5 flex-1">{x.detail}</p>
-                <ol className="mt-3 text-[11px] text-slate-500 space-y-0.5 list-decimal ps-4">{x.steps.map((st, i) => <li key={i}>{st}</li>)}</ol>
-              </div>
+                <p className="text-[13px] text-slate-600 mt-2 leading-6">{x.detail}</p>
+                <details className="mt-2 group"><summary className="cursor-pointer list-none text-xs font-semibold text-slate-500 hover:text-ink inline-flex items-center gap-1"><Icon name="chevron-down" className="size-3.5 transition-transform group-open:rotate-180" />الخطوات</summary>
+                  <ol className="mt-2 text-xs text-slate-600 space-y-1 list-decimal ps-4 leading-5">{x.steps.map((st, i) => <li key={i}>{st}</li>)}</ol>
+                </details>
+              </li>
             ))}
-          </div>
-        )}
-      </div>
+          </ul>
+        </Fold>
+      )}
 
-      {/* ===== الجهات ===== */}
-      <div>
-        <div className="flex items-end justify-between mb-3">
-          <h3 className="font-bold">الجهات المناسبة ({ok.length})</h3>
-          <span className="text-xs text-slate-500">مرتبة حسب الملاءمة والتكلفة</span>
-        </div>
-        {ok.length === 0 && <div className="card p-5 text-sm text-slate-500">لا توجد جهة مؤهلة بالمعطيات الحالية — راجع المخارج أعلاه.</div>}
-        <div className="grid lg:grid-cols-2 gap-4">
-          {ok.map((m, i) => <LenderCard key={m.product.id} m={m} rank={i + 1} exp={exp.get(Number(m.product.lenderId))} rules={rules.filter((r) => String(r.lender_id) === m.product.lenderId)} />)}
-        </div>
-        {failed.length > 0 && (
-          <details className="card mt-4">
-            <summary className="p-4 cursor-pointer text-sm font-semibold select-none">جهات غير مناسبة حالياً ({failed.length}) — لماذا؟</summary>
-            <ul className="px-4 pb-4 space-y-2 text-sm">
-              {failed.map((m) => (
-                <li key={m.product.id} className="flex flex-wrap gap-x-3 gap-y-1 border-t border-slate-100 pt-2">
-                  <b className="min-w-40">{m.product.lenderName}</b>
-                  <span className="text-slate-500 text-xs">{m.product.name}</span>
-                  <span className="text-rose-700 text-xs">{m.checks.filter((c) => c.status === "fail").map((c) => `${c.label}: ${c.detail}`).join(" · ")}</span>
-                </li>
-              ))}
-            </ul>
-          </details>
-        )}
-        <p className="text-xs text-slate-500 mt-3">⚠️ معايير الجهات تقديرية حتى يتحقق منها فريق الائتمان. الأرقام دراسة مبدئية وليست عرضاً ملزماً.</p>
-      </div>
+      {(s.alerts.length > 0 || generalRules.length > 0) && (
+        <Fold title="اشتراطات قد تُطلب" icon="shield" open={blocking > 0} meta={<>{blocking > 0 && <Badge tone="red">{blocking} مانع</Badge>}<span className="num">{s.alerts.length + generalRules.length}</span></>}>
+          <ul className="space-y-2">{conds.slice(0, 3)}</ul>
+          {conds.length > 3 && (
+            <details className="group mt-3">
+              <summary className="cursor-pointer list-none text-[13px] font-semibold text-slate-500 hover:text-ink inline-flex items-center gap-1.5"><Icon name="chevron-down" className="size-4 transition-transform group-open:rotate-180" />الباقي <span className="num">{conds.length - 3}</span></summary>
+              <ul className="space-y-2 mt-3">{conds.slice(3)}</ul>
+            </details>
+          )}
+        </Fold>
+      )}
+
+      <Fold title="كيف حُسبت؟" icon="calc">
+        <dl className="grid sm:grid-cols-2 lg:grid-cols-5 gap-x-6 gap-y-4">
+          <Mini label="الدخل المعتمد" v={fmt(cap.income)} unit={cap.incomeBasis} />
+          <Mini label="التزامات غير عقارية" v={fmt(cap.existingNonRealEstate)} unit="شهرياً" />
+          <Mini label="التزامات عقارية" v={fmt(cap.existingMortgage)} unit="شهرياً" />
+          <Mini label="سقف الأقساط" v={fmt(cap.maxInstallment)} unit={cap.bindingRule} />
+          <Mini label="القسط الجديد المتاح" v={fmt(cap.available)} unit="شهرياً" tone />
+        </dl>
+        {cap.warnings.length > 0 && <div className="mt-4"><Callout tone="amber">{cap.warnings.join(" · ")}</Callout></div>}
+        <p className="mt-4 text-[11px] text-slate-400 leading-5">{SAMA.source}</p>
+      </Fold>
+
+      {failed.length > 0 && (
+        <Fold title="جهات غير مناسبة حالياً" icon="ban" meta={<span className="num">{failed.length}</span>}>
+          <ul className="text-[13px] divide-y divide-slate-100">
+            {failed.map((m) => (
+              <li key={m.product.id} className="py-2.5 grid sm:grid-cols-[180px_1fr] gap-x-4 gap-y-1">
+                <div><b>{m.product.lenderName}</b><div className="text-xs text-slate-500">{m.product.name}</div></div>
+                <div className="text-rose-700 leading-6">{m.checks.filter((c) => c.status === "fail").map((c) => `${c.label}: ${c.detail}`).join(" · ")}</div>
+              </li>
+            ))}
+          </ul>
+        </Fold>
+      )}
+      <p className="text-xs text-slate-400">دراسة مبدئية وليست عرضاً ملزماً. معايير الجهات تقديرية حتى يتحقق منها فريق الائتمان.</p>
     </div>
   );
 }
 
-function LenderCard({ m, rank, exp, rules }: { m: Match; rank: number; exp?: Experience; rules: LenderRule[] }) {
+function LenderRow({ m, rank, exp, rules }: { m: Match; rank: number; exp?: Experience; rules: LenderRule[] }) {
   const realistic = exp?.ratio ? Math.floor((m.offerPrincipal * Math.min(1.2, exp.ratio)) / 1000) * 1000 : null;
   const issues = m.checks.filter((c) => c.status !== "pass");
   return (
-    <div className={`card p-5 ${rank === 1 ? "ring-2 ring-brand-500/40" : ""}`}>
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <div className="flex items-center gap-2">
-            <span className={`size-6 rounded-lg grid place-items-center text-xs font-bold ${rank === 1 ? "bg-brand-700 text-white" : "bg-slate-100 text-slate-600"}`}>{rank}</span>
-            <span className="font-bold">{m.product.lenderName}</span>
+    <details className="group border-b border-slate-100 last:border-0">
+      <summary className="list-none cursor-pointer grid grid-cols-[auto_1fr_auto] md:grid-cols-[auto_minmax(0,1.6fr)_repeat(3,minmax(0,.8fr))_auto_auto] items-center gap-x-5 gap-y-2 px-5 py-4 hover:bg-slate-50/70 transition-colors">
+        <span className={`size-7 rounded-lg grid place-items-center text-xs font-bold font-display ${rank === 1 ? "bg-brand-800 text-gold-soft" : "bg-slate-100 text-slate-500"}`}>{rank}</span>
+        <div className="min-w-0"><div className="font-semibold text-sm truncate">{m.product.lenderName}</div><div className="text-xs text-slate-500 truncate">{m.product.name}</div></div>
+        <Num label="المبلغ" v={fmt(m.offerPrincipal)} strong />
+        <Num label="القسط" v={fmt(m.installment)} cls="hidden md:block" />
+        <Num label="النسبة الفعلية" v={`${m.apr}%`} cls="hidden md:block" />
+        <span className="hidden md:block"><Badge tone={m.verdict === "pass" ? "green" : "amber"}>{m.verdict === "pass" ? "مؤهل" : "بشروط"}</Badge></span>
+        <Icon name="chevron-down" className="hidden md:block size-4 text-slate-400 transition-transform group-open:rotate-180" />
+      </summary>
+      <div className="px-5 pb-5 pt-1 space-y-4">
+        <dl className="grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-3 text-[13px]">
+          <Pair k="المدة" v={`${m.tenor} شهراً`} />
+          <Pair k="إجمالي الأرباح" v={fmt(m.totalProfit)} />
+          <Pair k="رسوم إدارية" v={fmt(m.fee)} />
+          <Pair k="الحد الأعلى" v={fmt(m.maxPrincipal)} sub={`محدود بـ ${m.limitedBy}`} />
+          {m.retirement && m.retirement.after < m.installment && <Pair k="القسط بعد التقاعد" v={fmt(m.retirement.after)} />}
+          {m.ltv && <Pair k="التمويل إلى القيمة" v={`${m.ltv.pct}%`} sub={m.ltv.down != null ? `دفعة أولى ${fmt(m.ltv.down)}` : undefined} />}
+          {m.settle12 && <Pair k="سداد مبكر بعد سنة" v={fmt(m.settle12.balance)} sub={`تعويض حتى ${fmt(m.settle12.fee)}`} />}
+          {realistic != null && <Pair k="المتوقع من الواقع" v={fmt(realistic)} sub={`الجهة تعتمد ${Math.round((exp!.ratio ?? 1) * 100)}% من تقديرنا`} tone />}
+        </dl>
+        {exp && exp.n > 0 && (
+          <div className="rounded-xl bg-slate-50 p-3.5 text-[13px] leading-6">
+            <span className="font-semibold">سجل الفريق:</span> <span className="num">{exp.approved}</span> قبول من <span className="num">{exp.n}</span>{exp.similarN > 0 && exp.similarN !== exp.n ? <> · حالات مشابهة <span className="num">{exp.similarApproved}/{exp.similarN}</span></> : null}
+            {(exp.conditions.length > 0 || exp.reasons.length > 0) && <div className="mt-2 flex flex-wrap gap-1.5">{exp.conditions.slice(0, 4).map(([k, n]) => <Badge key={k} tone="blue">{OUTCOME_CONDITIONS[k] ?? k} ×{n}</Badge>)}{exp.reasons.slice(0, 3).map(([k, n]) => <Badge key={k} tone="red">{REJECT_REASONS[k] ?? k} ×{n}</Badge>)}</div>}
           </div>
-          <div className="text-xs text-slate-500 mt-1">{m.product.name} · {m.product.lenderType === "bank" ? "بنك" : "شركة تمويل"}</div>
-        </div>
-        <div className="flex flex-col items-end gap-1">
-          <Badge tone={m.verdict === "pass" ? "green" : "amber"}>{m.verdict === "pass" ? "مؤهل" : "مؤهل بشروط"}</Badge>
-          <span className="text-[11px] text-slate-400 num">ملاءمة {m.score}</span>
-        </div>
-      </div>
-
-      <div className="mt-4 grid grid-cols-3 gap-3">
-        <Cell label="المبلغ المقترح" v={fmt(m.offerPrincipal)} strong />
-        <Cell label="القسط" v={fmt(m.installment)} sub={m.retirement && m.retirement.after < m.installment ? `ثم ${fmt(m.retirement.after)} بعد التقاعد` : undefined} />
-        <Cell label="المدة" v={`${m.tenor}`} sub={`شهر (${Math.round((m.tenor / 12) * 10) / 10} سنة)`} />
-        <Cell label="النسبة الفعلية" v={`${m.apr}%`} sub={`${m.product.rate}% ${m.product.rateType === "flat" ? "ثابتة" : "متناقصة"}`} />
-        <Cell label="إجمالي الأرباح" v={fmt(m.totalProfit)} />
-        <Cell label="رسوم إدارية" v={fmt(m.fee)} />
-      </div>
-
-      <div className="mt-3 text-xs text-slate-600 space-y-1 leading-5">
-        <div>الحد الأعلى لهذه الجهة <b className="num">{fmt(m.maxPrincipal)}</b> — محدود بـ {m.limitedBy}.</div>
-        {m.ltv && <div>🏠 تمويل حتى {m.ltv.pct}% {m.ltv.down != null ? <>— دفعة أولى ≈ <b className="num">{fmt(m.ltv.down)}</b></> : null}</div>}
-        {m.settle12 && <div>↩︎ السداد المبكر بعد سنة: رصيد <span className="num">{fmt(m.settle12.balance)}</span> + تعويض بحد أقصى <span className="num">{fmt(m.settle12.fee)}</span> (أرباح 3 أشهر — ساما)</div>}
-        {realistic != null && <div className="text-brand-800">📊 من الواقع: الجهة اعتمدت في المتوسط <b className="num">{Math.round((exp!.ratio ?? 1) * 100)}%</b> من تقديرنا ← المتوقع فعلياً ≈ <b className="num">{fmt(realistic)}</b></div>}
-      </div>
-
-      {exp && exp.n > 0 && (
-        <div className="mt-3 rounded-xl bg-slate-50 p-3 text-xs leading-5">
-          <div className="font-bold text-slate-700">سجل الفريق مع هذه الجهة</div>
-          <div className="text-slate-600 mt-0.5"><span className="num">{exp.approved}</span> قبول من <span className="num">{exp.n}</span> طلب{exp.similarN > 0 && exp.similarN !== exp.n ? <> · حالات مشابهة: <span className="num">{exp.similarApproved}/{exp.similarN}</span></> : null}</div>
-          {exp.conditions.length > 0 && <div className="mt-1">طلبت سابقاً: {exp.conditions.slice(0, 4).map(([k, n]) => <span key={k} className="inline-block me-1 mb-1"><Badge tone="blue">{OUTCOME_CONDITIONS[k] ?? k} ×{n}</Badge></span>)}</div>}
-          {exp.reasons.length > 0 && <div className="mt-1">أسباب رفض سابقة: {exp.reasons.slice(0, 3).map(([k, n]) => <span key={k} className="inline-block me-1"><Badge tone="red">{REJECT_REASONS[k] ?? k} ×{n}</Badge></span>)}</div>}
-        </div>
-      )}
-
-      {rules.length > 0 && (
-        <ul className="mt-3 space-y-1.5 text-xs">
-          {rules.map((r) => <li key={r.id} className="flex gap-1.5 leading-5"><span>{RULE_KIND[r.kind].emoji}</span><span><b>{r.title}</b>{r.body ? ` — ${r.body}` : ""}</span></li>)}
+        )}
+        {rules.length > 0 && <ul className="space-y-1.5 text-[13px]">{rules.map((r) => <li key={r.id} className="flex gap-2 leading-6"><Icon name={RULE_KIND[r.kind].icon} className="size-4 mt-1 text-brand-700" /><span><b>{r.title}</b>{r.body ? `: ${r.body}` : ""}</span></li>)}</ul>}
+        <ul className="grid sm:grid-cols-2 gap-x-6 gap-y-1.5 text-xs">
+          {(issues.length ? [...issues, ...m.checks.filter((c) => c.status === "pass")] : m.checks).map((ch) => (
+            <li key={ch.key} className="flex gap-2 leading-5"><Icon name={ch.status === "pass" ? "check" : ch.status === "warn" ? "alert" : "x"} className={`size-3.5 mt-0.5 ${ch.status === "pass" ? "text-emerald-600" : ch.status === "warn" ? "text-amber-600" : "text-rose-600"}`} strokeWidth={2.2} /><span className="text-slate-600"><b className="text-ink">{ch.label}:</b> {ch.detail}</span></li>
+          ))}
         </ul>
-      )}
-
-      <details className="mt-3">
-        <summary className="text-xs text-brand-700 font-semibold cursor-pointer select-none">{issues.length ? `${issues.length} ملاحظات على المعايير` : "كل المعايير مستوفاة"} · التفاصيل</summary>
-        <ul className="mt-2 space-y-1 text-xs">{m.checks.map((ch) => <li key={ch.key} className="flex gap-1.5"><span>{ch.status === "pass" ? "✅" : ch.status === "warn" ? "⚠️" : "❌"}</span><span><b>{ch.label}:</b> {ch.detail}</span></li>)}</ul>
-      </details>
-    </div>
+      </div>
+    </details>
   );
 }
 
-function AlertCard({ a }: { a: Alert }) {
-  const tone = a.level === "block" ? "ring-rose-200 bg-rose-50/60" : a.level === "warn" ? "ring-amber-200 bg-amber-50/60" : "ring-slate-200 bg-white";
+function AlertItem({ a }: { a: Alert }) {
   return (
-    <div className={`rounded-2xl ring-1 p-4 ${tone}`}>
-      <div className="flex items-center gap-2 text-sm font-bold">{a.level === "block" ? "⛔" : a.level === "warn" ? "⚠️" : "ℹ️"} {a.title}</div>
-      <p className="text-sm text-slate-600 mt-1.5 leading-6">{a.detail}</p>
-      {a.exit && <p className="text-sm mt-2 leading-6"><b className="text-emerald-700">المخرج:</b> {a.exit}</p>}
-      <div className="text-[11px] text-slate-400 mt-2">المصدر: {a.source}</div>
-    </div>
+    <li className={`flex gap-3 rounded-xl p-4 ${a.level === "block" ? "bg-rose-50" : a.level === "warn" ? "bg-amber-50" : "border border-slate-200/70"}`}>
+      <Icon name={a.level === "block" ? "ban" : a.level === "warn" ? "alert" : "info"} className={`size-[18px] mt-0.5 ${a.level === "block" ? "text-rose-700" : a.level === "warn" ? "text-amber-700" : "text-slate-400"}`} />
+      <div className="flex-1 min-w-0">
+        <div className="text-sm font-semibold">{a.title}</div>
+        <p className="text-[13px] text-slate-600 mt-1 leading-6">{a.detail}</p>
+        {a.exit && <p className="text-[13px] mt-1.5 leading-6"><b className="text-emerald-700">المخرج:</b> {a.exit}</p>}
+        <div className="text-[11px] text-slate-400 mt-1.5">{a.source}</div>
+      </div>
+    </li>
   );
 }
 
 function DbrBar({ current, after, cap }: { current: number; after: number; cap: number }) {
   const W = (x: number) => `${Math.min(100, Math.max(0, x))}%`;
   return (
-    <div className="mt-5">
-      <div className="flex justify-between text-[11px] text-slate-500 mb-1.5"><span>نسبة الاستقطاع من الدخل</span><span className="num">0% — 100%</span></div>
-      <div className="relative h-3 rounded-full bg-slate-100 overflow-hidden">
-        <div className="absolute inset-y-0 start-0 bg-brand-200" style={{ width: W(after) }} />
-        <div className="absolute inset-y-0 start-0 bg-brand-600" style={{ width: W(current) }} />
-        <div className="absolute inset-y-0 w-0.5 bg-rose-500" style={{ insetInlineStart: W(cap) }} />
+    <div className="mt-7">
+      <div className="relative h-2.5 rounded-full bg-slate-100">
+        <div className="absolute inset-y-0 start-0 rounded-full bg-brand-200 origin-right grow-x" style={{ width: W(after) }} />
+        <div className="absolute inset-y-0 start-0 rounded-full bg-brand-700 origin-right grow-x" style={{ width: W(current) }} />
+        <div className="absolute -inset-y-1 w-0.5 rounded-full bg-gold" style={{ insetInlineStart: W(cap) }} />
       </div>
-      <div className="flex flex-wrap gap-4 text-[11px] text-slate-500 mt-1.5">
-        <span><i className="inline-block size-2 rounded-full bg-brand-600 me-1" />الحالي <span className="num">{current}%</span></span>
-        <span><i className="inline-block size-2 rounded-full bg-brand-200 me-1" />بعد التمويل <span className="num">{after}%</span></span>
-        <span><i className="inline-block size-2 rounded-full bg-rose-500 me-1" />السقف <span className="num">{cap}%</span></span>
+      <div className="flex flex-wrap gap-x-5 gap-y-1 text-xs text-slate-500 mt-2.5">
+        <span className="inline-flex items-center gap-1.5"><i className="size-2 rounded-full bg-brand-700" />الاستقطاع الحالي <b className="num text-ink">{current}%</b></span>
+        <span className="inline-flex items-center gap-1.5"><i className="size-2 rounded-full bg-brand-200" />بعد التمويل <b className="num text-ink">{after}%</b></span>
+        <span className="inline-flex items-center gap-1.5"><i className="h-3 w-0.5 rounded-full bg-gold" />السقف <b className="num text-ink">{cap}%</b></span>
       </div>
     </div>
   );
 }
 
-function Hero({ label, v, u }: { label: string; v: string; u?: string }) {
-  return (
-    <div className="rounded-2xl bg-white/10 ring-1 ring-white/15 p-3">
-      <div className="text-[11px] text-white/70">{label}</div>
-      <div className="text-xl font-bold num text-start mt-0.5">{v}</div>
-      {u && <div className="text-[10px] text-white/60 mt-0.5 leading-4">{u}</div>}
-    </div>
-  );
+function Fig({ label, v, hint, tone = "text-ink" }: { label: string; v: string; hint?: string; tone?: string }) {
+  return <div className="min-w-0"><div className="eyebrow">{label}</div><div className={`figure text-[26px] sm:text-[28px] font-semibold leading-none mt-1.5 ${tone}`}>{v}</div>{hint && <div className="text-xs text-slate-500 mt-1.5">{hint}</div>}</div>;
 }
-function Big({ label, v, unit, tone }: { label: string; v: string; unit?: string; tone?: string }) {
-  return (
-    <div>
-      <div className="text-xs text-slate-500">{label}</div>
-      <div className={`text-2xl font-bold num text-start mt-1 ${tone === "brand" ? "text-brand-700" : ""}`}>{v}</div>
-      {unit && <div className="text-[11px] text-slate-400 mt-0.5 leading-4">{unit}</div>}
-    </div>
-  );
+function Mini({ label, v, unit, tone }: { label: string; v: string; unit?: string; tone?: boolean }) {
+  return <div><dt className="text-xs text-slate-500">{label}</dt><dd className={`figure text-xl font-semibold mt-1 ${tone ? "text-brand-700" : ""}`}>{v}</dd>{unit && <div className="text-[11px] text-slate-400 mt-0.5 leading-4">{unit}</div>}</div>;
 }
-function Cell({ label, v, sub, strong }: { label: string; v: string; sub?: string; strong?: boolean }) {
-  return (
-    <div className={`rounded-xl p-2.5 ${strong ? "bg-brand-50" : "bg-slate-50"}`}>
-      <div className="text-[11px] text-slate-500">{label}</div>
-      <div className={`num text-start font-bold ${strong ? "text-brand-800 text-lg" : ""}`}>{v}</div>
-      {sub && <div className="text-[10px] text-slate-400 leading-4">{sub}</div>}
-    </div>
-  );
+function Num({ label, v, strong, cls = "" }: { label: string; v: string; strong?: boolean; cls?: string }) {
+  return <div className={`min-w-0 ${cls}`}><div className="text-[11px] text-slate-500">{label}</div><div className={`num font-semibold ${strong ? "text-[15px] text-brand-800" : "text-sm"}`}>{v}</div></div>;
+}
+function Pair({ k, v, sub, tone }: { k: string; v: string; sub?: string; tone?: boolean }) {
+  return <div><dt className="text-xs text-slate-500">{k}</dt><dd className={`num font-semibold mt-0.5 ${tone ? "text-brand-700" : ""}`}>{v}</dd>{sub && <div className="text-[11px] text-slate-400 leading-4">{sub}</div>}</div>;
 }

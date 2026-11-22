@@ -242,9 +242,9 @@ export function deepStudy(p: Profile, products: Product[], credit?: CreditAnalys
     alerts = alerts.filter((a) => !a.id.startsWith("simah_"));
     const fmtN = (n: number) => Math.round(n).toLocaleString("en-US");
     if (credit.blockers.length)
-      alerts.unshift({ id: "credit_block", level: "block", title: `سمة: ${credit.gradeLabel}`, detail: credit.blockers.join(" • "), exit: credit.actions.slice(0, 3).join(" ثم "), source: "تحليل تقرير سمة" });
+      alerts.unshift({ id: "credit_block", level: "block", title: `سمة: ${credit.gradeLabel}`, detail: credit.blockers.join(" · "), exit: credit.actions.slice(0, 3).join(" ثم "), source: "تحليل تقرير سمة" });
     else if (credit.grade !== "A")
-      alerts.unshift({ id: "credit_warn", level: "warn", title: `سمة: ${credit.gradeLabel}`, detail: credit.findings.filter((f) => f.level === "warn").map((f) => f.text).join(" • ") || "ملاحظات على السجل", exit: credit.actions[0], source: "تحليل تقرير سمة" });
+      alerts.unshift({ id: "credit_warn", level: "warn", title: `سمة: ${credit.gradeLabel}`, detail: credit.findings.filter((f) => f.level === "warn").map((f) => f.text).join(" · ") || "ملاحظات على السجل", exit: credit.actions[0], source: "تحليل تقرير سمة" });
     if (credit.stats.financeCoDefaults > 0)
       alerts.push({ id: "credit_fc", level: "warn", title: "تعثر لدى شركة تمويل", detail: "البنوك تقرأ تعثر شركات التمويل أسوأ من تعثر البنك وتطلب مهلة أطول بعد السداد.", exit: "سدّد واحصل على مخالصة، ثم ابدأ بالجهات الأكثر مرونة.", source: "ممارسة سوق" });
     if (credit.stats.totalToClear > 0)
@@ -255,10 +255,10 @@ export function deepStudy(p: Profile, products: Product[], credit?: CreditAnalys
   // المخارج تُضاف للتوصيات بصيغة مختصرة
   const recs = [...s.recommendations];
   if (sc[0] && sc[0].gain > 0) recs.splice(1, 0, `أقوى مخرج لرفع المبلغ: ${sc[0].title} (+${fmt(sc[0].gain)} ريال).`);
-  if (alerts.some((x) => x.level === "block")) recs.unshift("⛔ يوجد مانع يجب معالجته قبل أي تقديم — راجع التنبيهات.");
+  if (alerts.some((x) => x.level === "block")) recs.unshift("يوجد مانع يجب معالجته قبل أي تقديم. راجع الاشتراطات.");
   const blocked = !!credit && credit.grade === "E";
   if (blocked) recs.unshift("المبالغ أدناه هي قدرة العميل بعد رفع الموانع الائتمانية، لا قبلها.");
-  return { ...s, verdict: blocked ? "not_eligible" : s.verdict, headline: blocked ? "متوقف حالياً — موانع ائتمانية يجب رفعها أولاً" : s.headline, recommendations: recs, alerts, scenarios: sc, baseAmount, credit: credit ?? null };
+  return { ...s, verdict: blocked ? "not_eligible" : s.verdict, headline: blocked ? "متوقف حالياً، موانع ائتمانية يجب رفعها أولاً" : s.headline, recommendations: recs, alerts, scenarios: sc, baseAmount, credit: credit ?? null };
 }
 
 export type { Match };

@@ -1,38 +1,54 @@
+import Link from "next/link";
 import { requireUser, ROLE_LABEL, can } from "@/lib/auth";
-import { logoutAction } from "@/app/actions";
+import { all, get } from "@/lib/db";
 import { Logo } from "@/components/logo";
-import Nav from "@/components/nav";
+import { SideNav, MobileTabs, SearchButton, UserMenu, CommandPalette, type NavItem, type PaletteAction } from "@/components/shell";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const u = await requireUser();
-  const items = [
-    { href: "/", label: "لوحة المتابعة", icon: "grid" },
-    { href: "/deals", label: "الصفقات", icon: "deal" },
+  const [clients, waiting] = await Promise.all([
+    all<{ id: number; name: string; no: string }>("SELECT id, full_name name, file_no no FROM clients ORDER BY updated_at DESC LIMIT 400"),
+    get<{ n: number }>("SELECT COUNT(*) n FROM wa_messages m WHERE m.id IN (SELECT MAX(id) FROM wa_messages GROUP BY phone) AND m.direction = 'in'"),
+  ]);
+  const nav: NavItem[] = [
+    { href: "/", label: "الرئيسية", icon: "home" },
     { href: "/clients", label: "العملاء", icon: "users" },
-    { href: "/inbox", label: "واتساب", icon: "chat" },
+    { href: "/deals", label: "الصفقات", icon: "bridge" },
+    { href: "/inbox", label: "المحادثات", icon: "chat", badge: Number(waiting?.n ?? 0) },
+    { href: "/lenders", label: "الجهات", icon: "bank", match: ["/knowledge"] },
+  ];
+  const menu: PaletteAction[] = [
+    { href: "/account", label: "حسابي والأمان", icon: "shield" },
     { href: "/calculator", label: "الحاسبة السريعة", icon: "calc" },
-    { href: "/lenders", label: "جهات التمويل", icon: "bank" },
+    ...(can(u, "user.manage") ? [{ href: "/users", label: "المستخدمون", icon: "users" }] : []),
+    ...(can(u, "audit.view") ? [{ href: "/audit", label: "سجل التدقيق", icon: "list" }] : []),
+  ];
+  const actions: PaletteAction[] = [
+    ...(can(u, "client.create") ? [{ href: "/clients/new", label: "عميل جديد", icon: "plus", keys: "new اضافه" }] : []),
+    ...nav.map((n) => ({ href: n.href, label: n.label, icon: n.icon })),
     { href: "/knowledge", label: "خبرة الجهات", icon: "bulb" },
-    ...(can(u, "user.manage") ? [{ href: "/users", label: "المستخدمون", icon: "shield" }] : []),
-    ...(can(u, "audit.view") ? [{ href: "/audit", label: "سجل التدقيق", icon: "log" }] : []),
+    ...menu,
   ];
   return (
-    <div className="min-h-screen lg:grid lg:grid-cols-[250px_1fr]">
-      <aside className="no-print lg:sticky lg:top-0 lg:h-screen bg-white border-l border-slate-200/80 flex flex-col">
-        <div className="p-5 flex items-center justify-between"><Logo /><div className="lg:hidden flex gap-2"><a href="/account" className="btn-ghost btn-sm">حسابي</a><form action={logoutAction}><button className="btn-ghost btn-sm">خروج</button></form></div></div>
-        <Nav items={items} />
-        <div className="mt-auto p-4 border-t border-slate-100 hidden lg:block">
-          <div className="flex items-center gap-3">
-            <div className="size-9 rounded-full bg-brand-100 text-brand-800 grid place-items-center font-bold">{u.name.slice(0, 1)}</div>
-            <div className="min-w-0 flex-1"><div className="text-sm font-semibold truncate">{u.name}</div><div className="text-xs text-slate-500">{ROLE_LABEL[u.role]} · <a href="/account" className="text-brand-700 hover:underline">حسابي</a></div></div>
-          </div>
-          <form action={logoutAction}><button className="btn-ghost btn-sm w-full mt-3">تسجيل الخروج</button></form>
-        </div>
+    <div className="min-h-dvh lg:grid lg:grid-cols-[236px_minmax(0,1fr)]">
+      <aside className="no-print hidden lg:flex sticky top-0 h-dvh flex-col gap-4 px-3 pt-5 pb-3">
+        <Link href="/" className="px-2"><Logo /></Link>
+        <SearchButton />
+        <SideNav items={nav} />
+        <div className="mt-auto"><UserMenu name={u.name} role={ROLE_LABEL[u.role]} items={menu} /></div>
       </aside>
-      <main className="p-4 sm:p-6 lg:p-8 max-w-[1400px] w-full">
-        {process.env.VERCEL && <div className="no-print mb-5 rounded-xl bg-amber-50 ring-1 ring-amber-200 px-4 py-2.5 text-xs text-amber-900">نسخة عرض تجريبية: كل البيانات وهمية، وقد تعود للوضع الافتراضي عند إعادة تشغيل الخادم. لا تُدخل بيانات عملاء حقيقية.</div>}
-        {children}
-      </main>
+      <div className="min-w-0 lg:py-2.5 lg:pe-2.5">
+        <header className="no-print lg:hidden sticky top-0 z-30 flex items-center gap-1 h-14 px-3 bg-canvas/90 backdrop-blur border-b border-slate-200/70">
+          <Link href="/" className="me-auto ps-1"><Logo compact /></Link>
+          <SearchButton compact />
+          <UserMenu name={u.name} role={ROLE_LABEL[u.role]} items={menu} compact />
+        </header>
+        <main className="sheet lg:min-h-[calc(100dvh-1.25rem)] px-4 sm:px-6 lg:px-10 pt-6 lg:pt-9 pb-28 lg:pb-12">
+          <div className="mx-auto w-full max-w-[1180px]">{children}</div>
+        </main>
+      </div>
+      <MobileTabs items={nav} />
+      <CommandPalette clients={clients} actions={actions} />
     </div>
   );
 }

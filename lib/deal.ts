@@ -374,9 +374,9 @@ export function dealStudy(x: DealInput, b: Borrower, credit?: { bankReopenMonths
 
   const verdict: DealStudy["verdict"] = st.mortgage && !V ? "needs_info" : clientNet < 0 || (cover != null && cover < 1.1) ? "short" : clientNet < 20000 ? "tight" : "go";
   const headline =
-    verdict === "go" ? `الصفقة تُغلق — أتعابنا ${fmt(fee)} ويبقى للعميل ${fmt(clientNet)}` :
-    verdict === "tight" ? `تُغلق بهامش ضيق — أتعابنا ${fmt(fee)}` :
-    verdict === "short" ? `لا تُغلق بالأرقام الحالية — عجز ${fmt(Math.max(0, -clientNet))}` :
+    verdict === "go" ? `الصفقة تُغلق، أتعابنا ${fmt(fee)} ويبقى للعميل ${fmt(clientNet)}` :
+    verdict === "tight" ? `تُغلق بهامش ضيق، أتعابنا ${fmt(fee)}` :
+    verdict === "short" ? `لا تُغلق بالأرقام الحالية، العجز ${fmt(Math.max(0, -clientNet))}` :
     "ناقصة: نحتاج تقييم العقار";
 
   // ===== تفصيل الحساب =====

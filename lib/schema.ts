@@ -4,6 +4,11 @@ export const ADD_COLUMNS: [string, string, string][] = [
   ["clients", "property_value", "REAL"],
   ["clients", "co_income", "REAL"],
   ["clients", "extra", "TEXT"],
+  ["users", "phone", "TEXT"],
+  ["users", "totp_secret", "TEXT"],
+  ["users", "totp_enabled", "INTEGER NOT NULL DEFAULT 0"],
+  ["users", "totp_last_step", "INTEGER NOT NULL DEFAULT 0"],
+  ["users", "otp_fails", "INTEGER NOT NULL DEFAULT 0"],
 ];
 export const SCHEMA = `
 CREATE TABLE IF NOT EXISTS users (
@@ -255,6 +260,28 @@ CREATE TABLE IF NOT EXISTS deals (
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+CREATE TABLE IF NOT EXISTS passkeys (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  credential_id TEXT NOT NULL UNIQUE,
+  public_key TEXT NOT NULL,
+  counter BIGINT NOT NULL DEFAULT 0,
+  transports TEXT,
+  name TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  last_used_at TEXT
+);
+CREATE TABLE IF NOT EXISTS login_codes (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  code_hash TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  used INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_passkeys_user ON passkeys(user_id);
+CREATE INDEX IF NOT EXISTS idx_login_codes_user ON login_codes(user_id);
 CREATE INDEX IF NOT EXISTS idx_outcomes_lender ON outcomes(lender_id, finance_type);
 CREATE INDEX IF NOT EXISTS idx_docs_client ON documents(client_id);
 CREATE INDEX IF NOT EXISTS idx_apps_client ON applications(client_id);

@@ -231,7 +231,7 @@ export function analyzeCredit(r: CreditReport): CreditAnalysis {
   if (!actions.length) actions.push("لا إجراء مطلوب على السجل الائتماني.");
 
   const grade: CreditAnalysis["grade"] = blocked ? "E" : sev >= 60 ? "D" : sev >= 35 ? "C" : sev >= 12 ? "B" : "A";
-  const gradeLabel = { A: "ممتاز — مقبول لدى الجميع", B: "جيد — مقبول مع ملاحظات", C: "ضعيف — شركات التمويل غالباً", D: "سيئ — يحتاج معالجة قبل أي تقديم", E: "مغلق — مانع قائم" }[grade];
+  const gradeLabel = { A: "ممتاز، مقبول لدى الجميع", B: "جيد، مقبول مع ملاحظات", C: "ضعيف، شركات التمويل غالباً", D: "سيئ، يحتاج معالجة قبل أي تقديم", E: "مغلق، مانع قائم" }[grade];
   const derivedSimah = activeDefaults.length || jActive.length || r.serviceSuspension ? "default" : recentDelays || settledDefaults.some((d) => (d.settledMonthsAgo ?? 0) < 24) ? "late" : "clean";
 
   return { grade, gradeLabel, severity: sev, derivedSimah, banks, financeCompanies: fcs, stats, blockers, findings, actions };
