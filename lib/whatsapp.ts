@@ -48,6 +48,10 @@ export interface WaContext {
     days: number;
     risks: string[];
     breakEvenDiscount: number | null;
+    structureLabel?: string;
+    feePct?: { settle: number; finance: number };
+    summary?: import("./deal").DealStudy["summary"];
+    bestAlt?: string | null;
   } | null;
   missingDocs: { label: string; why?: string }[];
   /** الملف مرفوض (حالة العميل) أو الصفقة خاسرة */
@@ -218,18 +222,36 @@ function internal(c: WaContext) {
     out.push(c.projectHeadline ?? "لا توجد دراسة صفقة محفوظة.");
     return out.join("\n\n");
   }
-  const V: Record<string, string> = { go: "✅ تُغلق", tight: "🟡 هامش ضيق", short: "🔴 عجز", needs_info: "⚪ ناقصة" };
-  out.push(`*الحكم:* ${V[d.verdict]}`);
-  out.push([
-    `💼 رأس المال المطلوب: *${n(d.capital)}*`,
-    `💰 الأتعاب: *${n(d.fee)}* (سداد ${n(d.feeSettle)} + تمويل ${n(d.feeFinance)})`,
-    `📈 العائد: *${d.roi ?? "—"}%* خلال ~${d.days} يوماً`,
-    `🛡️ تغطية الضمان: *${d.cover ?? "—"}x*`,
-    `🏦 التمويل الجديد: عقاري ${n(d.mortgage)} + شخصي ${n(d.personal)}`,
-    `👤 يبقى للعميل: *${n(d.clientNet)}*`,
-  ].join("\n"));
-  if (d.breakEvenDiscount) out.push(`⚠️ يلزم خصم ≈ ${d.breakEvenDiscount}% على التنفيذ والتعثرات لسد العجز`);
-  if (d.risks.length) out.push(`*أهم المخاطر*\n${d.risks.slice(0, 4).map((r) => `• ${r}`).join("\n")}`);
+  const m = d.summary;
+  if (!m) return out.join("\n\n");
+  if (d.structureLabel) out[0] += `\nالهيكل: ${d.structureLabel}`;
+
+  // 1) الالتزامات
+  const ob = m.obligations.map((o) => `• ${o.label}${o.byBank ? " _(يشتريه البنك الجديد)_" : ""}: ${n(o.amount)}`);
+  const kept = m.kept.length ? `\n_يبقى قائماً بدون سداد: ${m.kept.map((k) => `${k.label}${k.monthly ? ` بقسط ${n(k.monthly)} شهرياً` : ""}`).join("، ")}_` : "";
+  out.push(`${LINE}\n*1) الالتزامات اللي تتسدد*\n${ob.join("\n")}\n*الإجمالي: ${n(m.totalObligations)}*${kept}`);
+
+  // 2) التمويل الجديد
+  out.push(`*2) التمويل الجديد*\n${m.financing.map((f) => `• ${f.label}: ${n(f.amount)}`).join("\n")}${m.financing.length > 1 ? `\n*الإجمالي: ${n(m.totalFinancing)}*` : ""}`);
+
+  // 3) بعد السداد
+  const after = [`التمويل ${n(m.totalFinancing)}`, `ناقص الالتزامات ${n(m.totalObligations)}`, ...m.costs.map((c) => `ناقص ${c.label} ${n(c.amount)}`)];
+  out.push(`*3) بعد سداد كل الالتزامات*\n${after.join("\n")}\n${m.afterSettle >= 0 ? `= يتبقى *${n(m.afterSettle)}*` : `= ينقص *${n(-m.afterSettle)}* ❗ التمويل ما يكفي حتى لسداد الالتزامات`}`);
+
+  // 4) أتعابنا
+  const p = d.feePct;
+  out.push(`*4) أتعابنا*\n• سداد المتعثرات${p ? ` ${p.settle}%` : ""}: ${n(d.feeSettle)}\n• استخراج التمويل${p ? ` ${p.finance}%` : ""}: ${n(d.feeFinance)}${d.fee !== d.feeSettle + d.feeFinance ? `\n• مقطوع: ${n(d.fee - d.feeSettle - d.feeFinance)}` : ""}\n*الإجمالي: ${n(d.fee)}*`);
+
+  // 5) النتيجة
+  const res = m.net >= 0
+    ? `${m.net < 20000 ? "🟡" : "✅"} *يبقى للعميل ${n(m.net)} ريال* بعد أتعابنا${m.net < 20000 ? " (هامش ضيق)" : ""}`
+    : `🔴 *عجز ${n(-m.net)} ريال*`;
+  out.push(`*5) النتيجة*\n${m.afterSettle >= 0 ? `يتبقى ${n(m.afterSettle)} ناقص أتعابنا ${n(d.fee)}` : `ينقص ${n(-m.afterSettle)} وفوقه أتعابنا ${n(d.fee)}`}\n${res}`);
+
+  const extra = [`💼 رأس المال اللي ندفعه مؤقتاً: ${n(d.capital)} · المدة ≈ ${d.days} يوماً${d.cover ? ` · تغطية الضمان ${d.cover}x` : ""}`];
+  if (m.net < 0 && d.breakEvenDiscount) extra.push(`⚠️ لسد العجز يلزم خصم ≈ ${Math.ceil(d.breakEvenDiscount)}% على التنفيذ والتعثرات`);
+  if (d.bestAlt) extra.push(`💡 ${d.bestAlt}`);
+  out.push(`${LINE}\n${extra.join("\n")}`);
   return out.join("\n\n");
 }
 

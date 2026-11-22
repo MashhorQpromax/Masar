@@ -5,7 +5,7 @@ import { analyzeCredit, type CreditReport } from "./simah";
 import { projectStudy, type ProjectInput } from "./project";
 import type { WaContext } from "./whatsapp";
 import { FINANCE_TYPE, BANKS } from "./labels";
-import { dealStudy, defaultInput, normFee, itemsFrom, splitItems, type DealInput, type Borrower, type Stage } from "./deal";
+import { dealStudy, dealAlternatives, compareStructures, STRUCTURES, defaultInput, normFee, itemsFrom, splitItems, type DealInput, type Borrower, type Stage } from "./deal";
 import { type Product, type Profile, type Sector, type FinanceType, type Simah, type Obligation } from "./engine";
 
 export interface ClientRow {
@@ -359,6 +359,16 @@ export async function waContextFor(c: ClientRow, staffName: string, link: string
       bankName: deal.input.targetBank ? BANKS[deal.input.targetBank] ?? null : null,
       capital: d.capital, fee: d.fee, feeSettle: d.feeSettle, feeFinance: d.feeFinance, roi: d.roi, cover: d.cover, days: d.days,
       risks: d.risks.filter((r) => r.level !== "info").map((r) => r.text), breakEvenDiscount: d.breakEvenDiscount,
+      structureLabel: STRUCTURES[d.structure].label,
+      feePct: { settle: deal.input.fee.settlePct, finance: deal.input.fee.financePct },
+      summary: d.summary,
+      bestAlt: d.verdict === "go" ? null : (() => {
+        const a = dealAlternatives(deal.input, deal.borrower, deal.credit).find((x) => x.tone === "good");
+        if (a) return `أقرب حل: ${a.title}`;
+        const best = compareStructures(deal.input, deal.borrower, deal.credit).sort((p, q) => q.s.clientNet - p.s.clientNet)[0];
+        if (best && best.structure !== d.structure) return `أقرب هيكل: ${STRUCTURES[best.structure].label} (${best.s.clientNet >= 0 ? `يبقى ${Math.round(best.s.clientNet).toLocaleString("en-US")}` : `عجز ${Math.round(-best.s.clientNet).toLocaleString("en-US")}`}${best.s.breakEvenDiscount ? `، يقفل بخصم ≈ ${Math.ceil(best.s.breakEvenDiscount)}%` : ""})`;
+        return null;
+      })(),
     } : null,
     missingDocs: dedupeDocs(await missingDocs(c.id)),
     link,

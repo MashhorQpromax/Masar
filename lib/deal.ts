@@ -182,6 +182,17 @@ export function itemsFrom(report: CreditReport | null, obligations: { kind: stri
 export interface DealStudy {
   structure: Structure;
   keptMonthly: number; // أقساط الالتزامات التي تبقى قائمة
+  /** ملخص مبسط بترتيب: الالتزامات ← التمويل ← بعد السداد ← أتعابنا ← النتيجة */
+  summary: {
+    obligations: { label: string; amount: number; byBank: boolean }[];
+    totalObligations: number;
+    kept: { label: string; monthly: number | null }[];
+    financing: { label: string; amount: number }[];
+    totalFinancing: number;
+    costs: { label: string; amount: number }[];
+    afterSettle: number; // التمويل − الالتزامات − التكاليف (قبل أتعابنا)
+    net: number; // بعد أتعابنا = يبقى للعميل
+  };
   /** تفصيل الحساب سطراً بسطر ليتحقق منه المستخدم بنفسه */
   explain: { group: string; label: string; calc?: string; note?: string; value: number; tone?: "plus" | "minus" | "total" }[];
   verdict: "go" | "tight" | "short" | "needs_info";
@@ -404,8 +415,26 @@ export function dealStudy(x: DealInput, b: Borrower, credit?: { bankReopenMonths
     ex.push({ group: G, label: clientNet < 0 ? "= عجز" : "= يبقى للعميل", value: clientNet, tone: "total" });
   }
 
+  // ===== الملخص المبسط =====
+  const short = (l: string) => {
+    const [kind, rest] = l.split("—").map((t) => t.replace(/\(\d{4}\/\d{2}\/\d{2}\)/g, "").replace(/\b\d{6,}\b/g, "").replace(/\s+/g, " ").trim());
+    return rest ? `${kind} — ${rest}` : kind;
+  };
+  const obligations = active.map((i) => ({ label: short(i.label), amount: r0(i.pay), byBank: i.by === "bank" }));
+  const financingLines = [...(st.mortgage ? [{ label: "عقاري", amount: mortgage }] : []), ...(st.personal ? [{ label: "شخصي", amount: personal }] : [])];
+  const costs = [
+    ...(st.personal ? [{ label: "رسوم إدارية للبنك", amount: adminFee(personal) }] : []),
+    ...(transferTax ? [{ label: `ضريبة التصرفات ${x.transferTaxPct}%`, amount: transferTax }] : []),
+    ...(saleTax ? [{ label: "ضريبة البيع للبنك", amount: saleTax }] : []),
+    ...(fixedCosts ? [{ label: "تكاليف ثابتة (تقييم، رسوم)", amount: fixedCosts }] : []),
+  ];
+  const totalObligations = obligations.reduce((a, o) => a + o.amount, 0);
+  const totalFinancing = mortgage + personal;
+  const afterSettle = r0(totalFinancing - totalObligations - costs.reduce((a, c) => a + c.amount, 0));
+  const summary = { obligations, totalObligations, kept: kept.map((i) => ({ label: short(i.label).replace(/^مخالصة\s+/, ""), monthly: i.monthly ?? null })), financing: financingLines, totalFinancing, costs, afterSettle, net: r0(afterSettle - fee) };
+
   return {
-    structure, keptMonthly, explain: ex,
+    structure, keptMonthly, explain: ex, summary,
     verdict, headline, paidByCompany: r0(paidByCompany), paidByBank: r0(paidByBank), transferTax, saleTax, capital,
     financing: { age, monthsToRetire, pension, personalInstallment, personalMonths, personal, mortgagePre: pre, mortgagePost: post, mortgageMonths: maxM, mortgageByIncome, mortgageByLtv, mortgage, source, dbrAfter },
     waterfall, downPayment, personalCash, fee, feeSettle, feeFinance, settleBase, financeBase, suggestedPct, suggestedWhy: why, dueFromClient, clientNet, surplusBeforeFee, roi, days, annualized, cover, breakEvenDiscount, risks,
