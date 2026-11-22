@@ -2,7 +2,7 @@
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { WA, sendText, sendTemplate, windowOpen } from "@/lib/wa-cloud";
-import { normalizePhone } from "@/lib/whatsapp";
+import { normalizePhone, clientGate, WA_TEMPLATES } from "@/lib/whatsapp";
 import { revalidatePath } from "next/cache";
 import crypto from "node:crypto";
 import { z } from "zod";
@@ -13,7 +13,7 @@ import { requiredDocuments } from "@/lib/engine";
 import { analyzeCredit } from "@/lib/simah";
 import { parseSimahPages, type ParsedSimah } from "@/lib/simah-parse";
 import { dealStudy, defaultInput, normFee, STAGE_LABEL, type DealInput, type Stage } from "@/lib/deal";
-import { borrowerOf, latestCredit } from "@/lib/data";
+import { borrowerOf, latestCredit, waContextFor, dealFor } from "@/lib/data";
 
 export type FormState = { error?: string; ok?: string } | undefined;
 
@@ -581,6 +581,42 @@ export async function setDealStage(clientId: number, fd: FormData) {
   revalidatePath("/deals");
 }
 
+/** اعتماد رفض الملف: الصفقة لا تقفل — نوقفها ولا نراسل العميل */
+export async function rejectDeal(clientId: number, fd: FormData) {
+  const u = await requireUser("client.edit");
+  const c = await getClient(clientId);
+  if (!c) return;
+  const d = await dealFor(c);
+  const reason = str(fd.get("reason")) ?? (d.study.verdict === "short" ? `الصفقة لا تقفل — عجز ${Math.round(Math.max(0, -d.study.clientNet)).toLocaleString("en-US")} ريال` : "رفض");
+  const row = await get<{ stage_log: string }>("SELECT stage_log FROM deals WHERE client_id = ?", clientId);
+  if (row) {
+    const log = JSON.parse(row.stage_log) as unknown[];
+    log.push({ stage: "lost", at: new Date().toISOString().slice(0, 16).replace("T", " "), by: u.name, note: reason });
+    await run("UPDATE deals SET stage = 'lost', stage_log = ?, updated_at = datetime('now') WHERE client_id = ?", JSON.stringify(log.slice(-100)), clientId);
+  }
+  await run("UPDATE clients SET status = 'rejected', next_step = NULL, updated_at = datetime('now') WHERE id = ?", clientId);
+  await run("UPDATE share_links SET revoked = 1 WHERE client_id = ? AND revoked = 0", clientId);
+  await run("INSERT INTO notes (client_id, kind, body, user_id) VALUES (?, 'note', ?, ?)", clientId, `🔴 رُفض الملف: ${reason}`, u.id);
+  await audit(u, "client_status", "client", clientId, { from: c.status, to: "rejected", reason });
+  revalidatePath(`/clients/${clientId}`); revalidatePath("/deals"); revalidatePath("/");
+}
+
+export async function reopenDeal(clientId: number) {
+  const u = await requireUser("client.edit");
+  const c = await getClient(clientId);
+  if (!c) return;
+  const row = await get<{ stage_log: string }>("SELECT stage_log FROM deals WHERE client_id = ?", clientId);
+  if (row) {
+    const log = JSON.parse(row.stage_log) as unknown[];
+    log.push({ stage: "study", at: new Date().toISOString().slice(0, 16).replace("T", " "), by: u.name, note: "أُعيد فتح الملف" });
+    await run("UPDATE deals SET stage = 'study', stage_log = ?, updated_at = datetime('now') WHERE client_id = ?", JSON.stringify(log.slice(-100)), clientId);
+  }
+  await run("UPDATE clients SET status = 'study', updated_at = datetime('now') WHERE id = ?", clientId);
+  await run("INSERT INTO notes (client_id, kind, body, user_id) VALUES (?, 'note', ?, ?)", clientId, "🔄 أُعيد فتح الملف للدراسة", u.id);
+  await audit(u, "client_status", "client", clientId, { from: c.status, to: "study" });
+  revalidatePath(`/clients/${clientId}`); revalidatePath("/deals"); revalidatePath("/");
+}
+
 // ===== حسابي =====
 export async function changePasswordAction(_: FormState, fd: FormData): Promise<FormState> {
   const u = await requireUser();
@@ -600,9 +636,19 @@ async function baseUrl() {
   const proto = h.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
   return `${proto}://${host}`;
 }
+/** يمنع مراسلة العميل إذا الملف مرفوض أو الصفقة فيها عجز */
+async function clientMessagingBlock(clientId: number): Promise<string | null> {
+  const c = await getClient(clientId);
+  if (!c) return "العميل غير موجود";
+  const g = clientGate(await waContextFor(c, "", null));
+  return g.allowed.some((k) => WA_TEMPLATES[k].client) ? null : g.reason;
+}
+
 export async function createShareLink(clientId: number): Promise<{ url?: string; error?: string }> {
   const u = await requireUser();
   if (!can(u, "client.edit")) return { error: "لا تملك صلاحية" };
+  const blocked = await clientMessagingBlock(clientId);
+  if (blocked) return { error: blocked };
   const existing = await get<{ token: string }>("SELECT token FROM share_links WHERE client_id = ? AND revoked = 0 AND expires_at > datetime('now') ORDER BY id DESC LIMIT 1", clientId);
   let token = existing?.token;
   if (!token) {
@@ -659,6 +705,8 @@ export async function waSendDirect(clientId: number, body: string): Promise<{ ok
   const u = await requireUser();
   if (!can(u, "client.edit")) return { error: "لا تملك صلاحية" };
   if (!WA.configured) return { error: "ربط واتساب للأعمال غير مفعّل بعد" };
+  const blocked = await clientMessagingBlock(clientId);
+  if (blocked) return { error: blocked };
   const c = await getClient(clientId);
   const to = normalizePhone(c?.phone);
   if (!c || !to) return { error: "رقم جوال العميل غير صالح" };

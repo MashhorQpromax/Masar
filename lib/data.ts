@@ -308,7 +308,14 @@ export async function waContextFor(c: ClientRow, staffName: string, link: string
   const s = await studyFor(c);
   const d = deal?.saved ? deal.study : null;
   const payoff = items.filter((i) => i.kind === "mortgage_payoff" || i.kind === "personal_payoff");
+  // أفضل عرض: الموافقة أولاً، ثم الأقرب للموافقة، ثم الأكبر مبلغاً
+  const offers = await all<{ lender: string | null; lender_type: string | null; product_name: string | null; amount: number; tenor: number | null; status: string }>(
+    "SELECT l.name lender, l.type lender_type, a.product_name, a.amount, a.tenor, a.status FROM applications a LEFT JOIN lenders l ON l.id = a.lender_id WHERE a.client_id = ? AND a.amount > 0 AND a.status NOT IN ('rejected','withdrawn')", c.id);
+  const RANK: Record<string, number> = { disbursed: 0, approved: 1, more_info: 2, under_review: 3, submitted: 4, draft: 5 };
+  const best = offers.sort((a, b) => (RANK[a.status] ?? 9) - (RANK[b.status] ?? 9) || b.amount - a.amount)[0];
   return {
+    rejected: c.status === "rejected" || deal?.stage === "lost",
+    offer: best ? { lender: best.lender ?? best.product_name ?? "جهة تمويلية", lenderType: best.lender_type ?? "", amount: best.amount, tenor: best.tenor, status: best.status } : null,
     firstName: c.full_name.split(" ")[0],
     fullName: c.full_name,
     fileNo: c.file_no,

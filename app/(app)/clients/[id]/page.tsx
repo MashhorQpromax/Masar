@@ -20,7 +20,7 @@ import { Badge, EligBadge, PageHeader, Progress, StatusBadge, sar, dateAr, dateT
 import ClientForm from "@/components/client-form";
 import { UploadButton, RevealId, SimahUpload } from "@/components/client-bits";
 import {
-  setStatus, setNextStep, saveDeal, setDealStage, createShareLink, revokeShareLinks, logWhatsapp, waSendDirect, recordOutcome, addObligation, deleteObligation, setDocStatus, addCustomDoc, createApplication, updateApplication, addNote, saveStudy, updateClient, deleteClient,
+  setStatus, setNextStep, saveDeal, setDealStage, createShareLink, revokeShareLinks, logWhatsapp, waSendDirect, rejectDeal, reopenDeal, recordOutcome, addObligation, deleteObligation, setDocStatus, addCustomDoc, createApplication, updateApplication, addNote, saveStudy, updateClient, deleteClient,
 } from "@/app/actions";
 
 export const dynamic = "force-dynamic";
@@ -112,6 +112,31 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
 
       {tab === "deal" && deal && (
         <div className="space-y-5">
+          {(c.status === "rejected" || deal.stage === "lost") ? (
+            <div className="rounded-2xl bg-rose-50 ring-1 ring-rose-200 p-4 flex flex-wrap items-center gap-3">
+              <div className="flex-1 min-w-60">
+                <div className="font-bold text-rose-800">🔴 الملف مرفوض</div>
+                <div className="text-sm text-rose-900/80">{[...deal.log].reverse().find((g) => g.stage === "lost")?.note ?? "متوقف"} · رسائل العميل ورابط ملفه موقوفة.</div>
+              </div>
+              {edit && <form action={reopenDeal.bind(null, id)}><button className="btn-ghost btn-sm">إعادة فتح الملف</button></form>}
+            </div>
+          ) : deal.saved && deal.study.verdict === "short" ? (
+            <div className="rounded-2xl bg-rose-50 ring-1 ring-rose-200 p-4 space-y-3">
+              <div>
+                <div className="font-bold text-rose-800">🔴 الصفقة لا تقفل: عجز {sar(Math.max(0, -deal.study.clientNet))} ريال</div>
+                <div className="text-sm text-rose-900/80 leading-6">
+                  بالأرقام الحالية الملف بحكم المرفوض، ولن تظهر رسائل للعميل.
+                  {deal.study.breakEvenDiscount ? ` لسد العجز يلزم خصم ≈ ${deal.study.breakEvenDiscount}% على التنفيذ والتعثرات، أو تقييم أعلى للعقار.` : " لسد العجز يلزم تقييم أعلى للعقار أو تمويل أكبر."}
+                </div>
+              </div>
+              {edit && (
+                <form action={rejectDeal.bind(null, id)} className="flex flex-wrap gap-2">
+                  <input name="reason" className="input flex-1 min-w-48" placeholder={`سبب الرفض (افتراضياً: عجز ${fmt(Math.max(0, -deal.study.clientNet))} ريال)`} />
+                  <button className="btn-primary !bg-rose-600 hover:!bg-rose-700">اعتماد رفض الملف</button>
+                </form>
+              )}
+            </div>
+          ) : null}
           <div className="card p-5">
             <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
               <h3 className="font-bold">مرحلة الصفقة</h3>

@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useMemo, useState, useTransition } from "react";
-import { buildMessage, normalizePhone, waLink, WA_TEMPLATES, type WaContext, type WaTemplate } from "@/lib/whatsapp";
+import { buildMessage, clientGate, normalizePhone, waLink, WA_TEMPLATES, type WaContext, type WaTemplate } from "@/lib/whatsapp";
 
 export default function WhatsAppPanel({
   clientId, phone, ctx, initialLink, linkInfo, createLink, revokeLinks, log, canEdit, api, sendDirect,
@@ -17,11 +17,14 @@ export default function WhatsAppPanel({
   api: WaApi;
   sendDirect: (id: number, body: string) => Promise<{ ok?: string; error?: string }>;
 }) {
-  const [t, setT] = useState<WaTemplate>("study");
+  const gate = useMemo(() => clientGate(ctx), [ctx]);
+  const [t, setT] = useState<WaTemplate>(gate.allowed[0]);
+  const [showLender, setShowLender] = useState(false);
   const [link, setLink] = useState<string | null>(initialLink);
   const [withLink, setWithLink] = useState(true);
   const [to, setTo] = useState(phone ?? "");
-  const msg = useMemo(() => buildMessage(t, { ...ctx, link: withLink && WA_TEMPLATES[t].client ? link : null }), [t, ctx, link, withLink]);
+  const msg = useMemo(() => buildMessage(t, { ...ctx, showLender, link: withLink && WA_TEMPLATES[t].client ? link : null }), [t, ctx, link, withLink, showLender]);
+  const clientBlocked = !gate.allowed.some((k) => WA_TEMPLATES[k].client);
   const [text, setText] = useState(msg);
   const [note, setNote] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -44,13 +47,21 @@ export default function WhatsAppPanel({
     <div className="grid lg:grid-cols-[minmax(0,1fr)_380px] gap-5">
       <div className="space-y-4">
         <div className="flex flex-wrap gap-2">
-          {(Object.keys(WA_TEMPLATES) as WaTemplate[]).map((k) => (
-            <button key={k} type="button" onClick={() => { setT(k); setNote(null); }}
-              className={`rounded-xl px-4 py-2 text-sm font-semibold ring-1 ${t === k ? (WA_TEMPLATES[k].client ? "bg-emerald-600 text-white ring-emerald-600" : "bg-slate-800 text-white ring-slate-800") : "bg-white text-slate-600 ring-slate-200 hover:ring-slate-300"}`}>
-              {WA_TEMPLATES[k].client ? "" : "🔒 "}{WA_TEMPLATES[k].label}
-            </button>
-          ))}
+          {(Object.keys(WA_TEMPLATES) as WaTemplate[]).map((k) => {
+            const off = !gate.allowed.includes(k);
+            return (
+              <button key={k} type="button" disabled={off} title={off ? "غير متاحة لهذا الملف" : undefined} onClick={() => { setT(k); setNote(null); setErr(null); }}
+                className={`rounded-xl px-4 py-2 text-sm font-semibold ring-1 ${off ? "bg-slate-50 text-slate-300 ring-slate-100 line-through cursor-not-allowed" : t === k ? (WA_TEMPLATES[k].client ? "bg-emerald-600 text-white ring-emerald-600" : "bg-slate-800 text-white ring-slate-800") : "bg-white text-slate-600 ring-slate-200 hover:ring-slate-300"}`}>
+                {WA_TEMPLATES[k].client ? "" : "🔒 "}{WA_TEMPLATES[k].label}
+              </button>
+            );
+          })}
         </div>
+        {gate.reason && (
+          <div className={`rounded-xl p-3 text-sm ring-1 ${gate.tone === "red" ? "bg-rose-50 ring-rose-200 text-rose-900" : "bg-amber-50 ring-amber-200 text-amber-900"}`}>
+            {gate.tone === "red" ? "🔴 " : "🟡 "}{gate.reason}
+          </div>
+        )}
         <p className="text-xs text-slate-500">{WA_TEMPLATES[t].hint}</p>
         {!WA_TEMPLATES[t].client && <div className="rounded-xl bg-amber-50 ring-1 ring-amber-200 p-3 text-sm text-amber-900">هذه الرسالة فيها أتعابنا ورأس المال — أرسلها لشريك أو ممول فقط، لا للعميل. ستفتح واتساب لتختار جهة الاتصال.</div>}
 
@@ -63,6 +74,11 @@ export default function WhatsAppPanel({
               </label>
               {!num && <span className="text-xs text-rose-600 pb-2">رقم غير صالح — سيفتح واتساب لتختار جهة الاتصال</span>}
               <label className="flex items-center gap-2 text-sm text-slate-600 pb-2"><input type="checkbox" checked={withLink} onChange={(e) => setWithLink(e.target.checked)} /> إرفاق رابط الملف</label>
+              {ctx.offer && t === "study" && (
+                <label className="flex items-center gap-2 text-sm text-slate-600 pb-2" title="مخفي افتراضياً حتى لا يتواصل العميل مع الجهة مباشرة">
+                  <input type="checkbox" checked={showLender} onChange={(e) => setShowLender(e.target.checked)} /> إظهار اسم الجهة ({ctx.offer.lender})
+                </label>
+              )}
             </div>
           )}
           <textarea className="input min-h-[420px] font-[inherit] leading-7 text-[15px]" value={text} onChange={(e) => setText(e.target.value)} />
@@ -114,7 +130,7 @@ export default function WhatsAppPanel({
                 {canEdit && <button type="button" className="btn-ghost btn-sm text-rose-600" onClick={() => start(async () => { await revokeLinks(clientId); setLink(null); })}>إلغاء الرابط</button>}
               </div>
             </>
-          ) : canEdit ? (
+          ) : canEdit && !clientBlocked ? (
             <button type="button" className="btn-primary btn-sm" disabled={pending} onClick={() => start(async () => { const r = await createLink(clientId); if (r.url) setLink(r.url); })}>إنشاء رابط</button>
           ) : <p className="text-xs text-slate-400">لا يوجد رابط فعّال</p>}
         </div>

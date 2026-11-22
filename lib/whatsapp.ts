@@ -50,8 +50,42 @@ export interface WaContext {
     breakEvenDiscount: number | null;
   } | null;
   missingDocs: { label: string; why?: string }[];
+  /** الملف مرفوض (حالة العميل) أو الصفقة خاسرة */
+  rejected?: boolean;
+  /** أفضل عرض من جهة تمويلية (من «الطلبات لدى الجهات») */
+  offer?: { lender: string; lenderType: string; amount: number; tenor: number | null; status: string } | null;
+  /** إظهار اسم الجهة للعميل (افتراضياً مخفي حتى لا يتجاوزنا العميل) */
+  showLender?: boolean;
   link?: string | null;
   linkDays?: number;
+}
+
+/** متى يجوز مراسلة العميل؟ نفكر مثل الوسيط: لا رسالة للعميل إلا لملف قابل للإغلاق */
+export function clientGate(c: WaContext): { allowed: WaTemplate[]; reason: string | null; tone: "red" | "amber" | null } {
+  if (c.rejected) return { allowed: ["internal"], reason: "الملف مرفوض أو متوقف، فلا تُرسل للعميل أي رسالة. لو تغير الوضع أعد فتح الملف من تبويب «الصفقة».", tone: "red" };
+  if (!c.isProject) {
+    const v = c.deal?.verdict;
+    if (v === "short") return { allowed: ["internal"], reason: `الصفقة لا تقفل بالأرقام الحالية (عجز ${n(Math.max(0, -(c.deal?.clientNet ?? 0)))} ريال)، فالملف بحكم المرفوض ولا نرسل للعميل شيئاً. حسّن الأرقام أو اعتمد الرفض من تبويب «الصفقة».`, tone: "red" };
+    if (!c.deal || v === "needs_info") return { allowed: ["docs", "internal"], reason: "دراسة الصفقة لم تكتمل بعد، فالمتاح للعميل طلب النواقص فقط. ملخص الدراسة يُفتح بعد ما تقفل الصفقة بالأرقام.", tone: "amber" };
+  } else if (!c.offer) {
+    return { allowed: ["study", "docs", "stage", "internal"], reason: "لا يوجد عرض من جهة تمويلية بعد. أضف الجهة والمبلغ في تبويب «الطلبات لدى الجهات» لتبدأ رسالة الدراسة بـ«وفرنا لك جهة تمويلية».", tone: "amber" };
+  }
+  return { allowed: ["study", "docs", "stage", "internal"], reason: null, tone: null };
+}
+
+function tenorAr(m: number) {
+  const [k, one, two, few, many] = m >= 24 && m % 12 === 0 ? [m / 12, "سنة", "سنتين", "سنوات", "سنة"] : [m, "شهر", "شهرين", "أشهر", "شهراً"];
+  return k === 1 ? one : k === 2 ? two : k <= 10 ? `${k} ${few}` : `${k} ${many}`;
+}
+const LENDER_KIND: Record<string, string> = { bank: "بنك محلي", finance_company: "شركة تمويل مرخصة من البنك المركزي", fund: "صندوق تمويل" };
+function offerBlock(c: WaContext) {
+  const o = c.offer;
+  if (!o) return null;
+  const who = c.showLender ? `*${o.lender}*` : `${LENDER_KIND[o.lenderType] ?? "جهة تمويلية معتمدة"}`;
+  const term = o.tenor ? ` على مدة ${tenorAr(o.tenor)}` : "";
+  if (o.status === "approved" || o.status === "disbursed")
+    return `🎉 *بشارة: صدرت الموافقة على تمويلك*\nحصلنا لك على موافقة من ${who} بمبلغ *${approx(o.amount)}* ريال${term}.`;
+  return `🎉 *بشارة: وفرنا لك جهة تمويلية*\nبعد دراسة ملفك تواصلنا مع ${who}، وأبدت الجهة استعدادها لتمويلك بمبلغ يصل إلى *${approx(o.amount)}* ريال${term}.\nنحتاج فقط نستكمل معك المتطلبات حتى نثبت العرض.`;
 }
 
 const n = (v: number) => Math.round(v).toLocaleString("en-US");
@@ -109,7 +143,8 @@ export function buildMessage(t: WaTemplate, c: WaContext): string {
 }
 
 function study(c: WaContext) {
-  const out: string[] = [greeting(c), "أنهينا دراسة ملفك، وهذا ملخصها باختصار:"];
+  const offer = offerBlock(c);
+  const out: string[] = [greeting(c), offer ?? "أنهينا دراسة ملفك، وهذا ملخصها باختصار:"];
   // الوضع الحالي
   const now: string[] = [];
   if (c.credit) {
@@ -118,10 +153,10 @@ function study(c: WaContext) {
     if (c.credit.suspension) now.push("• يوجد إيقاف خدمات مرتبط بقرارات التنفيذ");
   }
   if (c.currentDbr != null && c.currentDbr > 0) now.push(`• التزاماتك الشهرية تأخذ *${c.currentDbr}%* من راتبك`);
-  if (now.length) out.push(`${LINE}\n📌 *وضعك الحالي*\n${now.join("\n")}`);
+  if (now.length && !c.isProject) out.push(`${LINE}\n📌 *وضعك الحالي*\n${now.join("\n")}`);
 
   if (c.isProject) {
-    if (c.projectHeadline) out.push(`${LINE}\n🧭 *نتيجة الدراسة*\n${c.projectHeadline}`);
+    if (!offer && c.projectHeadline) out.push(`${LINE}\n🧭 *نتيجة الدراسة*\n${c.projectHeadline}`);
   } else if (c.deal) {
     const d = c.deal;
     const steps: string[] = [];
@@ -136,12 +171,10 @@ function study(c: WaContext) {
       if (d.clientNet > 0) exp.push(`• يبقى لك نقداً بعد إنهاء كل الالتزامات تقريباً *${approx(d.clientNet)}* ريال`);
       exp.push("• التزامات أقل وملف ائتماني نظيف بإذن الله");
       out.push(`💰 *المتوقع لك*\n${exp.join("\n")}`);
-    } else if (d.verdict === "short") {
-      out.push("💡 *ملاحظة*\nنعمل حالياً على تحسين الأرقام (التفاوض مع الدائنين والتقييم) حتى يكون الحل مجدياً لك، وسنعود لك بالعرض النهائي.");
     }
     out.push(`⏱️ *المدة المتوقعة:* من ${Math.max(4, Math.round(d.days / 7) - 2)} إلى ${Math.round(d.days / 7) + 2} أسابيع تقريباً`);
   }
-  if (c.missingDocs.length) out.push(`${LINE}\n📎 *المطلوب منك الآن*\n${c.missingDocs.slice(0, 8).map((d, i) => `${i + 1}. ${d.label}`).join("\n")}`);
+  if (c.missingDocs.length) out.push(`${LINE}\n📎 *${offer ? "المطلوب لتثبيت العرض" : "المطلوب منك الآن"}*\n${c.missingDocs.slice(0, 8).map((d, i) => `${i + 1}. ${d.label}`).join("\n")}`);
   out.push("_الأرقام تقديرية وتعتمد على موافقة البنك والتقييم الرسمي._");
   out.push(footer(c));
   return out.join("\n\n");
