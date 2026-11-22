@@ -56,6 +56,9 @@ const DAYS_AFTER_PREPOSITION: CountForms = { one: "يوم", two: "يومين", f
 /** "3 أيام" */
 export const days = (n: number): string => counted(n, DAYS);
 
+/** A span of months as it reads after a preposition: "بعد شهرين", "منذ 14 شهراً". */
+export const months = (n: number): string => counted(n, { one: "شهر", two: "شهرين", few: "أشهر", many: "شهراً" });
+
 /** When something happens: "اليوم", "غداً", "بعد يومين", "بعد 9 أيام". */
 export function inDays(n: number): string {
   if (n <= 0) return "اليوم";

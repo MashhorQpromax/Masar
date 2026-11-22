@@ -9,3 +9,4 @@ export * from "./stations";
 export * from "./portfolio";
 export * from "./flow";
 export * from "./borrower";
+export * from "./from-credit";

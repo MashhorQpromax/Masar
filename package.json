@@ -17,7 +17,9 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx --conditions=react-server scripts/migrate.ts",
     "user:create": "tsx --conditions=react-server scripts/create-user.ts",
-    "golden:deal": "tsx legacy/tools/gen-deal-golden.ts"
+    "golden:deal": "tsx legacy/tools/gen-deal-golden.ts",
+    "golden:credit": "tsx legacy/tools/gen-credit-golden.ts",
+    "golden:simah": "tsx legacy/tools/gen-simah-golden.ts"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.3.7",

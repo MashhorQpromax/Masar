@@ -14,6 +14,8 @@ src/
     deal/      The settle-and-refinance engine: structures, study, risks, ledger, alternatives,
                the six stations of the road, portfolio totals, where the new financing goes,
                and the borrower facts a deal is computed from.
+    credit/    The SIMAH credit record: reading it from the report's text, grading it, and what it
+               means for banks and finance companies.
     auth/      The four roles, what each may do, and the rule a new password must meet.
   copy/        Arabic wording for every code the domain returns, the choices a form offers,
                and number, date and count formatting.
@@ -91,15 +93,35 @@ One screen opens a client's file with their first deal (`/deals/new`) and revise
 
 Item labels use the pattern `title — party`. The long dash is a separator the code splits on (`src/domain/deal/labels.ts`).
 
+## Credit record
+
+`analyzeCredit(report)` grades a SIMAH record from A to E and returns one `CreditAnalysis`:
+
+- `severity` from 0 to 100: every mark adds points, weighted by who the debt is owed to (a finance company default weighs 1.5 times a bank default, a phone bill half)
+- `banks` and `financeCompanies`: whether each would take the client today (`open`, `conditional`, `closed`), why, and in how many months a closed door is expected to open
+- `blockers`: what no lender accepts while it stands (service suspension, travel ban, open court order, unpaid bounced cheque, unpaid default)
+- `stats`, including `totalToClear`: what must be paid before any lender looks at the client. An enforcement order and a default of about the same amount (within 1,500 riyals or 2 percent) are one debt and are counted once
+- `findings` and `actions` as codes with their numbers
+
+The weights, waiting periods and thresholds are one object, `CREDIT_RULES`. They are the company's working estimates of how the market reads a record, and they change there and nowhere else.
+
+`parseSimahPages(pages, today)` reads the text of a SIMAH PDF into a `CreditReport` draft, with warnings as codes and a confidence. PDF extraction returns Arabic spelled backwards with numbers glued together, so the reader matches fixed phrases reversed and separates numbers by their fixed shapes. It takes the day as an argument and never reads the clock. An open enforcement order is read as a service suspension until a person confirms or denies it from Absher or Najiz.
+
+`itemDrafts(report, obligations)` in `src/domain/deal` suggests what a new deal has to settle: every open court order, every unpaid default no order already covers, then the client's loans at an estimated payoff. `creditFlags` hands the deal engine the three facts of the record it uses.
+
+Three things differ from the old system on purpose. The analysis no longer writes a guessed creditor back onto the report; it returns the guess, marked as a guess. A bounced cheque is no longer paired with a default of a similar amount, which used to drop that default from the deal's list. A new card in the deal editor defaults to being bought out by the new personal finance, as the old item list already did.
+
 ## Porting checklist
 
 Old module (under `legacy/lib`) and its state in the rebuild:
 
 - [x] `deal.ts` study, structures, fees, alternatives: `src/domain/deal`, locked by `tests/golden/deal.json` (240 cases)
 - [x] loan math and SAMA constants from `engine.ts`: `src/domain/finance`
-- [ ] `deal.ts` `itemsFrom` (deal items from a credit report): moves with the credit module
+- [x] `deal.ts` `itemsFrom` (deal items from a credit report): `itemDrafts` in `src/domain/deal/from-credit.ts`, locked by `tests/golden/credit.json`
 - [ ] `engine.ts` eligibility, lender matching, required documents
-- [ ] `simah.ts`, `simah-parse.ts` credit report grading and PDF parsing
+- [x] `simah.ts` credit grading: `src/domain/credit`, locked by `tests/golden/credit.json` (320 records)
+- [x] `simah-parse.ts` reading the report's text: `src/domain/credit/parse.ts`, locked by `tests/golden/simah.json` (160 made-up texts)
+- [ ] storing a client's credit report, the upload of the PDF and the credit screen
 - [ ] `project.ts` project finance
 - [ ] `advisor.ts`
 - [ ] `whatsapp.ts`, `wa-cloud.ts` messages and Meta Cloud API
@@ -114,4 +136,4 @@ Old module (under `legacy/lib`) and its state in the rebuild:
 - [ ] screens still to build: clients, credit, lenders, inbox, calculator, knowledge, users, audit, client portal
 - [ ] data migration from the live database, then the domain switch (only after the owner approves)
 
-To regenerate a golden file while `legacy/` still exists: `npm run golden:deal`.
+To regenerate a golden file while `legacy/` still exists: `npm run golden:deal`, `npm run golden:credit`, `npm run golden:simah`. Each generator is seeded, so it writes the same file every time.

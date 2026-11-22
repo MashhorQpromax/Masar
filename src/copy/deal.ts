@@ -15,7 +15,7 @@ import type {
   Verdict,
 } from "@/domain/deal";
 import { splitLabel } from "@/domain/deal";
-import { counted, dueIn, inDays, ltr, money, percent } from "./format";
+import { counted, dueIn, inDays, ltr, money, months, percent } from "./format";
 
 export const STATION: Record<StationKey, string> = {
   study: "دراسة",
@@ -96,7 +96,6 @@ const list = (value: unknown): string[] => (Array.isArray(value) ? value.map(Str
 const titles = (labels: string[]): string => labels.map((l) => splitLabel(l).title).join("، ");
 const cover = (value: unknown): string => ltr(`${num(value)}x`);
 const years = (n: number): string => counted(n, { one: "سنة", two: "سنتين", few: "سنوات", many: "سنة" });
-const months = (n: number): string => counted(n, { one: "شهر", two: "شهرين", few: "أشهر", many: "شهراً" });
 
 /** One risk as a sentence a person can act on. */
 export function riskText(risk: Risk): string {

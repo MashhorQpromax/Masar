@@ -24,12 +24,12 @@ export function borrowerIn(facts: BorrowerFacts, year: number): Borrower {
   };
 }
 
-/** Who settles an obligation of each kind unless the user says otherwise. An existing personal loan is bought out by the new one. */
+/** Who settles an obligation of each kind unless the user says otherwise. An existing personal loan or card is bought out by the new personal finance. */
 export const DEFAULT_PAYER: Record<ItemKind, PaidBy> = {
   execution: "company",
   default: "company",
   mortgage_payoff: "company",
   personal_payoff: "bank",
-  card: "company",
+  card: "bank",
   other: "company",
 };
