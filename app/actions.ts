@@ -1,6 +1,8 @@
 "use server";
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
+import { WA, sendText, sendTemplate, windowOpen } from "@/lib/wa-cloud";
+import { normalizePhone } from "@/lib/whatsapp";
 import { revalidatePath } from "next/cache";
 import crypto from "node:crypto";
 import { z } from "zod";
@@ -137,6 +139,9 @@ export async function createClient(_: FormState, fd: FormData): Promise<FormStat
   await syncDocuments(id);
   await refreshEligibility(id);
   await audit(u, "client_create", "client", id, data.full_name);
+  // ربط محادثات واتساب السابقة من نفس الرقم بالملف الجديد
+  const waPhone = normalizePhone(typeof data.phone === "string" ? data.phone : null);
+  if (waPhone) await run("UPDATE wa_messages SET client_id = ? WHERE client_id IS NULL AND phone = ?", id, waPhone);
   redirect(`/clients/${id}?tab=study`);
 }
 
@@ -647,4 +652,29 @@ export async function portalUpload(token: string, docId: number, _: FormState, f
   await run("INSERT INTO audit_log (action, entity, entity_id, details) VALUES ('portal_upload', 'client', ?, ?)", link.client_id, JSON.stringify({ doc: docId, size: f.size }));
   revalidatePath(`/clients/${link.client_id}`);
   return { ok: "تم الاستلام ✅ شكراً لك" };
+}
+
+// ===== واتساب للأعمال (من رقم الشركة) =====
+export async function waSendDirect(clientId: number, body: string): Promise<{ ok?: string; error?: string }> {
+  const u = await requireUser();
+  if (!can(u, "client.edit")) return { error: "لا تملك صلاحية" };
+  if (!WA.configured) return { error: "ربط واتساب للأعمال غير مفعّل بعد" };
+  const c = await getClient(clientId);
+  const to = normalizePhone(c?.phone);
+  if (!c || !to) return { error: "رقم جوال العميل غير صالح" };
+  const w = await windowOpen(clientId);
+  let r, kind: string, text: string;
+  if (w.open) { r = await sendText(to, body); kind = "text"; text = body; }
+  else {
+    // خارج نافذة الـ 24 ساعة: قالب معتمد يدعو العميل للرد، مع رابط ملفه
+    const link = await createShareLink(clientId);
+    r = await sendTemplate(to, [c.full_name.split(" ")[0], link.url ?? ""]);
+    kind = "template"; text = `[قالب ${WA.template}] ${c.full_name.split(" ")[0]} — ${link.url ?? ""}`;
+  }
+  await run("INSERT INTO wa_messages (client_id, direction, wa_id, phone, type, body, status, error, user_id) VALUES (?, 'out', ?, ?, ?, ?, ?, ?, ?)",
+    clientId, r.ok ? r.id : null, to, kind, text.slice(0, 4000), r.ok ? "sent" : "failed", r.ok ? null : r.error, u.id);
+  await audit(u, "wa_send", "client", clientId, { via: "api", kind, ok: r.ok });
+  revalidatePath(`/clients/${clientId}`);
+  if (!r.ok) return { error: `لم تُرسل: ${r.error}` };
+  return { ok: w.open ? "أُرسلت من رقم الشركة ✓" : "العميل لم يراسلنا خلال 24 ساعة، فأُرسل له قالب المتابعة المعتمد مع رابط ملفه ✓ — بعد ما يرد تقدر ترسل الرسالة الكاملة" };
 }

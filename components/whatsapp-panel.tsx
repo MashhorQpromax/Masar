@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState, useTransition } from "react";
 import { buildMessage, normalizePhone, waLink, WA_TEMPLATES, type WaContext, type WaTemplate } from "@/lib/whatsapp";
 
 export default function WhatsAppPanel({
-  clientId, phone, ctx, initialLink, linkInfo, createLink, revokeLinks, log, canEdit,
+  clientId, phone, ctx, initialLink, linkInfo, createLink, revokeLinks, log, canEdit, api, sendDirect,
 }: {
   clientId: number;
   phone: string | null;
@@ -14,6 +14,8 @@ export default function WhatsAppPanel({
   revokeLinks: (id: number) => Promise<void>;
   log: (id: number, template: string, body: string) => Promise<void>;
   canEdit: boolean;
+  api: WaApi;
+  sendDirect: (id: number, body: string) => Promise<{ ok?: string; error?: string }>;
 }) {
   const [t, setT] = useState<WaTemplate>("study");
   const [link, setLink] = useState<string | null>(initialLink);
@@ -22,6 +24,7 @@ export default function WhatsAppPanel({
   const msg = useMemo(() => buildMessage(t, { ...ctx, link: withLink && WA_TEMPLATES[t].client ? link : null }), [t, ctx, link, withLink]);
   const [text, setText] = useState(msg);
   const [note, setNote] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
   const [pending, start] = useTransition();
   useEffect(() => setText(msg), [msg]);
   const num = WA_TEMPLATES[t].client ? normalizePhone(to) : null;
@@ -30,6 +33,12 @@ export default function WhatsAppPanel({
     window.open(waLink(num, text), "_blank", "noopener");
     start(async () => { await log(clientId, WA_TEMPLATES[t].label, text); setNote("فُتح واتساب وسُجلت الرسالة في ملف العميل ✓"); });
   };
+
+  const direct = () => start(async () => {
+    const r = await sendDirect(clientId, text);
+    setNote(r.ok ?? null); setErr(r.error ?? null);
+  });
+  const isClient = WA_TEMPLATES[t].client;
 
   return (
     <div className="grid lg:grid-cols-[minmax(0,1fr)_380px] gap-5">
@@ -58,15 +67,33 @@ export default function WhatsAppPanel({
           )}
           <textarea className="input min-h-[420px] font-[inherit] leading-7 text-[15px]" value={text} onChange={(e) => setText(e.target.value)} />
           <div className="flex flex-wrap items-center gap-2">
-            <button type="button" className="btn-primary !bg-emerald-600 hover:!bg-emerald-700" onClick={send} disabled={pending}>💬 إرسال عبر واتساب</button>
+            {isClient && api.configured && canEdit && (
+              <button type="button" className="btn-primary !bg-emerald-700 hover:!bg-emerald-800" onClick={direct} disabled={pending || !num}>
+                {pending ? "جارٍ الإرسال…" : "📤 إرسال من رقم الشركة"}
+              </button>
+            )}
+            <button type="button" className={api.configured && isClient ? "btn-ghost" : "btn-primary !bg-emerald-600 hover:!bg-emerald-700"} onClick={send} disabled={pending}>💬 {api.configured && isClient ? "فتح في واتساب" : "إرسال عبر واتساب"}</button>
             <button type="button" className="btn-ghost" onClick={() => { navigator.clipboard.writeText(text); setNote("نُسخت الرسالة ✓"); }}>نسخ</button>
             <button type="button" className="btn-ghost" onClick={() => setText(msg)}>استرجاع النص الأصلي</button>
             {note && <span className="text-sm text-emerald-700">{note}</span>}
+            {err && <span className="text-sm text-rose-600">{err}</span>}
           </div>
+          {isClient && api.configured && (
+            <p className={`text-xs ${api.window.open ? "text-emerald-700" : "text-amber-700"}`}>
+              {api.window.open
+                ? "● المحادثة مفتوحة (راسلنا العميل خلال 24 ساعة) — تُرسل الرسالة كما هي."
+                : "● العميل لم يراسلنا خلال 24 ساعة — حسب سياسة واتساب يُرسل له قالب متابعة معتمد مع رابط ملفه، وبعد ما يرد تقدر ترسل النص الكامل."}
+            </p>
+          )}
         </div>
       </div>
 
       <div className="space-y-4">
+        {api.configured ? <Thread items={api.thread} /> : (
+          <div className="card p-4 text-xs text-slate-500 leading-5">
+            <b className="text-slate-700">واتساب للأعمال غير مفعّل بعد.</b> حالياً الإرسال يفتح واتساب من جوالك. بعد ربط رقم الشركة تُرسل الرسائل مباشرة، وتظهر ردود العميل ومستنداته هنا وفي ملفه تلقائياً.
+          </div>
+        )}
         <div className="card p-4">
           <div className="text-xs font-semibold text-slate-500 mb-2">معاينة</div>
           <div className="rounded-2xl bg-[#efeae2] p-3">
@@ -92,6 +119,36 @@ export default function WhatsAppPanel({
           ) : <p className="text-xs text-slate-400">لا يوجد رابط فعّال</p>}
         </div>
       </div>
+    </div>
+  );
+}
+
+export type WaApi = {
+  configured: boolean;
+  window: { open: boolean; lastIn: string | null };
+  thread: { id: number; direction: "in" | "out"; type: string; body: string | null; status: string | null; error: string | null; created_at: string; doc_id: number | null; who: string | null }[];
+};
+
+const STATUS_MARK: Record<string, string> = { sent: "✓", delivered: "✓✓", read: "✓✓ قُرئت", failed: "✕ فشلت" };
+
+function Thread({ items }: { items: WaApi["thread"] }) {
+  return (
+    <div className="card p-4">
+      <div className="text-xs font-semibold text-slate-500 mb-2">محادثة واتساب مع العميل</div>
+      {items.length === 0 ? <p className="text-xs text-slate-400">لا توجد رسائل بعد</p> : (
+        <div className="rounded-2xl bg-[#efeae2] p-3 space-y-2 max-h-[420px] overflow-y-auto flex flex-col-reverse">
+          {items.map((m) => (
+            <div key={m.id} className={`max-w-[90%] rounded-xl px-3 py-2 text-[13px] leading-6 shadow-sm whitespace-pre-wrap break-words ${m.direction === "out" ? "ms-auto bg-[#d9fdd3] rounded-tr-sm" : "me-auto bg-white rounded-tl-sm"}`} dir="rtl">
+              {m.doc_id ? <span className="block text-xs font-semibold text-emerald-800">📎 مستند حُفظ في ملف العميل</span> : null}
+              <WaRender text={(m.body ?? "").slice(0, 600)} />
+              <div className="mt-1 text-[10px] text-slate-500 num" dir="ltr">
+                {m.created_at.slice(5, 16)}{m.direction === "out" ? ` · ${m.who ?? ""} ${STATUS_MARK[m.status ?? ""] ?? ""}` : ""}
+              </div>
+              {m.error && <div className="text-[11px] text-rose-600">{m.error}</div>}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

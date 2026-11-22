@@ -213,6 +213,23 @@ CREATE TABLE IF NOT EXISTS credit_reports (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_credit_client ON credit_reports(client_id);
+CREATE TABLE IF NOT EXISTS wa_messages (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  client_id INTEGER REFERENCES clients(id) ON DELETE SET NULL,
+  direction TEXT NOT NULL,
+  wa_id TEXT UNIQUE,
+  phone TEXT NOT NULL,
+  name TEXT,
+  type TEXT NOT NULL DEFAULT 'text',
+  body TEXT,
+  doc_id INTEGER REFERENCES documents(id) ON DELETE SET NULL,
+  status TEXT,
+  error TEXT,
+  user_id INTEGER REFERENCES users(id),
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_wa_client ON wa_messages(client_id, created_at);
 CREATE TABLE IF NOT EXISTS share_links (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   token TEXT NOT NULL UNIQUE,

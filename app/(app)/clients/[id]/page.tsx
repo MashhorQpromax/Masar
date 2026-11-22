@@ -4,6 +4,7 @@ import { all } from "@/lib/db";
 import { requireUser, can, maskId } from "@/lib/auth";
 import { getClient, getObligations, studyFor, docProgress, products, lenderExperience, lenderRules, latestCredit, projectFor, dealFor, waContextFor, activeShareLink } from "@/lib/data";
 import WhatsAppPanel from "@/components/whatsapp-panel";
+import { WA, windowOpen } from "@/lib/wa-cloud";
 import { headers } from "next/headers";
 import DealEditor from "@/components/deal-editor";
 import { STAGES, STAGE_LABEL } from "@/lib/deal";
@@ -19,7 +20,7 @@ import { Badge, EligBadge, PageHeader, Progress, StatusBadge, sar, dateAr, dateT
 import ClientForm from "@/components/client-form";
 import { UploadButton, RevealId, SimahUpload } from "@/components/client-bits";
 import {
-  setStatus, setNextStep, saveDeal, setDealStage, createShareLink, revokeShareLinks, logWhatsapp, recordOutcome, addObligation, deleteObligation, setDocStatus, addCustomDoc, createApplication, updateApplication, addNote, saveStudy, updateClient, deleteClient,
+  setStatus, setNextStep, saveDeal, setDealStage, createShareLink, revokeShareLinks, logWhatsapp, waSendDirect, recordOutcome, addObligation, deleteObligation, setDocStatus, addCustomDoc, createApplication, updateApplication, addNote, saveStudy, updateClient, deleteClient,
 } from "@/app/actions";
 
 export const dynamic = "force-dynamic";
@@ -48,6 +49,12 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
   const host = hh.get("x-forwarded-host") ?? hh.get("host") ?? "masarfin.com";
   const shareUrl = share ? `${hh.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https")}://${host}/s/${share.token}` : null;
   const wa = tab === "wa" ? await waContextFor(c, u.name, null) : null;
+  const waApi = tab === "wa" ? {
+    configured: WA.configured,
+    window: WA.configured ? await windowOpen(id) : { open: false, lastIn: null },
+    thread: await all<{ id: number; direction: "in" | "out"; type: string; body: string | null; status: string | null; error: string | null; created_at: string; doc_id: number | null; who: string | null }>(
+      "SELECT m.id, m.direction, m.type, m.body, m.status, m.error, m.created_at, m.doc_id, u.name who FROM wa_messages m LEFT JOIN users u ON u.id = m.user_id WHERE m.client_id = ? ORDER BY m.id DESC LIMIT 60", id),
+  } : null;
   const s = await studyFor(c);
   const cr = await latestCredit(id);
   const pj = projectFor(c);
@@ -137,7 +144,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
 
       {tab === "wa" && wa && (
         <WhatsAppPanel clientId={id} phone={c.phone} ctx={wa} initialLink={shareUrl} linkInfo={share ? { expires: share.expires_at, views: share.views, lastView: share.last_view_at } : null}
-          createLink={createShareLink} revokeLinks={revokeShareLinks} log={logWhatsapp} canEdit={edit} />
+          createLink={createShareLink} revokeLinks={revokeShareLinks} log={logWhatsapp} canEdit={edit} api={waApi!} sendDirect={waSendDirect} />
       )}
 
       {tab === "overview" && (

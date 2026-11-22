@@ -9,6 +9,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     { href: "/", label: "لوحة المتابعة", icon: "grid" },
     { href: "/deals", label: "الصفقات", icon: "deal" },
     { href: "/clients", label: "العملاء", icon: "users" },
+    { href: "/inbox", label: "واتساب", icon: "chat" },
     { href: "/calculator", label: "الحاسبة السريعة", icon: "calc" },
     { href: "/lenders", label: "جهات التمويل", icon: "bank" },
     { href: "/knowledge", label: "خبرة الجهات", icon: "bulb" },
