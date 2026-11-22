@@ -1189,6 +1189,11 @@
     .verdict-keep b {
       font-size: clamp(40px, 12vw, 56px);
     }
+    /* On a phone the caption takes its own line, so the figure and its unit stay together. */
+    .verdict-keep > span:first-child {
+      flex-basis: 100%;
+      margin-bottom: -6px;
+    }
     .steps {
       flex-wrap: wrap;
       gap: 14px 0;

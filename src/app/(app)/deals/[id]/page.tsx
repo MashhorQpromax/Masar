@@ -115,12 +115,12 @@ export default async function DealPage({ params }: { params: Promise<{ id: strin
             <h2 className="verdict-say">{VERDICT[study.verdict]}</h2>
             {closes && (
               <p className="verdict-keep">
-                يبقى للعميل <b className="num">{plainMoney(study.clientNet)}</b> ريال
+                <span>يبقى للعميل</span> <b className="num">{plainMoney(study.clientNet)}</b> <span>ريال</span>
               </p>
             )}
             {study.verdict === "short" && study.clientNet < 0 && (
               <p className="verdict-keep">
-                العجز <b className="num">{plainMoney(-study.clientNet)}</b> ريال
+                <span>العجز</span> <b className="num">{plainMoney(-study.clientNet)}</b> <span>ريال</span>
               </p>
             )}
           </div>
