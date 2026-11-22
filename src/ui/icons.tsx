@@ -97,8 +97,8 @@ export function EyeIcon({ size = 20 }: { size?: number }) {
 export function EyeOffIcon({ size = 20 }: { size?: number }) {
   return (
     <svg {...base(size)}>
-      <path d="M9.9 5.8A9.6 9.6 0 0 1 12 5.5c6 0 9.5 6.5 9.5 6.500a15.6 15.6 0 0 1-2.4 3.100M6.3 7.700A15.3 15.3 0 0 0 2.5 12S6 18.5 12 18.500a9.3 9.3 0 0 0 4.2-1" />
-      <path d="M9.9 10.100a2.8 2.8 0 0 0 3.9 4" />
+      <path d="M9.9 5.8A9.6 9.6 0 0 1 12 5.5c6 0 9.5 6.5 9.5 6.5a15.6 15.6 0 0 1-2.4 3.1M6.3 7.7A15.3 15.3 0 0 0 2.5 12S6 18.5 12 18.5a9.3 9.3 0 0 0 4.2-1" />
+      <path d="M9.9 10.1a2.8 2.8 0 0 0 3.9 4" />
       <path d="M4 4l16 16" />
     </svg>
   );
@@ -113,13 +113,13 @@ export function LeaveIcon({ size = 18 }: { size?: number }) {
   );
 }
 
+/** Three ridges of a fingertip. Drawn a little finer than the other icons, so the ridges stay apart when small. */
 export function FingerprintIcon({ size = 20 }: { size?: number }) {
   return (
-    <svg {...base(size)}>
-      <path d="M12 10.5v3.2c0 2.3-.6 4.3-1.7 6" />
-      <path d="M8.5 17.800c.4-1.3.5-2.6.5-4.100v-3.200a3 3 0 0 1 6 0v2.800c0 2.2-.4 4.2-1.1 6.2" />
-      <path d="M5.6 14.500c.1-.6.1-1.2.1-1.800v-2.200a6.3 6.3 0 0 1 12.6 0v2.600c0 1.2-.1 2.3-.3 3.4" />
-      <path d="M4.3 7.800A9 9 0 0 1 12 3.500a9 9 0 0 1 7.7 4.3" />
+    <svg {...base(size)} strokeWidth={1.6}>
+      <path d="M12 11.2v3c0 2.1-.5 4-1.4 5.6" />
+      <path d="M8.1 18.5c.5-1.4.7-2.8.7-4.3v-3a3.2 3.2 0 0 1 6.4 0v2.3c0 2.2-.3 4.2-.9 6" />
+      <path d="M5.6 15v-3.8a6.4 6.4 0 0 1 12.8 0v2.8c0 1.1-.1 2.2-.3 3.2" />
     </svg>
   );
 }
@@ -128,7 +128,7 @@ export function CopyIcon({ size = 18 }: { size?: number }) {
   return (
     <svg {...base(size)}>
       <rect x="9" y="9" width="11" height="11" rx="2.5" />
-      <path d="M5 15V6.500A2.5 2.5 0 0 1 7.5 4H15" />
+      <path d="M5 15V6.5A2.5 2.5 0 0 1 7.5 4H15" />
     </svg>
   );
 }
@@ -136,7 +136,7 @@ export function CopyIcon({ size = 18 }: { size?: number }) {
 export function CheckIcon({ size = 18 }: { size?: number }) {
   return (
     <svg {...base(size)}>
-      <path d="M5 12.500l4.5 4.500L19 7.5" />
+      <path d="M5 12.5l4.5 4.5L19 7.5" />
     </svg>
   );
 }
