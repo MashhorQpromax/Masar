@@ -12,7 +12,7 @@ import { getClient, nextFileNo, studyFor, profileOf } from "@/lib/data";
 import { requiredDocuments } from "@/lib/engine";
 import { analyzeCredit } from "@/lib/simah";
 import { parseSimahPages, type ParsedSimah } from "@/lib/simah-parse";
-import { dealStudy, defaultInput, normFee, STAGE_LABEL, type DealInput, type Stage } from "@/lib/deal";
+import { dealStudy, defaultInput, normFee, STAGE_LABEL, STRUCTURES, type DealInput, type Stage } from "@/lib/deal";
 import { borrowerOf, latestCredit, waContextFor, dealFor } from "@/lib/data";
 
 export type FormState = { error?: string; ok?: string } | undefined;
@@ -538,8 +538,9 @@ export async function saveDeal(clientId: number, json: string): Promise<FormStat
       ...d,
       items: (raw.items ?? []).slice(0, 60).map((i, k) => ({
         id: String(i.id ?? `i${k}`).slice(0, 20), kind: i.kind ?? "other", label: String(i.label ?? "").slice(0, 200),
-        original: n(i.original, 0)!, pay: n(i.pay, 0)!, by: i.by === "bank" ? "bank" : "company", confirmed: !!i.confirmed,
+        original: n(i.original, 0)!, pay: n(i.pay, 0)!, by: i.by === "bank" ? "bank" : "company", confirmed: !!i.confirmed, monthly: n(i.monthly, null),
       })),
+      structure: raw.structure && raw.structure in STRUCTURES ? raw.structure : d.structure,
       propertyValue: n(raw.propertyValue, null), transferTaxPct: n(raw.transferTaxPct, d.transferTaxPct)!, saleTaxPct: n(raw.saleTaxPct, d.saleTaxPct)!,
       fixedCosts: n(raw.fixedCosts, d.fixedCosts)!, fee: normFee(raw.fee),
       targetBank: raw.targetBank ? String(raw.targetBank).slice(0, 40) : null, mortgageApr: n(raw.mortgageApr, d.mortgageApr)!, personalFlat: n(raw.personalFlat, d.personalFlat)!,

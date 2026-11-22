@@ -15,6 +15,24 @@ export interface DealItem {
   pay: number; // ما سيُدفع فعلاً (بعد التفاوض أو حسب خطاب المديونية)
   by: "company" | "bank"; // company = من رأس مال الشركة، bank = يسدده البنك الجديد من التمويل الشخصي (إعادة تمويل داخلية)
   confirmed?: boolean; // مؤكد بخطاب مديونية/مخالصة
+  monthly?: number | null; // القسط الشهري الحالي (يُحسب في الاستقطاع إن بقي الالتزام قائماً)
+}
+
+/** هيكل الصفقة — حسب رغبة العميل ووضعه */
+export type Structure = "settle_refi_personal" | "settle_personal" | "settle_refi";
+export const STRUCTURES: Record<Structure, { label: string; short: string; mortgage: boolean; personal: boolean; hint: string }> = {
+  settle_refi_personal: { label: "سداد + إعادة تمويل العقار + شخصي", short: "عقاري + شخصي", mortgage: true, personal: true, hint: "نسدد المتعثرات ومخالصة العقار، يُفرغ العقار لطرفنا، ثم يشتريه البنك بتمويل عقاري جديد مع تمويل شخصي." },
+  settle_personal: { label: "سداد المتعثرات + تمويل شخصي فقط", short: "شخصي فقط", mortgage: false, personal: true, hint: "العقار يبقى على حاله وبقسطه الحالي. نسدد المتعثرات ونسترد من تمويل شخصي جديد يشتري الشخصي القائم." },
+  settle_refi: { label: "سداد + إعادة تمويل العقار فقط", short: "عقاري فقط", mortgage: true, personal: false, hint: "الشخصي القائم يبقى بقسطه. نسدد المتعثرات ومخالصة العقار ونسترد من ثمن بيع العقار للبنك." },
+};
+export const STRUCTURE_KEYS = Object.keys(STRUCTURES) as Structure[];
+export const structureOf = (x: { structure?: Structure | null }) => STRUCTURES[x.structure ?? "settle_refi_personal"] ? (x.structure ?? "settle_refi_personal") : "settle_refi_personal";
+
+/** البنود الداخلة في الهيكل، والتي تبقى قائمة بأقساطها */
+export function splitItems(x: Pick<DealInput, "items" | "structure">) {
+  const st = STRUCTURES[structureOf(x)];
+  const inDeal = (i: DealItem) => (st.mortgage || i.kind !== "mortgage_payoff") && (st.personal || i.by !== "bank");
+  return { active: x.items.filter(inDeal), kept: x.items.filter((i) => !inDeal(i)) };
 }
 export type FinanceBase = "total" | "personal" | "mortgage";
 export interface Fee {
@@ -27,6 +45,7 @@ export interface Fee {
 export const FEE_MIN = 10, FEE_MAX = 35;
 
 export interface DealInput {
+  structure?: Structure;
   items: DealItem[];
   propertyValue: number | null; // التقييم المتوقع = سعر بيع العقار للبنك
   transferTaxPct: number; // ضريبة التصرفات عند الإفراغ لطرفنا
@@ -70,6 +89,12 @@ export const STAGES = [
 ] as const;
 export type Stage = (typeof STAGES)[number][0];
 export const STAGE_LABEL = Object.fromEntries(STAGES.map(([k, l]) => [k, l])) as Record<Stage, string>;
+/** المراحل التي تنطبق على الهيكل (بدون عقار: لا مخالصة ولا إفراغ) */
+export function stagesFor(structure?: Structure | null) {
+  const m = STRUCTURES[structureOf({ structure })].mortgage;
+  return STAGES.filter(([k]) => m || (k !== "payoff" && k !== "transfer"))
+    .map(([k, l, d]) => [k, !m && k === "disbursement" ? "صرف التمويل" : l, d] as [Stage, string, number]);
+}
 export const CAPITAL_OUT_STAGES: Stage[] = ["settlement", "clearance", "simah_update", "payoff", "transfer", "bank_submit", "approval", "disbursement"];
 
 export const ITEM_KIND: Record<ItemKind, string> = {
@@ -98,6 +123,7 @@ export function normFee(f: unknown): Fee {
 
 export function defaultInput(): DealInput {
   return {
+    structure: "settle_refi_personal",
     items: [],
     propertyValue: null,
     transferTaxPct: 5,
@@ -146,14 +172,16 @@ export function itemsFrom(report: CreditReport | null, obligations: { kind: stri
     items.push({ id: id(), kind: "default", label: `تعثر ${d.lender} — ${d.product}`, original: amt, pay: amt, by: "company" });
   }
   for (const o of obligations) {
-    if (o.kind === "mortgage") items.push({ id: id(), kind: "mortgage_payoff", label: `مخالصة العقاري — ${o.lender ?? ""}`, original: o.remaining ?? 0, pay: payoffEstimate(o.monthly, o.remaining ?? 0, 5), by: "company" });
+    if (o.kind === "mortgage") items.push({ id: id(), kind: "mortgage_payoff", label: `مخالصة العقاري — ${o.lender ?? ""}`, original: o.remaining ?? 0, pay: payoffEstimate(o.monthly, o.remaining ?? 0, 5), by: "company", monthly: o.monthly || null });
     else if (o.kind === "personal" || o.kind === "auto" || o.kind === "card")
-      items.push({ id: id(), kind: o.kind === "card" ? "card" : "personal_payoff", label: `مخالصة ${o.kind === "auto" ? "تمويل سيارة" : o.kind === "card" ? "بطاقة" : "الشخصي"} — ${o.lender ?? ""}`, original: o.remaining ?? 0, pay: payoffEstimate(o.monthly, o.remaining ?? 0, 6), by: "bank" });
+      items.push({ id: id(), kind: o.kind === "card" ? "card" : "personal_payoff", label: `مخالصة ${o.kind === "auto" ? "تمويل سيارة" : o.kind === "card" ? "بطاقة" : "الشخصي"} — ${o.lender ?? ""}`, original: o.remaining ?? 0, pay: payoffEstimate(o.monthly, o.remaining ?? 0, 6), by: "bank", monthly: o.monthly || null });
   }
   return items;
 }
 
 export interface DealStudy {
+  structure: Structure;
+  keptMonthly: number; // أقساط الالتزامات التي تبقى قائمة
   verdict: "go" | "tight" | "short" | "needs_info";
   headline: string;
   paidByCompany: number;
@@ -204,26 +232,32 @@ const fmt = (n: number) => r0(n).toLocaleString("en-US");
 
 export function dealStudy(x: DealInput, b: Borrower, credit?: { bankReopenMonths: number | null; suspension: boolean; financeCoDefault: boolean } | null): DealStudy {
   const risks: DealStudy["risks"] = [];
-  const paidByCompany = x.items.filter((i) => i.by === "company").reduce((s, i) => s + (i.pay || 0), 0);
-  const paidByBank = x.items.filter((i) => i.by === "bank").reduce((s, i) => s + (i.pay || 0), 0);
-  const V = x.propertyValue ?? 0;
+  const structure = structureOf(x);
+  const st = STRUCTURES[structure];
+  const { active, kept } = splitItems(x);
+  const keptMonthly = r0(kept.reduce((a, i) => a + (i.monthly || 0), 0));
+  const paidByCompany = active.filter((i) => i.by === "company").reduce((s, i) => s + (i.pay || 0), 0);
+  const paidByBank = active.filter((i) => i.by === "bank").reduce((s, i) => s + (i.pay || 0), 0);
+  const V = st.mortgage ? x.propertyValue ?? 0 : 0;
   const transferTax = r0((V * (x.transferTaxPct || 0)) / 100);
   const saleTax = r0((V * (x.saleTaxPct || 0)) / 100);
   const capital = r0(paidByCompany + transferTax + (x.fixedCosts || 0));
 
-  // ===== التمويل الجديد المتوقع (بعد التسوية: لا التزامات قائمة إلا ما يعيد البنك تمويله داخلياً) =====
+  // ===== التمويل الجديد المتوقع (بعد التسوية؛ الالتزامات التي تبقى قائمة تأكل من السقف) =====
   const salary = b.totalSalary ?? b.basicSalary ?? 0;
   const age = b.age;
   const monthsToRetire = age != null && b.sector !== "retired" && b.sector !== "self" ? Math.max(0, (SAMA.retirementAge - age) * 12) : null;
   const pension = monthsToRetire != null && b.basicSalary ? pensionEstimate(b.basicSalary, ((b.serviceMonths ?? 0) + monthsToRetire) / 12) : null;
   const totalCap = salary <= SAMA.lowBracket ? SAMA.totalCapLow : SAMA.totalCapMid;
-  const personalInstallment = r0(salary * SAMA.salaryDeductionEmployee);
+  const room = Math.max(0, salary * totalCap - keptMonthly);
+  const personalInstallment = st.personal ? r0(Math.min(salary * SAMA.salaryDeductionEmployee, room)) : 0;
   const personalMonths = Math.min(x.personalMonths || 60, SAMA.consumerMaxTenor, monthsToRetire && monthsToRetire > 0 ? Math.max(12, monthsToRetire) : 60);
   const personalEst = r0(principalFrom(personalInstallment, personalMonths, x.personalFlat, "flat"));
-  const pre = Math.max(0, r0(salary * totalCap - personalInstallment));
-  const maxM = Math.min(x.mortgageMaxMonths || 300, age != null ? Math.max(0, (x.mortgageMaxAge - age) * 12) : 300);
+  const pre = st.mortgage ? Math.max(0, r0(room - personalInstallment)) : 0;
+  const maxM = st.mortgage ? Math.min(x.mortgageMaxMonths || 300, age != null ? Math.max(0, (x.mortgageMaxAge - age) * 12) : 300) : 0;
   let mortgageByIncome = 0, post = 0;
-  if (monthsToRetire != null && monthsToRetire < maxM) {
+  if (!st.mortgage) { /* لا عقاري جديد */ }
+  else if (monthsToRetire != null && monthsToRetire < maxM) {
     // قسط متدرج: كامل قبل التقاعد، ثم ضمن نسبة المعاش
     post = Math.min(pre, r0((pension ?? 0) * (pension != null && pension <= SAMA.lowBracket ? SAMA.totalCapLow : SAMA.totalCapMid)));
     const r = x.mortgageApr / 100 / 12;
@@ -234,23 +268,23 @@ export function dealStudy(x: DealInput, b: Borrower, credit?: { bankReopenMonths
     post = pre;
     mortgageByIncome = r0(principalFrom(pre, maxM, x.mortgageApr, "reducing"));
   }
-  const mortgageByLtv = V ? r0((V * x.ltvPct) / 100) : null;
+  const mortgageByLtv = st.mortgage && V ? r0((V * x.ltvPct) / 100) : null;
   const mortgageEst = mortgageByLtv != null ? Math.min(mortgageByIncome, mortgageByLtv) : mortgageByIncome;
-  const mortgage = x.bankMortgage ?? mortgageEst;
-  const personal = x.bankPersonal ?? personalEst;
-  const source = x.bankMortgage != null || x.bankPersonal != null ? "bank" : "estimate";
-  const mInst = installmentFor(mortgage, maxM, x.mortgageApr, "reducing");
-  const pInst = installmentFor(personal, personalMonths, x.personalFlat, "flat");
-  const dbrAfter = salary ? Math.round(((Math.min(mInst, pre) + pInst) / salary) * 1000) / 10 : null;
+  const mortgage = st.mortgage ? x.bankMortgage ?? mortgageEst : 0;
+  const personal = st.personal ? x.bankPersonal ?? personalEst : 0;
+  const source = (st.mortgage && x.bankMortgage != null) || (st.personal && x.bankPersonal != null) ? "bank" : "estimate";
+  const mInst = st.mortgage ? installmentFor(mortgage, maxM, x.mortgageApr, "reducing") : 0;
+  const pInst = st.personal ? installmentFor(personal, personalMonths, x.personalFlat, "flat") : 0;
+  const dbrAfter = salary ? Math.round(((Math.min(mInst, pre) + pInst + keptMonthly) / salary) * 1000) / 10 : null;
 
   // ===== الشلال =====
-  const personalCash = r0(personal - paidByBank - adminFee(personal));
-  const price = V || mortgage; // سعر البيع للبنك
-  const downPayment = Math.max(0, r0(price - mortgage));
-  const companyFromSale = price - saleTax;
+  const personalCash = st.personal ? r0(personal - paidByBank - adminFee(personal)) : 0;
+  const price = st.mortgage ? V || mortgage : 0; // سعر البيع للبنك
+  const downPayment = st.mortgage ? Math.max(0, r0(price - mortgage)) : 0;
+  const companyFromSale = st.mortgage ? price - saleTax : 0;
   const surplusBeforeFee = r0(mortgage + personalCash - capital - saleTax);
   const fx = normFee(x.fee);
-  const settleBase = x.items.filter((i) => i.by === "company" && (i.kind === "execution" || i.kind === "default" || i.kind === "card" || i.kind === "other" || (fx.settleIncludesPayoff && (i.kind === "mortgage_payoff" || i.kind === "personal_payoff")))).reduce((a, i) => a + (i.pay || 0), 0);
+  const settleBase = active.filter((i) => i.by === "company" && (i.kind === "execution" || i.kind === "default" || i.kind === "card" || i.kind === "other" || (fx.settleIncludesPayoff && (i.kind === "mortgage_payoff" || i.kind === "personal_payoff")))).reduce((a, i) => a + (i.pay || 0), 0);
   const financeBase = fx.financeBase === "personal" ? personal : fx.financeBase === "mortgage" ? mortgage : mortgage + personal;
   const feeSettle = r0((settleBase * fx.settlePct) / 100);
   const feeFinance = r0((financeBase * fx.financePct) / 100);
@@ -258,39 +292,46 @@ export function dealStudy(x: DealInput, b: Borrower, credit?: { bankReopenMonths
   const dueFromClient = r0(capital + fee - companyFromSale); // سالب = فائض من ثمن البيع يُعاد للعميل
   const clientCashAfterDown = personalCash - downPayment;
   const clientNet = r0(clientCashAfterDown - dueFromClient);
-  const days = STAGES.filter(([k]) => k !== "closed" && k !== "lost").reduce((s, [, , d]) => s + d, 0);
+  const steps = stagesFor(structure).filter(([k]) => k !== "closed" && k !== "lost");
+  const days = steps.reduce((s, [, , d]) => s + d, 0);
   const roi = capital > 0 ? Math.round((fee / capital) * 1000) / 10 : null;
   const annualized = roi != null && days ? Math.round(((roi * 365) / days) * 10) / 10 : null;
-  const cover = capital > 0 && V ? Math.round((V / capital) * 100) / 100 : null;
-  const discountable = x.items.filter((i) => i.by === "company" && (i.kind === "execution" || i.kind === "default")).reduce((s, i) => s + i.pay, 0);
-  const breakEvenDiscount = clientNet < 0 && discountable > 0 ? Math.round((-clientNet / discountable) * 1000) / 10 : null;
+  const cover = st.mortgage && capital > 0 && V ? Math.round((V / capital) * 100) / 100 : null;
+  const discountable = active.filter((i) => i.by === "company" && (i.kind === "execution" || i.kind === "default")).reduce((s, i) => s + i.pay, 0);
+  // كل ريال خصم يوفر الريال + نسبة أتعاب السداد عليه
+  const breakEvenDiscount = clientNet < 0 && discountable > 0 ? Math.min(100, Math.round((-clientNet / (discountable * (1 + fx.settlePct / 100))) * 1000) / 10) : null;
 
   const waterfall: DealStudy["waterfall"] = [
-    { label: "ندفعه نحن (تنفيذ + تعثرات + مخالصة العقار)", amount: -paidByCompany, tone: "out" },
-    { label: `ضريبة التصرفات عند الإفراغ لطرفنا (${x.transferTaxPct}%)`, amount: -transferTax, tone: "out" },
+    { label: st.mortgage ? "ندفعه نحن (تنفيذ + تعثرات + مخالصة العقار)" : "ندفعه نحن (تنفيذ + تعثرات)", amount: -paidByCompany, tone: "out" },
+    ...(st.mortgage ? [{ label: `ضريبة التصرفات عند الإفراغ لطرفنا (${x.transferTaxPct}%)`, amount: -transferTax, tone: "out" as const }] : []),
     { label: "تكاليف ثابتة (تقييم، سعي، رسوم)", amount: -(x.fixedCosts || 0), tone: "out" },
-    { label: "يسترد من البنك: ثمن العقار (العقاري + الدفعة الأولى)", amount: companyFromSale, tone: "in" },
+    ...(st.mortgage ? [{ label: "يسترد من البنك: ثمن العقار (العقاري + الدفعة الأولى)", amount: companyFromSale, tone: "in" as const }] : []),
     { label: `أتعاب السداد ${fx.settlePct}% من ${fmt(settleBase)}`, amount: feeSettle, tone: "net" },
     { label: `أتعاب استخراج التمويل ${fx.financePct}% من ${fmt(financeBase)}`, amount: feeFinance, tone: "net" },
     ...(fx.fixed ? [{ label: "أتعاب مقطوعة", amount: fx.fixed, tone: "net" as const }] : []),
-    { label: dueFromClient >= 0 ? "يدفعه العميل لنا من التمويل الشخصي" : "فائض من ثمن البيع يُعاد للعميل", amount: dueFromClient, tone: "in" },
+    { label: dueFromClient < 0 ? "فائض من ثمن البيع يُعاد للعميل" : st.personal ? "يدفعه العميل لنا من التمويل الشخصي" : "يدفعه العميل لنا من ماله (لا يوجد شخصي)", amount: dueFromClient, tone: "in" },
   ];
 
   // ===== المخاطر =====
-  if (!V) risks.push({ level: "block", text: "قيمة العقار غير معروفة — اطلب تقييماً معتمداً؛ هو سعر البيع للبنك وأساس كل الحساب." });
-  if (clientNet < 0) risks.push({ level: "block", text: `الصفقة لا تُغلق: عجز ${fmt(-clientNet)} ريال. التمويل الجديد لا يغطي رأس المال + الأتعاب + الدفعة الأولى.${breakEvenDiscount ? ` يلزم خصم ≈ ${breakEvenDiscount}% على التنفيذ والتعثرات، أو رفع التقييم، أو متضامن.` : ""}` });
+  if (st.mortgage && !V) risks.push({ level: "block", text: "قيمة العقار غير معروفة — اطلب تقييماً معتمداً؛ هو سعر البيع للبنك وأساس كل الحساب." });
+  if (clientNet < 0) risks.push({ level: "block", text: `الصفقة لا تُغلق: عجز ${fmt(-clientNet)} ريال. ${st.mortgage ? "التمويل الجديد لا يغطي رأس المال + الأتعاب + الدفعة الأولى." : `صافي الشخصي بعد شراء الالتزام القائم ${fmt(personalCash)} فقط، والمطلوب رأس المال + الأتعاب ${fmt(capital + fee)}.`} شوف «حلول بديلة» بالأسفل.` });
   else if (clientNet < 20000) risks.push({ level: "warn", text: `هامش ضيق: يبقى للعميل ${fmt(clientNet)} ريال فقط — أي نقص في التقييم أو الموافقة يكسر الصفقة.` });
+  if (kept.length) {
+    const miss = kept.filter((i) => !i.monthly);
+    risks.push({ level: miss.length ? "warn" : "info", text: `التزامات تبقى قائمة: ${kept.map((i) => i.label.split("—")[0].trim()).join("، ")} بقسط ${fmt(keptMonthly)} شهرياً، وتُحسب في سقف الاستقطاع.${miss.length ? " أدخل القسط الشهري لكل بند منها في الجدول ليكون الحساب صحيحاً." : ""}` });
+  }
+  if (!st.mortgage) risks.push({ level: "warn", text: "لا يوجد ضمان عقاري في هذا الهيكل: رأس مالنا مكشوف حتى صرف الشخصي. الضمانات: سند لأمر عبر «نافذ» بكامل المستحق، تعهد العميل بتحويل المبلغ فور الصرف، ويُفضّل كفيل غارم." });
   if (cover != null && cover < 1.1) risks.push({ level: "block", text: `تغطية الضمان ${cover}x: قيمة العقار لا تغطي رأس مالنا بهامش كافٍ. لو رفض البنك نبيع العقار بخسارة.` });
   else if (cover != null && cover < 1.3) risks.push({ level: "warn", text: `تغطية الضمان ${cover}x — مقبولة لكن حساسة لانخفاض التقييم.` });
   if (credit?.financeCoDefault) risks.push({ level: "warn", text: "تعثر شركة تمويل سيبقى في سمة بحالة «مسدد»؛ كثير من البنوك تطلب مرور 12–24 شهراً. قدّم على بنك الراتب أو بنك يقبل التعثر المسدد باستثناء، ووثّق النتيجة في «نتائج الجهات»." });
   if (credit?.bankReopenMonths) risks.push({ level: "warn", text: `حسب تحليل سمة قد تطلب البنوك انتظار ≈ ${credit.bankReopenMonths} شهراً بعد التسوية — هذا يطيل مدة رأس المال إن لم يُقبل استثناء.` });
-  if (credit?.suspension) risks.push({ level: "info", text: "الإيقاف (المادة 46) يُرفع آلياً بعد سداد قرارات التنفيذ في ناجز — تأكد قبل الإفراغ والتقديم للبنك." });
-  if (monthsToRetire != null && monthsToRetire < 120) risks.push({ level: "warn", text: `يتقاعد بعد ${Math.round(monthsToRetire / 12)} سنوات — قسط العقاري بعد التقاعد مقيّد بالمعاش التقديري ${fmt(pension ?? 0)}، فالمبلغ أقل. اطلب منتجاً متدرجاً.` });
-  if (V && mortgageByIncome < (mortgageByLtv ?? 0)) risks.push({ level: "info", text: `العقاري محكوم بالدخل (${fmt(mortgageByIncome)}) لا بقيمة العقار (${fmt(mortgageByLtv ?? 0)}) — الدفعة الأولى ${fmt(downPayment)} تُدفع من الشخصي.` });
-  if (x.items.some((i) => i.kind === "mortgage_payoff" && !i.confirmed)) risks.push({ level: "warn", text: "مبلغ مخالصة العقاري تقديري — اطلب خطاب مديونية (مخالصة مبكرة) من البنك قبل الالتزام." });
-  if (x.items.some((i) => i.kind === "execution")) risks.push({ level: "info", text: "تفاوض مع طالبي التنفيذ على خصم قبل السداد — كل ريال خصم يذهب مباشرة لهامش الصفقة." });
-  if (x.transferTaxPct > 0) risks.push({ level: "info", text: `ضريبة التصرفات ${fmt(transferTax)} عند الإفراغ لطرفنا — تحقق من الإعفاءات المتاحة مع الزكاة والضريبة قبل الإفراغ.` });
-  risks.push({ level: "info", text: "ضمانات الاسترداد: عقد بيع موثق للعقار، سند لأمر عبر «نافذ» بقيمة المستحق من الشخصي، وتحويل الدفعة مباشرة من البنك لطرفنا متى أمكن." });
+  if (credit?.suspension) risks.push({ level: "info", text: `الإيقاف (المادة 46) يُرفع آلياً بعد سداد قرارات التنفيذ في ناجز — تأكد قبل ${st.mortgage ? "الإفراغ و" : ""}التقديم للبنك.` });
+  if (st.mortgage && monthsToRetire != null && monthsToRetire < 120) risks.push({ level: "warn", text: `يتقاعد بعد ${Math.round(monthsToRetire / 12)} سنوات — قسط العقاري بعد التقاعد مقيّد بالمعاش التقديري ${fmt(pension ?? 0)}، فالمبلغ أقل. اطلب منتجاً متدرجاً.` });
+  if (st.mortgage && V && mortgageByIncome < (mortgageByLtv ?? 0)) risks.push({ level: "info", text: `العقاري محكوم بالدخل (${fmt(mortgageByIncome)}) لا بقيمة العقار (${fmt(mortgageByLtv ?? 0)}) — الدفعة الأولى ${fmt(downPayment)} تُدفع من الشخصي.` });
+  if (active.some((i) => i.kind === "mortgage_payoff" && !i.confirmed)) risks.push({ level: "warn", text: "مبلغ مخالصة العقاري تقديري — اطلب خطاب مديونية (مخالصة مبكرة) من البنك قبل الالتزام." });
+  if (active.some((i) => i.kind === "execution")) risks.push({ level: "info", text: "تفاوض مع طالبي التنفيذ على خصم قبل السداد — كل ريال خصم يذهب مباشرة لهامش الصفقة." });
+  if (st.mortgage && x.transferTaxPct > 0) risks.push({ level: "info", text: `ضريبة التصرفات ${fmt(transferTax)} عند الإفراغ لطرفنا — تحقق من الإعفاءات المتاحة مع الزكاة والضريبة قبل الإفراغ.` });
+  if (st.mortgage) risks.push({ level: "info", text: "ضمانات الاسترداد: عقد بيع موثق للعقار، سند لأمر عبر «نافذ» بقيمة المستحق من الشخصي، وتحويل الدفعة مباشرة من البنك لطرفنا متى أمكن." });
   if (dbrAfter != null && dbrAfter > totalCap * 100 + 0.5) risks.push({ level: "warn", text: `الاستقطاع بعد التمويل ${dbrAfter}% يتجاوز سقف ساما ${Math.round(totalCap * 100)}% — راجع أرقام البنك.` });
 
   // نسبة مقترحة حسب مخاطر العميل (10% أساس، حتى 35%)
@@ -298,14 +339,15 @@ export function dealStudy(x: DealInput, b: Borrower, credit?: { bankReopenMonths
   let sug = FEE_MIN;
   if (credit?.suspension) { sug += 5; why.push("إيقاف خدمات"); }
   if (credit?.financeCoDefault) { sug += 5; why.push("تعثر شركة تمويل"); }
-  if (x.items.some((i) => i.kind === "execution")) { sug += 5; why.push("قرارات تنفيذ"); }
+  if (active.some((i) => i.kind === "execution")) { sug += 5; why.push("قرارات تنفيذ"); }
+  if (!st.mortgage) { sug += 5; why.push("بدون ضمان عقاري"); }
   if (cover != null && cover < 1.3) { sug += 5; why.push("تغطية ضمان منخفضة"); }
-  if (monthsToRetire != null && monthsToRetire < 120) { sug += 5; why.push("قرب التقاعد"); }
+  if (st.mortgage && monthsToRetire != null && monthsToRetire < 120) { sug += 5; why.push("قرب التقاعد"); }
   if (V && paidByCompany > V * 0.8) { sug += 5; why.push("المدفوع يقارب قيمة العقار"); }
   const suggestedPct = Math.min(FEE_MAX, sug);
   if (fx.settlePct > FEE_MAX || fx.financePct > FEE_MAX) risks.push({ level: "warn", text: `النسبة تتجاوز الحد الأقصى المعتمد ${FEE_MAX}%.` });
 
-  const verdict: DealStudy["verdict"] = !V ? "needs_info" : clientNet < 0 || (cover != null && cover < 1.1) ? "short" : clientNet < 20000 ? "tight" : "go";
+  const verdict: DealStudy["verdict"] = st.mortgage && !V ? "needs_info" : clientNet < 0 || (cover != null && cover < 1.1) ? "short" : clientNet < 20000 ? "tight" : "go";
   const headline =
     verdict === "go" ? `الصفقة تُغلق — أتعابنا ${fmt(fee)} ويبقى للعميل ${fmt(clientNet)}` :
     verdict === "tight" ? `تُغلق بهامش ضيق — أتعابنا ${fmt(fee)}` :
@@ -313,9 +355,86 @@ export function dealStudy(x: DealInput, b: Borrower, credit?: { bankReopenMonths
     "ناقصة: نحتاج تقييم العقار";
 
   return {
+    structure, keptMonthly,
     verdict, headline, paidByCompany: r0(paidByCompany), paidByBank: r0(paidByBank), transferTax, saleTax, capital,
     financing: { age, monthsToRetire, pension, personalInstallment, personalMonths, personal, mortgagePre: pre, mortgagePost: post, mortgageMonths: maxM, mortgageByIncome, mortgageByLtv, mortgage, source, dbrAfter },
     waterfall, downPayment, personalCash, fee, feeSettle, feeFinance, settleBase, financeBase, suggestedPct, suggestedWhy: why, dueFromClient, clientNet, surplusBeforeFee, roi, days, annualized, cover, breakEvenDiscount, risks,
-    steps: STAGES.filter(([k]) => k !== "closed" && k !== "lost").map(([stage, label, d]) => ({ stage, label, days: d })),
+    steps: steps.map(([stage, label, d]) => ({ stage, label, days: d })),
   };
+}
+
+// ===== مقارنة الهياكل والحلول البديلة =====
+type Credit = Parameters<typeof dealStudy>[2];
+
+export function compareStructures(x: DealInput, b: Borrower, credit?: Credit) {
+  return STRUCTURE_KEYS.map((k) => ({ structure: k, s: dealStudy({ ...x, structure: k }, b, credit) }));
+}
+
+export interface Alternative { title: string; detail: string; tone: "good" | "maybe" | "no"; patch?: Partial<DealInput> }
+
+/** أصغر قيمة t في [lo,hi] تجعل f(t) ≥ 0 (f متزايدة)، أو null */
+function solve(f: (t: number) => number, lo: number, hi: number) {
+  if (f(hi) < 0) return null;
+  if (f(lo) >= 0) return lo;
+  for (let k = 0; k < 40; k++) { const m = (lo + hi) / 2; if (f(m) >= 0) hi = m; else lo = m; }
+  return hi;
+}
+const discounted = (x: DealInput, d: number): DealItem[] => x.items.map((i) => i.by === "company" && (i.kind === "execution" || i.kind === "default") ? { ...i, pay: r0(i.pay * (1 - d)) } : i);
+
+/** حلول بديلة تلقائية عندما لا يقفل الهيكل الحالي */
+export function dealAlternatives(x: DealInput, b: Borrower, credit?: Credit): Alternative[] {
+  const cur = dealStudy(x, b, credit);
+  const out: Alternative[] = [];
+  const st = STRUCTURES[cur.structure];
+  // 1) هياكل أخرى
+  for (const { structure, s } of compareStructures(x, b, credit)) {
+    if (structure === cur.structure) continue;
+    if (s.verdict === "go" || s.verdict === "tight")
+      out.push({ tone: "good", title: `«${STRUCTURES[structure].label}» يقفل`, detail: `يبقى للعميل ${fmt(s.clientNet)} ريال وأتعابنا ${fmt(s.fee)}. اعرضه على العميل إذا قبل بهذا الهيكل.`, patch: { structure } });
+  }
+  if (cur.verdict === "go" || cur.verdict === "needs_info") return out;
+  const net = (p: Partial<DealInput>, bb: Borrower = b) => dealStudy({ ...x, ...p }, bb, credit).clientNet;
+
+  // 2) خصم التسوية (مع إعادة حساب الأتعاب)
+  const covered = (d: number) => discounted(x, d).filter((i) => i.by === "company" && (i.kind === "execution" || i.kind === "default")).reduce((a, i) => a + i.pay, 0);
+  const d = solve((t) => net({ items: discounted(x, t) }), 0, 0.95);
+  if (d != null && d > 0) {
+    const pct = Math.ceil(d * 100);
+    out.push({ tone: pct <= 35 ? "good" : pct <= 55 ? "maybe" : "no", title: `خصم ${pct}% على التنفيذ والتعثرات يقفل الصفقة`, detail: `يعني نسدد ≈ ${fmt(covered(d))} بدل ${fmt(covered(0))}. ${pct <= 35 ? "خصم واقعي مع شركات التمويل وطالبي التنفيذ، ابدأ التفاوض." : pct <= 55 ? "خصم كبير؛ ممكن مع ديون قديمة أو شركات تحصيل فقط." : "خصم غير واقعي غالباً."}`, patch: { items: discounted(x, d) } });
+  }
+  // 3) الأتعاب
+  const fx = normFee(x.fee);
+  if (fx.settlePct > FEE_MIN || fx.financePct > FEE_MIN || fx.fixed) {
+    const minFee = { ...fx, settlePct: FEE_MIN, financePct: FEE_MIN, fixed: 0 };
+    const n = net({ fee: minFee });
+    out.push(n >= 0
+      ? { tone: "good", title: `تخفيض الأتعاب إلى ${FEE_MIN}% + ${FEE_MIN}% يقفلها`, detail: `يبقى للعميل ${fmt(n)} ريال.`, patch: { fee: minFee } }
+      : { tone: "no", title: "تخفيض الأتعاب للحد الأدنى لا يكفي", detail: `يبقى عجز ${fmt(-n)} ريال حتى بأقل نسبة.` });
+  }
+  const zero = net({ fee: { ...fx, settlePct: 0, financePct: 0, fixed: 0 } });
+  if (zero < 0) out.push({ tone: "no", title: "حتى بدون أي أتعاب لا تقفل", detail: `يبقى عجز ${fmt(-zero)} ريال؛ المشكلة في قدرة التمويل لا في نسبتنا.` });
+  // 4) شخصي فقط: كم يغطي التمويل فعلاً؟
+  if (!st.mortgage && d == null) {
+    const s0 = dealStudy({ ...x, items: discounted(x, 0.95) }, b, credit);
+    out.push({ tone: "no", title: "التمويل الشخصي لا يغطي حتى 5% من المتعثرات", detail: `صافي الشخصي ${fmt(s0.personalCash)} ريال فقط.` });
+  }
+  if (!st.mortgage) {
+    const room = cur.personalCash - (x.fixedCosts || 0) - cur.feeFinance;
+    const cap = Math.max(0, r0(room / (1 + fx.settlePct / 100)));
+    out.push({ tone: "maybe", title: `الشخصي يغطي سداد ≈ ${fmt(cap)} فقط من المتعثرات`, detail: `من أصل ${fmt(cur.settleBase)}. ممكن سداد جزئي (القرارات الأصغر أولاً) لكن الإيقاف لا يُرفع إلا بسداد كل قرارات التنفيذ.` });
+  }
+  // 5) العقار: تقييم أعلى أو متضامن
+  if (st.mortgage && x.propertyValue) {
+    const f = cur.financing;
+    if (f.mortgageByLtv != null && f.mortgageByLtv <= f.mortgageByIncome) {
+      const v = solve((t) => net({ propertyValue: t }), x.propertyValue, x.propertyValue * 2);
+      if (v != null) out.push({ tone: v <= x.propertyValue * 1.15 ? "maybe" : "no", title: `تقييم ${fmt(v)} يقفل الصفقة`, detail: `أعلى بـ ${Math.round((v / x.propertyValue - 1) * 100)}% من الحالي. اطلب تقييماً معتمداً ثانياً إن كان السوق يسمح.` });
+    } else {
+      // المتضامن يرفع العقاري فقط؛ الشخصي يبقى على راتب العميل
+      const keepP = st.personal ? { bankPersonal: x.bankPersonal ?? f.personal } : {};
+      const add = solve((t) => net(keepP, { ...b, totalSalary: (b.totalSalary ?? b.basicSalary ?? 0) + t }), 0, 40000);
+      if (add != null && add > 0) out.push({ tone: "maybe", title: `متضامن في العقاري براتب ≈ ${fmt(Math.ceil(add / 500) * 500)} يقفلها`, detail: "زوج أو قريب يدخل متضامناً في التمويل العقاري؛ يرفع مبلغ العقاري ويسد العجز." });
+    }
+  }
+  return out;
 }

@@ -7,7 +7,7 @@ import WhatsAppPanel from "@/components/whatsapp-panel";
 import { WA, windowOpen } from "@/lib/wa-cloud";
 import { headers } from "next/headers";
 import DealEditor from "@/components/deal-editor";
-import { STAGES, STAGE_LABEL } from "@/lib/deal";
+import { STAGE_LABEL, stagesFor } from "@/lib/deal";
 import CreditView from "@/components/credit-view";
 import ProjectView from "@/components/project-view";
 import StudyView from "@/components/study-view";
@@ -143,8 +143,8 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
               {!deal.saved && <span className="text-xs text-amber-700">احفظ دراسة الصفقة أولاً لبدء تتبع المراحل</span>}
             </div>
             <ol className="flex gap-1.5 overflow-x-auto pb-2">
-              {STAGES.filter(([k]) => k !== "lost").map(([k, l], i) => {
-                const cur = STAGES.findIndex(([x]) => x === deal.stage);
+              {stagesFor(deal.input.structure).filter(([k]) => k !== "lost").map(([k, l], i, arr) => {
+                const cur = arr.findIndex(([x]) => x === deal.stage);
                 const done = deal.stage !== "lost" && i < cur, now = k === deal.stage;
                 return <li key={k} className={`shrink-0 rounded-xl px-3 py-2 text-xs font-semibold ring-1 ${now ? "bg-brand-600 text-white ring-brand-600" : done ? "bg-emerald-50 text-emerald-800 ring-emerald-200" : "bg-white text-slate-500 ring-slate-200"}`}>{done ? "✓ " : ""}{l}</li>;
               })}
@@ -152,7 +152,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
             </ol>
             {edit && deal.saved && (
               <form action={setDealStage.bind(null, id)} className="mt-3 flex flex-wrap gap-2">
-                <select name="stage" defaultValue={STAGES[Math.min(STAGES.length - 3, STAGES.findIndex(([x]) => x === deal.stage) + 1)][0]} className="input w-auto">{STAGES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
+                <select name="stage" defaultValue={(() => { const ss = stagesFor(deal.input.structure); return ss[Math.min(ss.length - 3, ss.findIndex(([x]) => x === deal.stage) + 1)][0]; })()} className="input w-auto">{stagesFor(deal.input.structure).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
                 <input name="note" className="input flex-1 min-w-48" placeholder="ملاحظة (مثال: سُدد قرار التنفيذ بخصم 20%، رقم الإيصال...)" />
                 <button className="btn-primary">نقل المرحلة</button>
               </form>

@@ -5,7 +5,7 @@ import { analyzeCredit, type CreditReport } from "./simah";
 import { projectStudy, type ProjectInput } from "./project";
 import type { WaContext } from "./whatsapp";
 import { FINANCE_TYPE, BANKS } from "./labels";
-import { dealStudy, defaultInput, normFee, itemsFrom, type DealInput, type Borrower, type Stage } from "./deal";
+import { dealStudy, defaultInput, normFee, itemsFrom, splitItems, type DealInput, type Borrower, type Stage } from "./deal";
 import { type Product, type Profile, type Sector, type FinanceType, type Simah, type Obligation } from "./engine";
 
 export interface ClientRow {
@@ -267,7 +267,20 @@ export async function dealFor(c: ClientRow) {
   const row = await get<{ id: number; stage: Stage; data: string; stage_log: string; updated_at: string }>("SELECT id, stage, data, stage_log, updated_at FROM deals WHERE client_id = ?", c.id);
   const cr = await latestCredit(c.id);
   let input: DealInput;
-  if (row) { const raw = JSON.parse(row.data) as Partial<DealInput>; input = { ...defaultInput(), ...raw, fee: normFee(raw.fee) }; }
+  if (row) {
+    const raw = JSON.parse(row.data) as Partial<DealInput>;
+    input = { ...defaultInput(), ...raw, fee: normFee(raw.fee) };
+    // صفقات قديمة بلا أقساط: نأخذ القسط من الالتزامات المسجلة
+    if (input.items.some((i) => i.monthly == null && (i.kind === "mortgage_payoff" || i.kind === "personal_payoff"))) {
+      const obl = await getObligations(c.id);
+      input.items = input.items.map((i) => {
+        if (i.monthly != null) return i;
+        const k = i.kind === "mortgage_payoff" ? "mortgage" : i.kind === "personal_payoff" ? "personal" : null;
+        const o = k ? obl.find((o) => o.kind === k && (!o.lender || i.label.includes(o.lender))) ?? obl.find((o) => o.kind === k) : null;
+        return o ? { ...i, monthly: o.monthly } : i;
+      });
+    }
+  }
   else {
     input = { ...defaultInput(), items: itemsFrom(cr?.report ?? null, await getObligations(c.id)), propertyValue: c.property_value ?? null, targetBank: c.salary_bank ?? null };
   }
@@ -309,7 +322,7 @@ export async function waContextFor(c: ClientRow, staffName: string, link: string
   const cr = await latestCredit(c.id);
   const deal = c.finance_type === "project" ? null : await dealFor(c);
   const pj = projectFor(c);
-  const items = deal?.input.items ?? [];
+  const items = deal ? splitItems(deal.input).active : [];
   const ex = items.filter((i) => i.kind === "execution"), df = items.filter((i) => i.kind === "default");
   const st = cr?.analysis.stats;
   const credit = deal?.saved

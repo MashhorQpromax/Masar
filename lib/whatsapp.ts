@@ -168,10 +168,12 @@ function study(c: WaContext) {
     if (d.settleTotal > 0) steps.push(`نسدد عنك قرارات التنفيذ والمتعثرات (≈ ${approx(d.settleTotal)} ريال) ونرفع الإيقاف`);
     if (d.payoffTotal > 0) steps.push(`نُنهي مخالصة تمويلك الحالي${d.payoffLenders.length ? ` لدى ${d.payoffLenders.join(" و")}` : ""}`);
     steps.push("نحدّث سجلك في سمة بعد التسوية");
-    steps.push(`نتقدم لك${d.bankName ? ` على *${d.bankName}*` : " على البنك المناسب"} بتمويل عقاري${d.personal > 0 ? " + شخصي" : ""} جديد`);
+    const kinds = [d.mortgage > 0 ? "عقاري" : "", d.personal > 0 ? "شخصي" : ""].filter(Boolean).join(" + ") || "جديد";
+    steps.push(`نتقدم لك${d.bankName ? ` على *${d.bankName}*` : " على البنك المناسب"} بتمويل ${kinds} جديد`);
     out.push(`${LINE}\n🧭 *الحل المقترح*\n${steps.map((s, i) => `${i + 1}. ${s}`).join("\n")}`);
     if (d.verdict === "go" || d.verdict === "tight") {
-      const exp = [`• تمويل عقاري تقريباً *${approx(d.mortgage)}* ريال`];
+      const exp: string[] = [];
+      if (d.mortgage > 0) exp.push(`• تمويل عقاري تقريباً *${approx(d.mortgage)}* ريال`);
       if (d.personal > 0) exp.push(`• تمويل شخصي تقريباً *${approx(d.personal)}* ريال`);
       if (d.clientNet > 0) exp.push(`• يبقى لك نقداً بعد إنهاء كل الالتزامات تقريباً *${approx(d.clientNet)}* ريال`);
       exp.push("• التزامات أقل وملف ائتماني نظيف بإذن الله");
