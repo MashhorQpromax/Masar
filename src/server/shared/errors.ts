@@ -6,6 +6,7 @@ export class DomainError extends Error {
       | "INVALID_INPUT"
       | "INVALID_STAGE"
       | "DEAL_ALREADY_OPEN"
+      | "DEAL_ENDED"
       | "FORBIDDEN",
     message?: string,
   ) {

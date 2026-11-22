@@ -8,3 +8,4 @@ export * from "./timeline";
 export * from "./stations";
 export * from "./portfolio";
 export * from "./flow";
+export * from "./borrower";

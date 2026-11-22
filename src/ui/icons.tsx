@@ -59,3 +59,28 @@ export function ChevronIcon({ size = 20 }: { size?: number }) {
     </svg>
   );
 }
+
+export function PlusIcon({ size = 18 }: { size?: number }) {
+  return (
+    <svg {...base(size)}>
+      <path d="M12 5v14M5 12h14" />
+    </svg>
+  );
+}
+
+export function CloseIcon({ size = 18 }: { size?: number }) {
+  return (
+    <svg {...base(size)}>
+      <path d="M6 6l12 12M18 6L6 18" />
+    </svg>
+  );
+}
+
+export function PenIcon({ size = 18 }: { size?: number }) {
+  return (
+    <svg {...base(size)}>
+      <path d="M4 20h4L19 9l-4-4L4 16v4z" />
+      <path d="M13.5 6.5l4 4" />
+    </svg>
+  );
+}

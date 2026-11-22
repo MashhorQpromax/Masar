@@ -3,6 +3,7 @@ import { and, desc, eq, notInArray } from "drizzle-orm";
 import { ZodError } from "zod";
 import { dealStudy, stagesFor, type CreditFlags, type DealInput, type DealStudy, type Stage } from "@/domain/deal";
 import type { Db, Tx } from "../db/client";
+import { createClient, parseBorrower, updateBorrower } from "../clients/service";
 import { clients, dealItems, dealStageEvents, deals, notes, shareLinks } from "../db/schema";
 import type { Actor } from "../shared/actor";
 import { audit } from "../shared/audit";
@@ -43,9 +44,55 @@ function validated(input: unknown): DealInput {
 }
 
 /**
- * Saves the deal study of a client. Updates the client's deal in progress, or starts a new one.
+ * Computes a deal with the engine and writes it: onto `deal` when given, otherwise as a new deal of the client.
  * The engine's result is stored with the deal so lists never have to recompute it.
  */
+async function writeDeal(
+  tx: Tx,
+  args: { client: ClientRow; deal: DealRow | undefined; input: DealInput; actor: Actor; now: Date },
+): Promise<{ dealId: number; study: DealStudy }> {
+  const { client, input, actor, now } = args;
+  const study = dealStudy(input, borrowerOf(client, now));
+  const columns = {
+    ...dealColumnsOf(input),
+    capital: study.capital,
+    fee: study.fee,
+    clientNet: study.clientNet,
+    verdict: study.verdict,
+    computedAt: now,
+    updatedAt: now,
+  };
+
+  let dealId: number;
+  if (args.deal) {
+    dealId = args.deal.id;
+    await tx.update(deals).set(columns).where(eq(deals.id, dealId));
+    await tx.delete(dealItems).where(eq(dealItems.dealId, dealId));
+  } else {
+    const [created] = await tx
+      .insert(deals)
+      .values({ clientId: client.id, ownerId: actor.userId, ...columns })
+      .returning({ id: deals.id });
+    dealId = created!.id;
+    await tx.insert(dealStageEvents).values({ dealId, stage: "study", userId: actor.userId, createdAt: now });
+  }
+  if (input.items.length) await tx.insert(dealItems).values(itemRowsOf(dealId, input.items));
+
+  // The valuation entered in the deal is the client's latest known property value.
+  if (input.propertyValue && input.propertyValue !== client.propertyValue) {
+    await tx.update(clients).set({ propertyValue: input.propertyValue, updatedAt: now }).where(eq(clients.id, client.id));
+  }
+  await audit(tx, actor, "deal.save", "deal", dealId, {
+    clientId: client.id,
+    capital: study.capital,
+    fee: study.fee,
+    clientNet: study.clientNet,
+    verdict: study.verdict,
+  });
+  return { dealId, study };
+}
+
+/** Saves the deal study of a client. Updates the client's deal in progress, or starts a new one. */
 export async function saveDeal(
   db: Db,
   args: { clientId: number; input: unknown; actor: Actor; now?: Date },
@@ -54,45 +101,42 @@ export async function saveDeal(
   const now = args.now ?? new Date();
   return db.transaction(async (tx) => {
     const client = await clientById(tx, args.clientId);
-    const study = dealStudy(input, borrowerOf(client, now));
-    const columns = {
-      ...dealColumnsOf(input),
-      capital: study.capital,
-      fee: study.fee,
-      clientNet: study.clientNet,
-      verdict: study.verdict,
-      computedAt: now,
-      updatedAt: now,
-    };
+    return writeDeal(tx, { client, deal: await openDealOf(tx, client.id), input, actor: args.actor, now });
+  });
+}
 
-    const open = await openDealOf(tx, args.clientId);
-    let dealId: number;
-    if (open) {
-      dealId = open.id;
-      await tx.update(deals).set(columns).where(eq(deals.id, dealId));
-      await tx.delete(dealItems).where(eq(dealItems.dealId, dealId));
-    } else {
-      const [created] = await tx
-        .insert(deals)
-        .values({ clientId: args.clientId, ownerId: args.actor.userId, ...columns })
-        .returning({ id: deals.id });
-      dealId = created!.id;
-      await tx.insert(dealStageEvents).values({ dealId, stage: "study", userId: args.actor.userId, createdAt: now });
-    }
-    if (input.items.length) await tx.insert(dealItems).values(itemRowsOf(dealId, input.items));
+/**
+ * Opens a file for a new client and saves the first study of their deal.
+ * One transaction: when the numbers are refused, no client is left behind without a deal.
+ */
+export async function startDeal(
+  db: Db,
+  args: { borrower: unknown; input: unknown; actor: Actor; now?: Date },
+): Promise<{ clientId: number; dealId: number; study: DealStudy }> {
+  const borrower = parseBorrower(args.borrower);
+  const input = validated(args.input);
+  const now = args.now ?? new Date();
+  return db.transaction(async (tx) => {
+    const client = await createClient(tx, { input: borrower, actor: args.actor, now });
+    const saved = await writeDeal(tx, { client, deal: undefined, input, actor: args.actor, now });
+    return { clientId: client.id, ...saved };
+  });
+}
 
-    // The valuation entered in the deal is the client's latest known property value.
-    if (input.propertyValue && input.propertyValue !== client.propertyValue) {
-      await tx.update(clients).set({ propertyValue: input.propertyValue, updatedAt: now }).where(eq(clients.id, client.id));
-    }
-    await audit(tx, args.actor, "deal.save", "deal", dealId, {
-      clientId: client.id,
-      capital: study.capital,
-      fee: study.fee,
-      clientNet: study.clientNet,
-      verdict: study.verdict,
-    });
-    return { dealId, study };
+/** Changes the numbers of a deal in progress, together with the facts about the client they are computed from. */
+export async function reviseDeal(
+  db: Db,
+  args: { dealId: number; borrower: unknown; input: unknown; actor: Actor; now?: Date },
+): Promise<{ dealId: number; study: DealStudy }> {
+  const borrower = parseBorrower(args.borrower);
+  const input = validated(args.input);
+  const now = args.now ?? new Date();
+  return db.transaction(async (tx) => {
+    const [deal] = await tx.select().from(deals).where(eq(deals.id, args.dealId));
+    if (!deal) throw new DomainError("NOT_FOUND", `deal ${args.dealId}`);
+    if (ENDED.includes(deal.stage)) throw new DomainError("DEAL_ENDED", `deal ${deal.id}`);
+    const client = await updateBorrower(tx, { clientId: deal.clientId, input: borrower, actor: args.actor, now });
+    return writeDeal(tx, { client, deal, input, actor: args.actor, now });
   });
 }
 

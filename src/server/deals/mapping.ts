@@ -1,9 +1,10 @@
-import type { Borrower, DealInput, DealItem } from "@/domain/deal";
-import type { clients, dealItems, deals } from "../db/schema";
+import { borrowerIn, type Borrower, type DealInput, type DealItem } from "@/domain/deal";
+import type { ClientRow } from "../clients/service";
+import type { dealItems, deals } from "../db/schema";
 
+export type { ClientRow };
 export type DealRow = typeof deals.$inferSelect;
 export type DealItemRow = typeof dealItems.$inferSelect;
-export type ClientRow = typeof clients.$inferSelect;
 
 /** The engine's input, rebuilt from a stored deal and its items. */
 export function dealInputOf(deal: DealRow, items: DealItemRow[]): DealInput {
@@ -92,11 +93,5 @@ export function itemRowsOf(dealId: number, items: DealItem[]): (typeof dealItems
 
 /** The borrower facts the engine needs, as of `now`. */
 export function borrowerOf(client: ClientRow, now: Date): Borrower {
-  return {
-    age: client.birthYear ? now.getFullYear() - client.birthYear : null,
-    basicSalary: client.basicSalary,
-    totalSalary: client.totalSalary,
-    serviceMonths: client.serviceMonths,
-    sector: client.sector,
-  };
+  return borrowerIn(client, now.getFullYear());
 }

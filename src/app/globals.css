@@ -48,10 +48,12 @@ html {
   color: var(--color-ink);
 }
 
-:focus-visible {
-  outline: 3px solid var(--color-coral);
-  outline-offset: 3px;
-  border-radius: 6px;
+/* In the base layer, so a component can shape its own focus ring. */
+@layer base {
+  :focus-visible {
+    outline: 3px solid var(--color-coral);
+    outline-offset: 3px;
+  }
 }
 
 /* Numbers always read left to right, with aligned digits. */

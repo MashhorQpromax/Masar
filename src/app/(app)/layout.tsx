@@ -4,7 +4,7 @@ import { dayLong } from "@/copy/format";
 import { requireActor } from "@/server/auth/actor";
 import { dataMode } from "@/server/db/client";
 import { Dock } from "@/ui/Dock";
-import { DealsIcon, Mark, RoadIcon } from "@/ui/icons";
+import { DealsIcon, Mark, PlusIcon, RoadIcon } from "@/ui/icons";
 
 export const dynamic = "force-dynamic";
 
@@ -34,6 +34,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
           { href: "/", label: "اليوم", icon: <RoadIcon /> },
           { href: "/deals", label: "الصفقات", icon: <DealsIcon /> },
         ]}
+        action={{ href: "/deals/new", label: "صفقة جديدة", icon: <PlusIcon size={22} /> }}
       />
     </>
   );

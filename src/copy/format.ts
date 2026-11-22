@@ -83,3 +83,30 @@ export function countedInWords(n: number, forms: CountForms): string {
 
 /** First letter of a name, for an avatar. */
 export const initial = (name: string): string => name.trim().charAt(0);
+
+/** Digits and separators typed on an Arabic keyboard, as their Latin forms. */
+export const latinDigits = (text: string): string =>
+  text
+    .replace(/[\u0660-\u0669]/g, (d) => String(d.charCodeAt(0) - 0x0660))
+    .replace(/[\u06f0-\u06f9]/g, (d) => String(d.charCodeAt(0) - 0x06f0))
+    .replace(/\u066b/g, ".")
+    .replace(/\u066c/g, ",");
+
+/**
+ * What a person typed into a number field, reduced to a plain number text: digits, and one decimal
+ * point when decimals are allowed. Returns "" when nothing usable was typed.
+ */
+export function numberText(typed: string, decimals = 0): string {
+  const text = latinDigits(typed).replace(/[^0-9.]/g, "");
+  const [whole = "", ...rest] = text.split(".");
+  const integer = whole.replace(/^0+(?=\d)/, "").slice(0, 12);
+  if (decimals <= 0 || !text.includes(".")) return integer;
+  return `${integer || "0"}.${rest.join("").slice(0, decimals)}`;
+}
+
+/** A plain number text with thousands separators in its whole part: "1234567.5" becomes "1,234,567.5". */
+export function groupDigits(text: string): string {
+  const [whole = "", fraction] = text.split(".");
+  const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  return fraction === undefined ? grouped : `${grouped}.${fraction}`;
+}

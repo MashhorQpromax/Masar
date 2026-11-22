@@ -22,3 +22,17 @@ export function shortLabel(label: string): string {
   const { title, party } = splitLabel(label);
   return party ? `${title} ${LABEL_SEPARATOR} ${party}` : title;
 }
+
+/** The two parts of a label exactly as stored, for editing. */
+export function labelParts(label: string): { title: string; party: string } {
+  const at = label.indexOf(LABEL_SEPARATOR);
+  if (at < 0) return { title: label.trim(), party: "" };
+  return { title: label.slice(0, at).trim(), party: label.slice(at + LABEL_SEPARATOR.length).trim() };
+}
+
+/** A label from its two parts. The separator cannot appear inside a part, so it is replaced there. */
+export function joinLabel(title: string, party: string): string {
+  const part = (text: string) => text.replaceAll(LABEL_SEPARATOR, "-").replace(/\s+/g, " ").trim();
+  const [t, p] = [part(title), part(party)];
+  return p ? `${t} ${LABEL_SEPARATOR} ${p}` : t;
+}

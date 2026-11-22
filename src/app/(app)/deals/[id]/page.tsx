@@ -29,7 +29,7 @@ import { requireActor } from "@/server/auth/actor";
 import { getDb } from "@/server/db/client";
 import { borrowerOf } from "@/server/deals/mapping";
 import { getDeal } from "@/server/deals/service";
-import { BackIcon, ChevronIcon } from "@/ui/icons";
+import { BackIcon, ChevronIcon, PenIcon } from "@/ui/icons";
 import { Num } from "@/ui/Num";
 import { SubmitButton } from "@/ui/SubmitButton";
 import { moveDealStage } from "./actions";
@@ -90,16 +90,24 @@ export default async function DealPage({ params }: { params: Promise<{ id: strin
           </Link>
           <h1 className="title">{client.fullName}</h1>
         </div>
-        <p className="where">
-          <span className="num">{client.fileNo}</span> · <b>{STAGE[deal.stage]}</b>
-          {!ended && stations.position > 0 && (
-            <>
-              {" "}
-              · المحطة {ltr(stations.position)} من {ltr(stations.total)}
-            </>
-          )}{" "}
-          · {STRUCTURE[deal.structure]}
-        </p>
+        <div className="head-side">
+          <p className="where">
+            <span className="num">{client.fileNo}</span> · <b>{STAGE[deal.stage]}</b>
+            {!ended && stations.position > 0 && (
+              <>
+                {" "}
+                · المحطة {ltr(stations.position)} من {ltr(stations.total)}
+              </>
+            )}{" "}
+            · {STRUCTURE[deal.structure]}
+          </p>
+          {!ended && (
+            <Link className="edit-link" href={`/deals/${deal.id}/edit`}>
+              <PenIcon size={16} />
+              عدّل الأرقام
+            </Link>
+          )}
+        </div>
       </div>
 
       <div className="bento">

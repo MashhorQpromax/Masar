@@ -12,15 +12,19 @@ src/
     shared/    Rounding and small numeric helpers.
     finance/   SAMA constants and loan math (installments, principal, payoff, pension).
     deal/      The settle-and-refinance engine: structures, study, risks, ledger, alternatives,
-               the six stations of the road, portfolio totals, and where the new financing goes.
-  copy/        Arabic wording for every code the domain returns, and number, date and count formatting.
+               the six stations of the road, portfolio totals, where the new financing goes,
+               and the borrower facts a deal is computed from.
+  copy/        Arabic wording for every code the domain returns, the choices a form offers,
+               and number, date and count formatting.
   server/      Everything that touches the outside world (database, auth, WhatsApp). Server only.
     db/        Drizzle schema (one file per area) and the connection.
     deals/     Deal service: validate, compute with the engine, store, move stages, audit. Read views for screens.
+               A new client's first deal and a revision of a deal's numbers are each one transaction.
+    clients/   Client files: the facts a deal is computed from, and file numbering.
     auth/      Who is acting. Every route and action asks here first.
     demo/      Fictional deals for a build that has no database.
   app/         Next.js routes. Thin: read through services, render, call server actions.
-  ui/          Design system for the "الخريطة" identity: the road, tiles, dock, figures.
+  ui/          Design system for the "الخريطة" identity: the road, tiles, dock, figures, form fields.
 db/migrations/ Versioned SQL migrations. The only way the schema changes.
 tests/
   domain/      Unit tests and golden tests for the engines.
@@ -40,7 +44,8 @@ legacy/        The old application, parked as a read-only reference. Deleted bef
 8. **No secrets in the repository.** Configuration comes from environment variables.
 9. **Its own database, by name.** All tables live in the Postgres schema `masar`, and the app reads only `MASAR_DATABASE_URL`. It never falls back to `DATABASE_URL` or `POSTGRES_URL`, so a preview of this branch cannot attach to the live data by accident.
 10. **No database means demo, never production.** Without `MASAR_DATABASE_URL` the app runs on an in-memory Postgres filled with fictional deals, shows a "بيانات تجريبية" mark, and refuses to start when `VERCEL_ENV` is `production`. With a database, every route fails closed until sign-in is ported: `requireActor` throws.
-11. **Wording lives in one place.** Screens take their text from `src/copy`. A test fails when a risk, ledger line or alternative has no wording. Numbers inside Arabic sentences are wrapped in direction isolates; negative amounts take a true minus sign.
+11. **Wording for the domain lives in one place.** Every code the domain returns (a verdict, a risk, a ledger line, an obligation kind, a refusal) gets its Arabic text from `src/copy`, and a test fails when one has none. A screen may hold its own headings and field labels. Numbers inside Arabic sentences are wrapped in direction isolates; negative amounts take a true minus sign.
+12. **The browser shows, the server decides.** The deal editor runs the same pure engine in the browser to show the result while a person types. Saving sends the inputs only; the service validates them, computes again and stores its own answer.
 
 ## The road
 
@@ -49,6 +54,10 @@ The home screen is a road with six stations. Each of the eleven stages belongs t
 - `stationOf`, `stationsFor`, `stationTimeline`: where a deal stands and when it reached or should reach each station.
 - `portfolio`: capital out, fees expected from deals that close, capital returning within 30 days, the deal nearest to disbursement and the stage deadline that comes first.
 - `fundsFlow`: the new financing split into capital recovered, loan bought out by the bank, fee, costs and what the client keeps. It adds up exactly on all 240 golden cases.
+
+## The deal editor
+
+One screen opens a client's file with their first deal (`/deals/new`) and revises the numbers of a deal in progress (`/deals/[id]/edit`). The numbers of a closed or lost deal are a record and cannot be edited. The result panel follows the form and recomputes on every keystroke; an empty optional amount means "not known" and is never stored as zero. A birth year between 1300 and 1500 is read as Hijri and converted. On a phone the fields go two a row, the riyal unit steps aside for the digits, and a bar at the bottom carries the result and the save button. `tests/server/open-deal.test.ts` and `tests/server/input.test.ts` cover what is stored and what is refused.
 
 ## Deal engine
 
@@ -80,8 +89,9 @@ Old module (under `legacy/lib`) and its state in the rebuild:
 - [x] `schema.ts`, `db.ts`: replaced by `src/server/db` (Drizzle schema, `db/migrations`, Postgres schema `masar`)
 - [x] deal storage and stages from `data.ts` and `actions.ts`: `src/server/deals` (save, stage, reject, reopen, read), tested on a real Postgres engine in memory
 - [ ] the rest of `data.ts` and `actions.ts`: clients, credit, lenders, documents, notes
-- [x] screens on the "الخريطة" direction: the road (home), the deals list, the deal file with stage moves and the step by step calculation
-- [ ] screens still to build: deal editor, clients, credit, lenders, inbox, calculator, knowledge, users, audit, account, client portal
+- [x] screens on the "الخريطة" direction: the road (home), the deals list, the deal file with stage moves and the step by step calculation, the deal editor
+- [x] opening a client file and revising its facts, from `data.ts` and `actions.ts`: `src/server/clients`
+- [ ] screens still to build: clients, credit, lenders, inbox, calculator, knowledge, users, audit, account, client portal
 - [ ] data migration from the live database, then the domain switch (only after the owner approves)
 
 To regenerate a golden file while `legacy/` still exists: `npm run golden:deal`.
