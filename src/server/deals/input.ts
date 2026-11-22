@@ -1,9 +1,10 @@
 import { z } from "zod";
 import type { DealInput } from "@/domain/deal";
 
-const amount = z.number().finite().min(0).max(10_000_000_000);
-const pct = z.number().finite().min(0).max(100);
-const rate = z.number().finite().min(0).max(30);
+/** A number here is always finite: the schema refuses NaN and Infinity by itself. */
+const amount = z.number().min(0).max(10_000_000_000);
+const pct = z.number().min(0).max(100);
+const rate = z.number().min(0).max(30);
 
 export const dealItemSchema = z.object({
   id: z.string().trim().min(1).max(20),
