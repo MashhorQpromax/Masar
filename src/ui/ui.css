@@ -77,6 +77,13 @@
     color: var(--color-ink);
     min-width: 0;
   }
+  a.me-who {
+    border-radius: 999px;
+    transition: background 0.2s;
+  }
+  a.me-who:hover {
+    background: var(--color-ground);
+  }
   .me-who > span {
     overflow: hidden;
     text-overflow: ellipsis;
@@ -777,6 +784,10 @@
     transition:
       transform 0.2s,
       opacity 0.2s;
+  }
+  .btn > svg {
+    flex: none;
+    margin-inline-end: 8px;
   }
   .btn:hover {
     transform: translateY(-2px);
@@ -1802,7 +1813,7 @@
     background: var(--color-tile);
     border-radius: 16px;
   }
-  .login-ltr {
+  .field-ltr {
     text-align: left;
   }
   .field-input.login-code {
@@ -1816,7 +1827,7 @@
     color: var(--color-line);
     font-weight: 600;
   }
-  .login-eye {
+  .field-eye {
     flex: none;
     width: 44px;
     height: 44px;
@@ -1832,8 +1843,8 @@
       color 0.2s,
       background 0.2s;
   }
-  .login-eye:hover,
-  .login-eye[aria-pressed="true"] {
+  .field-eye:hover,
+  .field-eye[aria-pressed="true"] {
     color: var(--color-navy);
     background: var(--color-ground);
   }
@@ -1948,6 +1959,401 @@
     padding: 64px 24px;
     border-radius: 36px;
     background: var(--color-tile);
+  }
+
+  /* ---------- Account ---------- */
+  .btn--soft {
+    background: var(--color-ground);
+    color: var(--color-navy);
+  }
+  .said {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--color-sun-soft);
+    color: var(--color-sun-ink);
+    border-radius: 14px;
+    padding: 11px 16px;
+    font-size: 14.5px;
+    line-height: 1.6;
+    animation: rise 0.5s var(--ease-out) backwards;
+  }
+  .said svg {
+    flex: none;
+  }
+  .said[data-bad] {
+    background: var(--color-coral-soft);
+    color: #8a2410;
+    animation: shake 0.4s var(--ease-out);
+  }
+
+  /* The card sets the first row. Whatever the sign-in methods need beyond it goes to the row below. */
+  .account {
+    align-items: start;
+    grid-template-rows: auto 1fr;
+  }
+  .tile--card {
+    grid-column: span 5;
+    display: grid;
+    gap: 26px;
+    padding: 30px 32px 28px;
+    background-color: var(--color-navy);
+    background-image: radial-gradient(rgba(255, 255, 255, 0.07) 1.3px, transparent 1.4px);
+    background-size: 28px 28px;
+    color: #fff;
+  }
+  .tile--card .label {
+    color: #ffd46b;
+  }
+  .card-who {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    min-width: 0;
+  }
+  .card-face {
+    flex: none;
+    width: 72px;
+    height: 72px;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    background: var(--color-sun);
+    color: var(--color-navy);
+    font-style: normal;
+    font-size: 32px;
+    font-weight: 700;
+  }
+  .card-text {
+    min-width: 0;
+  }
+  .card-name {
+    font-size: clamp(26px, 2.6vw, 36px);
+    font-weight: 700;
+    line-height: 1.3;
+    overflow-wrap: anywhere;
+  }
+  .card-role {
+    font-size: 15px;
+    color: var(--color-navy-mist);
+  }
+  .card-facts {
+    border-top: 1px solid rgba(255, 255, 255, 0.12);
+  }
+  .card-facts > div {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 12px 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+    font-size: 14.5px;
+  }
+  .card-facts dt {
+    flex: none;
+    color: #8fa1b3;
+  }
+  .card-facts dd {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .card-level {
+    font-size: clamp(40px, 4.4vw, 60px);
+    font-weight: 700;
+    line-height: 1.2;
+    color: var(--color-sun);
+    transform-origin: right center;
+    animation: pop 0.5s var(--ease-spring);
+  }
+  .card-guard[data-ways="1"] .card-level {
+    color: #fff;
+  }
+  .card-say {
+    font-size: 15px;
+    line-height: 1.7;
+    color: var(--color-navy-mist);
+    margin-bottom: 20px;
+  }
+
+  .tile--doors {
+    grid-column: span 7;
+    grid-row: span 2;
+    padding: 26px 30px 10px;
+  }
+  .door {
+    padding: 20px 0;
+  }
+  .door + .door {
+    border-top: 1px solid var(--color-line);
+  }
+  .door-head {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 12px 16px;
+  }
+  .door-node {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    border: 2px solid var(--color-line);
+    color: var(--color-navy);
+  }
+  .door[data-on] .door-node {
+    background: var(--color-sun);
+    border-color: var(--color-sun);
+    animation: pop 0.5s var(--ease-spring);
+  }
+  .door-name {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 2px 10px;
+    font-size: 19px;
+    font-weight: 600;
+  }
+  .door-state {
+    font-size: 12.5px;
+    font-weight: 500;
+    color: var(--color-muted);
+  }
+  .door[data-on] .door-state {
+    color: var(--color-sun-ink);
+  }
+  .door-say {
+    font-size: 14.5px;
+    line-height: 1.7;
+    color: var(--color-body);
+    max-width: 48ch;
+  }
+  /* What opens under a way lines up with its text, clear of the node. */
+  .door > :not(.door-head) {
+    margin-top: 16px;
+    margin-inline-start: 52px;
+  }
+  .door-panel {
+    display: grid;
+    gap: 16px;
+    padding: 20px;
+    border-radius: 22px;
+    background: var(--color-ground);
+    animation: rise 0.5s var(--ease-out) backwards;
+  }
+  .door-panel .field-box {
+    background: var(--color-tile);
+  }
+  .door-fields {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+    gap: 14px;
+    align-items: start;
+  }
+  .door-actions {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .door-warn {
+    font-size: 14.5px;
+    line-height: 1.7;
+    color: var(--color-ink);
+  }
+
+  /* Linking the authenticator app: the code to scan beside the two things to do. */
+  .link {
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: start;
+    column-gap: 22px;
+  }
+  .link-qr {
+    grid-row: span 2;
+    width: 176px;
+    aspect-ratio: 1;
+    padding: 10px;
+    border-radius: 18px;
+    background: #fff;
+    color: var(--color-navy);
+  }
+  .link-qr svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+  .link-steps {
+    display: grid;
+    gap: 14px;
+  }
+  .link-steps li {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 12px;
+    font-size: 15px;
+    line-height: 1.7;
+    color: var(--color-ink);
+  }
+  .link-steps b {
+    width: 26px;
+    height: 26px;
+    margin-top: 1px;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    background: var(--color-navy);
+    color: #fff;
+    font-size: 13px;
+  }
+  .link-steps .field {
+    gap: 10px;
+  }
+  .link-steps .field-box {
+    max-width: 230px;
+  }
+  .link-app {
+    white-space: nowrap;
+    font-weight: 500;
+  }
+  /* Someone reading on the phone that holds the app cannot scan their own screen. */
+  .link-open {
+    display: none;
+    color: var(--color-navy);
+    text-decoration: underline;
+    text-decoration-color: var(--color-navy-mist);
+    text-underline-offset: 4px;
+  }
+  @media (hover: none) and (pointer: coarse) {
+    .link-open {
+      display: inline;
+    }
+  }
+  .link-key {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px 10px;
+    font-size: 13px;
+    color: var(--color-muted);
+  }
+  .link-key code {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 13px;
+    letter-spacing: 0.03em;
+    color: var(--color-ink);
+    background: #fff;
+    border-radius: 10px;
+    padding: 6px 10px;
+    overflow-wrap: anywhere;
+  }
+  .link-copy {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 36px;
+    padding: 0 10px;
+    border: 0;
+    border-radius: 10px;
+    background: transparent;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--color-navy);
+    cursor: pointer;
+  }
+  .link-copy:hover {
+    background: #fff;
+  }
+  .link .door-actions {
+    grid-column: 1 / -1;
+  }
+
+  .lines {
+    display: grid;
+    gap: 8px;
+  }
+  .line {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    min-height: 62px;
+    padding: 10px 16px;
+    border-radius: 16px;
+    background: var(--color-ground);
+    animation: rise 0.5s var(--ease-out) backwards;
+  }
+  .line-text {
+    display: grid;
+    min-width: 0;
+  }
+  .line-text b {
+    font-size: 15px;
+    font-weight: 600;
+  }
+  .line-text small {
+    font-size: 12.5px;
+    color: var(--color-muted);
+  }
+  .line .btn {
+    flex: none;
+    min-height: 40px;
+    padding: 0 14px;
+    font-size: 14px;
+  }
+  .line-ask {
+    display: flex;
+    flex: none;
+    gap: 4px;
+  }
+  .line .tag {
+    align-self: center;
+    background: var(--color-tile);
+  }
+  .tile--devices {
+    grid-column: span 5;
+    display: grid;
+    gap: 14px;
+  }
+  .tile--devices > .btn {
+    justify-self: start;
+  }
+
+  /* The password is asked in a box of its own, over the page. */
+  .ask {
+    margin: auto;
+    padding: 0;
+    border: 0;
+    border-radius: 28px;
+    width: min(420px, calc(100vw - 32px));
+    background: var(--color-tile);
+    color: var(--color-ink);
+  }
+  .ask[open] {
+    animation: rise 0.45s var(--ease-out);
+  }
+  .ask::backdrop {
+    background: rgba(15, 42, 67, 0.55);
+  }
+  .ask-form {
+    display: grid;
+    gap: 14px;
+    padding: 28px;
+  }
+  .ask-title {
+    font-size: 26px;
+    font-weight: 700;
+  }
+  .ask-say {
+    font-size: 15px;
+    color: var(--color-body);
+    margin-top: -8px;
+  }
+  .ask-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 4px;
   }
 
   /* ---------- Small screens ---------- */
@@ -2075,6 +2481,44 @@
     }
     .dock a {
       padding: 0 16px;
+    }
+    .account {
+      grid-template-rows: none;
+    }
+    .tile--card,
+    .tile--doors,
+    .tile--devices {
+      grid-column: 1 / -1;
+      grid-row: auto;
+    }
+    .tile--card {
+      padding: 24px 20px;
+      gap: 22px;
+    }
+    .card-face {
+      width: 60px;
+      height: 60px;
+      font-size: 27px;
+    }
+    .tile--doors {
+      padding: 20px 20px 4px;
+    }
+    .door-head {
+      grid-template-columns: auto minmax(0, 1fr);
+    }
+    .door-head > .btn {
+      grid-column: 2;
+      justify-self: start;
+    }
+    .door > :not(.door-head) {
+      margin-inline-start: 0;
+    }
+    .link {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .link-qr {
+      grid-row: auto;
+      justify-self: center;
     }
     .row {
       grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);

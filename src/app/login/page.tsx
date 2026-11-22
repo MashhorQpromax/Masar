@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
-import { currentSession } from "@/server/auth/request";
+import { currentSession, relyingParty } from "@/server/auth/request";
 import { dataMode } from "@/server/db/client";
 import { Mark } from "@/ui/icons";
 import { LoginArt } from "./LoginArt";
@@ -29,7 +29,7 @@ export default async function LoginPage() {
         </header>
         <LoginArt as="band" />
         <div className="login-body">
-          <LoginForm demo={demo} />
+          <LoginForm demo={demo} passkeys={!demo && (await relyingParty()) != null} />
         </div>
         <p className="login-foot">كل دخول يُسجَّل لحماية بيانات العملاء.</p>
       </main>

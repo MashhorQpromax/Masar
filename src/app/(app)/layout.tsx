@@ -29,12 +29,10 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
               </p>
             )}
             <form action={signOut} className="me">
-              {!me.demo && (
-                <span className="me-who" title={ROLE[me.role]}>
-                  <i aria-hidden="true">{initial(me.name)}</i>
-                  <span>{me.name}</span>
-                </span>
-              )}
+              <Link className="me-who" href="/account" title={me.demo ? "حسابي" : `حسابي · ${ROLE[me.role]}`} aria-label="حسابي">
+                <i aria-hidden="true">{initial(me.name)}</i>
+                <span>{me.demo ? "حسابي" : me.name}</span>
+              </Link>
               <button type="submit" className="me-out">
                 <LeaveIcon size={16} />
                 خروج

@@ -97,8 +97,8 @@ export function EyeIcon({ size = 20 }: { size?: number }) {
 export function EyeOffIcon({ size = 20 }: { size?: number }) {
   return (
     <svg {...base(size)}>
-      <path d="M9.9 5.8A9.6 9.6 0 0 1 12 5.5c6 0 9.5 6.500 9.500 6.500a15.600 15.600 0 0 1-2.400 3.100M6.300 7.700A15.300 15.300 0 0 0 2.500 12S6 18.500 12 18.500a9.300 9.300 0 0 0 4.200-1" />
-      <path d="M9.900 10.100a2.800 2.800 0 0 0 3.900 4" />
+      <path d="M9.9 5.8A9.6 9.6 0 0 1 12 5.5c6 0 9.5 6.5 9.5 6.500a15.6 15.6 0 0 1-2.4 3.100M6.3 7.700A15.3 15.3 0 0 0 2.5 12S6 18.5 12 18.500a9.3 9.3 0 0 0 4.2-1" />
+      <path d="M9.9 10.100a2.8 2.8 0 0 0 3.9 4" />
       <path d="M4 4l16 16" />
     </svg>
   );
@@ -109,6 +109,34 @@ export function LeaveIcon({ size = 18 }: { size?: number }) {
     <svg {...base(size)}>
       <path d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4" />
       <path d="M10 8l-4 4 4 4M6 12h9" />
+    </svg>
+  );
+}
+
+export function FingerprintIcon({ size = 20 }: { size?: number }) {
+  return (
+    <svg {...base(size)}>
+      <path d="M12 10.5v3.2c0 2.3-.6 4.3-1.7 6" />
+      <path d="M8.5 17.800c.4-1.3.5-2.6.5-4.100v-3.200a3 3 0 0 1 6 0v2.800c0 2.2-.4 4.2-1.1 6.2" />
+      <path d="M5.6 14.500c.1-.6.1-1.2.1-1.800v-2.200a6.3 6.3 0 0 1 12.6 0v2.600c0 1.2-.1 2.3-.3 3.4" />
+      <path d="M4.3 7.800A9 9 0 0 1 12 3.500a9 9 0 0 1 7.7 4.3" />
+    </svg>
+  );
+}
+
+export function CopyIcon({ size = 18 }: { size?: number }) {
+  return (
+    <svg {...base(size)}>
+      <rect x="9" y="9" width="11" height="11" rx="2.5" />
+      <path d="M5 15V6.500A2.5 2.5 0 0 1 7.5 4H15" />
+    </svg>
+  );
+}
+
+export function CheckIcon({ size = 18 }: { size?: number }) {
+  return (
+    <svg {...base(size)}>
+      <path d="M5 12.500l4.5 4.500L19 7.5" />
     </svg>
   );
 }

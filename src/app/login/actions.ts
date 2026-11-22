@@ -1,9 +1,11 @@
 "use server";
 
+import type { AuthenticationResponseJSON, PublicKeyCredentialRequestOptionsJSON } from "@simplewebauthn/server";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
-import { clearCookie, requestOrigin, SESSION_COOKIE, setCookie, STEP_COOKIE } from "@/server/auth/request";
+import { passkeySignIn, signInWithPasskey } from "@/server/auth/passkeys";
+import { clearCookie, relyingParty, requestOrigin, SESSION_COOKIE, setCookie, STEP_COOKIE } from "@/server/auth/request";
 import { completeSecondFactor, signInWithCode, signInWithPassword, signOut as endSignIn } from "@/server/auth/signin";
 import { dataMode, getDb } from "@/server/db/client";
 
@@ -71,6 +73,53 @@ export async function signInByCode(_: SignInState, form: FormData): Promise<Sign
   const result = await signInWithCode(await getDb(), { ...parsed.data, origin: await requestOrigin() });
   if (result.status === "refused") return { error: result.refusal };
   setCookie(await cookies(), SESSION_COOKIE, result.session.token, result.session.expiresAt);
+  redirect("/");
+}
+
+export interface PasskeyAsk {
+  error?: string;
+  options?: PublicKeyCredentialRequestOptionsJSON;
+}
+
+/** Starts a passkey sign-in: the challenge the device must answer. Nobody is named yet. */
+export async function passkeyStart(rememberMe: boolean): Promise<PasskeyAsk> {
+  demoEnters();
+  const rp = await relyingParty();
+  if (!rp) return { error: "BAD_PASSKEY" };
+  const { options, step } = await passkeySignIn(await getDb(), { rp, remember: rememberMe === true });
+  setCookie(await cookies(), STEP_COOKIE, step.token, step.expiresAt, "strict");
+  return { options };
+}
+
+// The device's answer is checked piece by piece by the passkey library. Here it is only kept to a sane size.
+const answerForm = z.looseObject({
+  id: text(1500),
+  rawId: text(1500),
+  type: z.literal("public-key"),
+  response: z.looseObject({
+    clientDataJSON: text(6000),
+    authenticatorData: text(6000),
+    signature: text(3000),
+    userHandle: text(400).nullish(),
+  }),
+});
+
+export async function passkeyFinish(response: unknown): Promise<SignInState> {
+  demoEnters();
+  const parsed = answerForm.safeParse(response);
+  const rp = await relyingParty();
+  if (!parsed.success || !rp) return { error: "BAD_PASSKEY" };
+  const jar = await cookies();
+  const stepToken = jar.get(STEP_COOKIE)?.value;
+  clearCookie(jar, STEP_COOKIE);
+  const result = await signInWithPasskey(await getDb(), {
+    stepToken,
+    response: { clientExtensionResults: {}, ...parsed.data } as AuthenticationResponseJSON,
+    rp,
+    origin: await requestOrigin(),
+  });
+  if (result.status === "refused") return { error: result.refusal };
+  setCookie(jar, SESSION_COOKIE, result.session.token, result.session.expiresAt);
   redirect("/");
 }
 

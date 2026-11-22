@@ -11,7 +11,14 @@ export class DomainError extends Error {
       | "EMAIL_TAKEN"
       | "WRONG_PASSWORD"
       | "PASSWORD_SHORT"
-      | "PASSWORD_LONG",
+      | "PASSWORD_LONG"
+      | "LOCKED"
+      | "BAD_CODE"
+      | "STEP_EXPIRED"
+      | "CONFIRM_FIRST"
+      | "AUTHENTICATOR_ON"
+      | "PASSKEY_REFUSED"
+      | "PASSKEY_KNOWN",
     message?: string,
   ) {
     super(message ?? code);

@@ -18,7 +18,8 @@ import {
   type SignInResult,
 } from "@/server/auth/signin";
 import { base32Encode, totpAt } from "@/server/auth/totp";
-import { changeOwnPassword, createUser } from "@/server/auth/users";
+import { changeOwnPassword } from "@/server/auth/account";
+import { createUser } from "@/server/auth/users";
 import { SYSTEM } from "@/server/shared/actor";
 import { testDb } from "../helpers/db";
 
@@ -82,7 +83,8 @@ describe("signing in with a password", () => {
 
     const open = await readSession(c.db, token, after(1));
     expect(open?.user).toEqual({ id: user.id, name: user.name, email: user.email, role: "analyst" });
-    expect(open?.confirmedUntil).toBeNull();
+    // Whoever just typed the password may change sign-in methods for ten minutes.
+    expect(open?.confirmedUntil).toEqual(after(10));
     expect((await reload(user.id)).lastLoginAt).toEqual(start);
     expect(await attempts("login", user.id)).toMatchObject([{ details: { method: "password" }, ip: origin.ip, entity: "user", entityId: user.id }]);
   });
@@ -456,9 +458,9 @@ describe("accounts", () => {
     const here = session(await password(user.email, PASSWORD));
     const elsewhere = session(await password(user.email, PASSWORD));
     const actor = { userId: user.id };
-    await expect(changeOwnPassword(c.db, { userId: user.id, current: "wrong", next: "another-password", actor })).rejects.toMatchObject({ code: "WRONG_PASSWORD" });
-    await expect(changeOwnPassword(c.db, { userId: user.id, current: PASSWORD, next: "short", actor })).rejects.toMatchObject({ code: "PASSWORD_SHORT" });
-    await changeOwnPassword(c.db, { userId: user.id, current: PASSWORD, next: "another-password", keepToken: here.token, actor, now: after(1) });
+    await expect(changeOwnPassword(c.db, { userId: user.id, current: "wrong", next: "another-password", origin, actor })).rejects.toMatchObject({ code: "WRONG_PASSWORD" });
+    await expect(changeOwnPassword(c.db, { userId: user.id, current: PASSWORD, next: "short", origin, actor })).rejects.toMatchObject({ code: "PASSWORD_SHORT" });
+    await changeOwnPassword(c.db, { userId: user.id, current: PASSWORD, next: "another-password", sessionToken: here.token, origin, actor, now: after(1) });
 
     expect(await readSession(c.db, here.token, after(2))).not.toBeNull();
     expect(await readSession(c.db, elsewhere.token, after(2))).toBeNull();

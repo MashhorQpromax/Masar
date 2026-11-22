@@ -23,7 +23,7 @@ src/
                A new client's first deal and a revision of a deal's numbers are each one transaction.
     clients/   Client files: the facts a deal is computed from, and file numbering.
     auth/      Who is acting. Every route and action asks here first. Passwords, sessions,
-               authenticator codes, one-time codes, lockouts, and the accounts themselves.
+               authenticator codes, one-time codes, passkeys, lockouts, and the accounts themselves.
     demo/      Fictional deals for a build that has no database.
   app/         Next.js routes. Thin: read through services, render, call server actions.
   ui/          Design system for the "الخريطة" identity: the road, tiles, dock, figures, form fields.
@@ -61,13 +61,15 @@ The home screen is a road with six stations. Each of the eleven stages belongs t
 
 ## Sign-in
 
-A person signs in with their email and password, and with the six digits of their authenticator app when the account has one. The same six digits, with the email, also sign in without the password. `src/server/auth/signin.ts` holds every way in and is tested on a real Postgres engine in memory (`tests/server/signin.test.ts`).
+A person signs in with their email and password, and with the six digits of their authenticator app when the account has one. The same six digits, with the email, also sign in without the password. A passkey signs in with a fingerprint, a face or the device's own lock, and nothing typed. `src/server/auth/signin.ts` and `passkeys.ts` hold every way in, and are tested on a real Postgres engine in memory (`tests/server/signin.test.ts`, `tests/server/account.test.ts`).
 
 - **Sessions** live in the `sessions` table: half a day, or thirty days when the person asks to be remembered. Signing out, stopping an account or changing the password ends them on the server, so a copied cookie stops working. In production the cookie carries the `__Host-` prefix and is never readable by script.
 - **A half-way sign-in** (password accepted, code awaited) is a row in `auth_steps` that expires after five minutes and is taken once.
 - **Limits.** Five wrong passwords or second-step codes lock the account for fifteen minutes. Twenty failures from one address in fifteen minutes close every way in to that address. Five wrong codes stop sign-in by code alone until a password sign-in. An authenticator code is accepted once.
 - **One answer.** A wrong password, an unknown email and a stopped account get the same refusal after the same amount of work.
 - **Carried over.** Password hashes and sealed authenticator secrets have the old system's formats, so accounts move across with the data and keep working as long as `MASAR_SECRET` keeps its value.
+- **Passkeys** are WebAuthn credentials checked by `@simplewebauthn/server`. The site they belong to comes from `MASAR_ORIGINS`, a list of the exact addresses of the site with its own first (`https://masarfin.com,https://www.masarfin.com`); a production build without it has no passkeys, because taking the address from the request would let a forged host name choose it. The device must have verified its person, a challenge is a row in `auth_steps` answered once, and "remember me" is fixed when the challenge is asked. The tests sign real challenges with a software device (`tests/helpers/authenticator.ts`).
+- **The account screen** (`/account`, any role) changes the password, links or stops the authenticator, adds or removes passkeys and signs other devices out. A sign-in method changes only from a session whose person typed the password within the last ten minutes (`requireConfirmed`); a session opened by a code or a passkey is asked for the password first, and wrong passwords there count against the account as they do at the door. The rule lives in the services, so no screen can skip it.
 - **Codes over WhatsApp** are issued and checked here (`sendLoginCode`), with limits per person and per address. The sender itself arrives with the WhatsApp module; until then the form does not offer it.
 - **The first account** is made with `npm run user:create`. The screen that manages people comes with the remaining screens.
 
@@ -102,13 +104,14 @@ Old module (under `legacy/lib`) and its state in the rebuild:
 - [ ] `advisor.ts`
 - [ ] `whatsapp.ts`, `wa-cloud.ts` messages and Meta Cloud API
 - [x] `auth.ts`, `totp.ts` sign-in with a password, sessions, roles and permissions, lockouts, the authenticator as a second step and as a code: `src/domain/auth`, `src/server/auth`, the `/login` screen
-- [ ] `auth-methods.ts` passkeys; enrolling an authenticator and changing a password from the account screen; delivery of the WhatsApp code
+- [x] `auth-methods.ts` passkeys, enrolling an authenticator, changing a password and signing other devices out: `src/server/auth/passkeys.ts`, `account.ts`, the `/account` screen
+- [ ] `auth-methods.ts` delivery of the WhatsApp code: arrives with the WhatsApp module
 - [x] `schema.ts`, `db.ts`: replaced by `src/server/db` (Drizzle schema, `db/migrations`, Postgres schema `masar`)
 - [x] deal storage and stages from `data.ts` and `actions.ts`: `src/server/deals` (save, stage, reject, reopen, read), tested on a real Postgres engine in memory
 - [ ] the rest of `data.ts` and `actions.ts`: clients, credit, lenders, documents, notes
 - [x] screens on the "الخريطة" direction: the road (home), the deals list, the deal file with stage moves and the step by step calculation, the deal editor
 - [x] opening a client file and revising its facts, from `data.ts` and `actions.ts`: `src/server/clients`
-- [ ] screens still to build: clients, credit, lenders, inbox, calculator, knowledge, users, audit, account, client portal
+- [ ] screens still to build: clients, credit, lenders, inbox, calculator, knowledge, users, audit, client portal
 - [ ] data migration from the live database, then the domain switch (only after the owner approves)
 
 To regenerate a golden file while `legacy/` still exists: `npm run golden:deal`.

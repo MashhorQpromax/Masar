@@ -10,11 +10,12 @@ npm run dev
 
 Without `MASAR_DATABASE_URL` the app runs in demo mode: an in-memory database with fictional deals, nothing to set up. Preview deployments of this branch run the same way.
 
-With a database, people sign in. Two variables are needed, and the first account is made from the terminal:
+With a database, people sign in. Two variables are needed, a third switches passkeys on, and the first account is made from the terminal:
 
 ```
 MASAR_DATABASE_URL=postgres://...   # the rebuild's own database
 MASAR_SECRET=...                    # at least 16 characters; seals authenticator secrets
+MASAR_ORIGINS=https://masarfin.com,https://www.masarfin.com   # the site's exact addresses, its own first; without it there are no passkeys
 
 npm run db:migrate
 npm run user:create -- --name "..." --email someone@example.com --role admin

@@ -1,8 +1,9 @@
 import "server-only";
-import { and, eq, gt, lt, ne } from "drizzle-orm";
+import { and, desc, eq, gt, lt, ne } from "drizzle-orm";
 import type { Role } from "@/domain/auth";
 import type { Tx } from "../db/client";
 import { authSteps, sessions, users } from "../db/schema";
+import { DomainError } from "../shared/errors";
 import { newToken, tokenHash } from "./secret";
 
 export type SignInMethod = "password" | "password+totp" | "passkey" | "totp" | "whatsapp";
@@ -12,6 +13,8 @@ export const SESSION_HOURS = 12;
 export const REMEMBER_DAYS = 30;
 /** How long a half-way sign-in waits for its second half. */
 export const STEP_MINUTES = 5;
+/** How long a typed password keeps the sign-in methods of the account open to change. */
+export const CONFIRM_MINUTES = 10;
 
 const HOUR = 3_600_000;
 
@@ -45,10 +48,13 @@ export async function issueSession(
 ): Promise<Issued> {
   const token = newToken();
   const expiresAt = new Date(args.now.getTime() + (args.remember ? REMEMBER_DAYS * 24 : SESSION_HOURS) * HOUR);
+  // Whoever just typed the password has confirmed who they are; a code or a passkey says less about that.
+  const typedPassword = args.method === "password" || args.method === "password+totp";
   await tx.insert(sessions).values({
     tokenHash: tokenHash(token),
     userId: args.userId,
     expiresAt,
+    confirmedUntil: typedPassword ? new Date(args.now.getTime() + CONFIRM_MINUTES * 60_000) : null,
     method: args.method,
     ip: args.ip,
     userAgent: args.userAgent?.slice(0, 300) ?? null,
@@ -93,6 +99,44 @@ export async function endSession(tx: Tx, token: string | null | undefined): Prom
 export async function endSessionsOf(tx: Tx, userId: number, keepToken?: string | null): Promise<void> {
   const keep = plausible(keepToken) ? tokenHash(keepToken) : null;
   await tx.delete(sessions).where(keep ? and(eq(sessions.userId, userId), ne(sessions.tokenHash, keep)) : eq(sessions.userId, userId));
+}
+
+/** Marks the session as confirmed: its person re-entered their password a moment ago. */
+export async function confirmSession(tx: Tx, token: string | null | undefined, now: Date): Promise<void> {
+  if (!plausible(token)) return;
+  await tx
+    .update(sessions)
+    .set({ confirmedUntil: new Date(now.getTime() + CONFIRM_MINUTES * 60_000) })
+    .where(eq(sessions.tokenHash, tokenHash(token)));
+}
+
+/**
+ * The rule for changing how an account is opened: the session must be its person's own, and that person
+ * typed their password within the last minutes. A device found signed in cannot add its finder's fingerprint.
+ */
+export async function requireConfirmed(tx: Tx, token: string | null | undefined, userId: number, now: Date): Promise<void> {
+  const session = await readSession(tx, token, now);
+  if (!session || session.user.id !== userId || !session.confirmedUntil) throw new DomainError("CONFIRM_FIRST");
+}
+
+export interface SessionLine {
+  method: string;
+  createdAt: Date;
+  expiresAt: Date;
+  userAgent: string | null;
+  /** The session asking. */
+  current: boolean;
+}
+
+/** Where a person is signed in right now, newest first. */
+export async function listSessions(tx: Tx, userId: number, currentToken: string | null | undefined, now: Date): Promise<SessionLine[]> {
+  const current = plausible(currentToken) ? tokenHash(currentToken) : null;
+  const rows = await tx
+    .select()
+    .from(sessions)
+    .where(and(eq(sessions.userId, userId), gt(sessions.expiresAt, now)))
+    .orderBy(desc(sessions.createdAt));
+  return rows.map((row) => ({ method: row.method, createdAt: row.createdAt, expiresAt: row.expiresAt, userAgent: row.userAgent, current: row.tokenHash === current }));
 }
 
 export type StepKind = (typeof authSteps.$inferSelect)["kind"];

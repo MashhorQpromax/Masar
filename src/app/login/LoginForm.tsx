@@ -1,13 +1,14 @@
 "use client";
 
 import { useActionState, useEffect, useId, useState, type ReactNode } from "react";
-import { signInError } from "@/copy/auth";
+import { passkeyProblem, signInError } from "@/copy/auth";
 import { digitsOf } from "@/domain/shared/phone";
-import { EyeIcon, EyeOffIcon } from "@/ui/icons";
+import { FingerprintIcon } from "@/ui/icons";
+import { PasswordField } from "@/ui/PasswordField";
 import { SubmitButton } from "@/ui/SubmitButton";
-import { signIn, signInByCode, signInSecond } from "./actions";
+import { passkeyFinish, passkeyStart, signIn, signInByCode, signInSecond } from "./actions";
 
-/** The two ways in that the form offers. A passkey button joins them when passkeys are ported. */
+/** The two ways in that are typed. The fingerprint is a third, and is a button of its own. */
 type Way = "password" | "code";
 
 function Refused({ text }: { text: string | null }) {
@@ -54,17 +55,43 @@ function CodeField({ send, autoFocus, required }: { send?: boolean; autoFocus?: 
   );
 }
 
-export function LoginForm({ demo }: { demo: boolean }) {
+export function LoginForm({ demo, passkeys }: { demo: boolean; passkeys: boolean }) {
   const [way, setWay] = useState<Way>("password");
   const [email, setEmail] = useState("");
   const [remember, setRemember] = useState(true);
-  const [shown, setShown] = useState(false);
   const [awaiting, setAwaiting] = useState(false);
   const [first, firstAction] = useActionState(signIn, undefined);
   const [second, secondAction] = useActionState(signInSecond, undefined);
   const [byCode, codeAction] = useActionState(signInByCode, undefined);
   const emailId = useId();
-  const passwordId = useId();
+  const [canKey, setCanKey] = useState(false);
+  const [waiting, setWaiting] = useState(false);
+  const [keyRefused, setKeyRefused] = useState<string | null>(null);
+
+  useEffect(() => {
+    setCanKey(passkeys && typeof window.PublicKeyCredential === "function");
+  }, [passkeys]);
+
+  /** The device asks for a fingerprint, a face or its own lock, and its answer says who is there. */
+  async function enterByFingerprint() {
+    setKeyRefused(null);
+    setWaiting(true);
+    try {
+      const asked = await passkeyStart(remember);
+      if (!asked.options) return setKeyRefused(signInError(asked.error ?? "BAD_PASSKEY"));
+      let answer;
+      try {
+        const { startAuthentication } = await import("@simplewebauthn/browser");
+        answer = await startAuthentication({ optionsJSON: asked.options });
+      } catch (error) {
+        return setKeyRefused(passkeyProblem(error, "enter"));
+      }
+      const result = await passkeyFinish(answer);
+      if (result?.error) setKeyRefused(signInError(result.error));
+    } finally {
+      setWaiting(false);
+    }
+  }
 
   useEffect(() => {
     if (first?.second) setAwaiting(true);
@@ -97,7 +124,7 @@ export function LoginForm({ demo }: { demo: boolean }) {
           id={emailId}
           name="email"
           type="email"
-          className="field-input login-ltr"
+          className="field-input field-ltr"
           dir="ltr"
           inputMode="email"
           autoComplete="username"
@@ -138,32 +165,19 @@ export function LoginForm({ demo }: { demo: boolean }) {
 
   const refused = first?.error ?? (second && !second.second ? second.error : undefined);
   return (
-    <form action={firstAction} className="login-form" key="password">
+    <form action={firstAction} className="login-form" key="password" onSubmit={() => setKeyRefused(null)}>
       <Heading title="أهلاً بعودتك">ادخل لتكمل الطريق.</Heading>
       {emailField}
-      <div className="field">
-        <label className="field-label" htmlFor={passwordId}>
-          كلمة المرور
-        </label>
-        <div className="field-box">
-          <input
-            id={passwordId}
-            name="password"
-            type={shown ? "text" : "password"}
-            className="field-input login-ltr"
-            dir="ltr"
-            autoComplete="current-password"
-            maxLength={200}
-            required={!demo}
-          />
-          <button type="button" className="login-eye" aria-label={shown ? "إخفاء كلمة المرور" : "إظهار كلمة المرور"} aria-pressed={shown} onClick={() => setShown((now) => !now)}>
-            {shown ? <EyeOffIcon /> : <EyeIcon />}
-          </button>
-        </div>
-      </div>
+      <PasswordField label="كلمة المرور" name="password" autoComplete="current-password" required={!demo} />
       {rememberField}
-      <Refused text={refused ? signInError(refused, "password") : null} />
+      <Refused text={keyRefused ?? (refused ? signInError(refused, "password") : null)} />
       <SubmitButton className="btn btn--coral">ادخل</SubmitButton>
+      {canKey && (
+        <button type="button" className="btn btn--white" disabled={waiting} aria-busy={waiting} onClick={enterByFingerprint}>
+          <FingerprintIcon />
+          {waiting ? "بانتظار جهازك" : "ادخل بالبصمة"}
+        </button>
+      )}
       {demoNote}
       <button type="button" className="login-switch" onClick={() => setWay("code")}>
         ادخل برمز بدل كلمة المرور

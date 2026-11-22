@@ -51,7 +51,7 @@ async function findUser(tx: Tx, email: string): Promise<UserRow | undefined> {
   return user;
 }
 
-function note(tx: Tx, origin: Origin, now: Date, action: string, userId: number | null, details?: Record<string, unknown>) {
+export function note(tx: Tx, origin: Origin, now: Date, action: string, userId: number | null, details?: Record<string, unknown>) {
   return tx.insert(auditLog).values({
     userId,
     action,
@@ -77,10 +77,10 @@ export async function addressBlocked(tx: Tx, ip: string | null, now: Date): Prom
   return (await countOf(tx, "login_failed", ip, minutesBefore(now, WINDOW_MINUTES))) >= ADDRESS_MAX_FAILURES;
 }
 
-const locked = (user: UserRow, now: Date) => !!user.lockedUntil && user.lockedUntil > now;
+export const locked = (user: Pick<UserRow, "lockedUntil">, now: Date) => !!user.lockedUntil && user.lockedUntil > now;
 
 /** Counts one failure against an account and locks it at the fifth. One statement, so two attempts at once both count. */
-async function countFailure(db: Db, userId: number, origin: Origin, now: Date, method: string): Promise<void> {
+export async function countFailure(db: Db, userId: number, origin: Origin, now: Date, method: string): Promise<void> {
   const until = minutesAfter(now, LOCK_MINUTES).toISOString();
   await db.transaction(async (tx) => {
     await tx
@@ -95,7 +95,7 @@ async function countFailure(db: Db, userId: number, origin: Origin, now: Date, m
 }
 
 /** Opens the session after any way in has succeeded, and clears the counters that guard the account. */
-async function openSession(
+export async function openSession(
   tx: Tx,
   args: { userId: number; remember: boolean; method: SignInMethod; origin: Origin; now: Date },
 ): Promise<SignInResult> {

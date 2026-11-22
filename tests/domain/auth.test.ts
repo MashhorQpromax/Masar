@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { can, isRole, passwordProblem, PERMISSION_NAMES, ROLES, type Role } from "@/domain/auth";
+import { deviceName } from "@/domain/auth/device";
 import { digitsOf, normalizePhone } from "@/domain/shared/phone";
 
 describe("what each role may do", () => {
@@ -65,5 +66,21 @@ describe("a phone number", () => {
   it("keeps digits only", () => {
     expect(digitsOf(" ١٢٣ ٤٥٦ ")).toBe("123456");
     expect(digitsOf("12-34a")).toBe("1234");
+  });
+});
+
+describe("the name a device is listed by", () => {
+  it("is its system and its browser", () => {
+    expect(deviceName("Mozilla/5.0 (iPhone; CPU iPhone OS 19_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/19.0 Mobile/15E148 Safari/604.1")).toBe("iPhone · Safari");
+    expect(deviceName("Mozilla/5.0 (iPhone; CPU iPhone OS 19_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/140.0 Mobile/15E148 Safari/604.1")).toBe("iPhone · Chrome");
+    expect(deviceName("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36")).toBe("Mac · Chrome");
+    expect(deviceName("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36 Edg/140.0.0.0")).toBe("Windows · Edge");
+    expect(deviceName("Mozilla/5.0 (Linux; Android 16; Pixel 10) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Mobile Safari/537.36")).toBe("أندرويد · Chrome");
+    expect(deviceName("Mozilla/5.0 (X11; Linux x86_64; rv:140.0) Gecko/20100101 Firefox/140.0")).toBe("Linux · Firefox");
+  });
+
+  it("is plain when the browser says nothing", () => {
+    expect(deviceName(null)).toBe("جهاز");
+    expect(deviceName("curl/8")).toBe("جهاز");
   });
 });

@@ -34,7 +34,7 @@ export function isRole(value: unknown): value is Role {
 }
 
 /** Why a sign-in was refused. One answer covers a wrong password, an unknown email and a stopped account. */
-export type SignInRefusal = "BAD_CREDENTIALS" | "BAD_CODE" | "LOCKED" | "TOO_MANY" | "STEP_EXPIRED";
+export type SignInRefusal = "BAD_CREDENTIALS" | "BAD_CODE" | "BAD_PASSKEY" | "LOCKED" | "TOO_MANY" | "STEP_EXPIRED";
 
 /** New passwords: at least this many characters. Passwords set before the rebuild keep working. */
 export const PASSWORD_MIN = 10;

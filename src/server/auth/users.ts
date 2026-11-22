@@ -8,8 +8,7 @@ import { users } from "../db/schema";
 import type { Actor } from "../shared/actor";
 import { audit } from "../shared/audit";
 import { DomainError } from "../shared/errors";
-import { hashPassword, verifyPassword } from "./password";
-import { endSessionsOf } from "./sessions";
+import { hashPassword } from "./password";
 
 const userSchema = z.object({
   name: z.string().trim().min(1).max(80),
@@ -18,7 +17,8 @@ const userSchema = z.object({
   phone: z.string().trim().max(20).nullish(),
 });
 
-function checkPassword(password: string): void {
+/** Refuses a new password that is too short, or longer than what is actually checked. */
+export function checkPassword(password: string): void {
   const problem = passwordProblem(password);
   if (problem) throw new DomainError(problem);
 }
@@ -43,25 +43,5 @@ export async function createUser(
     const [user] = await tx.insert(users).values({ name, email, role, phone, passwordHash, createdAt: now, updatedAt: now }).returning({ id: users.id });
     await audit(tx, args.actor, "user.create", "user", user!.id, { role });
     return { id: user!.id };
-  });
-}
-
-/**
- * A person changes their own password. Every other session of theirs ends, so a password changed
- * because a device was lost also signs that device out.
- */
-export async function changeOwnPassword(
-  db: Db,
-  args: { userId: number; current: string; next: string; keepToken?: string | null; actor: Actor; now?: Date },
-): Promise<void> {
-  const [user] = await db.select().from(users).where(eq(users.id, args.userId));
-  if (!user || !(await verifyPassword(args.current, user.passwordHash))) throw new DomainError("WRONG_PASSWORD");
-  checkPassword(args.next);
-  const passwordHash = await hashPassword(args.next);
-  const now = args.now ?? new Date();
-  await db.transaction(async (tx) => {
-    await tx.update(users).set({ passwordHash, updatedAt: now }).where(eq(users.id, args.userId));
-    await endSessionsOf(tx, args.userId, args.keepToken);
-    await audit(tx, args.actor, "user.password", "user", args.userId);
   });
 }
