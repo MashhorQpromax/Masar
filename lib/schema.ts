@@ -213,6 +213,17 @@ CREATE TABLE IF NOT EXISTS credit_reports (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_credit_client ON credit_reports(client_id);
+CREATE TABLE IF NOT EXISTS share_links (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  token TEXT NOT NULL UNIQUE,
+  client_id INTEGER NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+  user_id INTEGER REFERENCES users(id),
+  expires_at TEXT NOT NULL,
+  revoked INTEGER NOT NULL DEFAULT 0,
+  views INTEGER NOT NULL DEFAULT 0,
+  last_view_at TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
 CREATE TABLE IF NOT EXISTS deals (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   client_id INTEGER NOT NULL UNIQUE REFERENCES clients(id) ON DELETE CASCADE,

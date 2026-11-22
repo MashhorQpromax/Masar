@@ -1,5 +1,6 @@
 "use server";
 import { redirect } from "next/navigation";
+import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import crypto from "node:crypto";
 import { z } from "zod";
@@ -584,4 +585,66 @@ export async function changePasswordAction(_: FormState, fd: FormData): Promise<
   if (err) return { error: err };
   await audit(u, "password_change", "user", u.id);
   return { ok: "تم تغيير كلمة المرور" };
+}
+
+// ===== واتساب ورابط العميل =====
+const LINK_DAYS = 14;
+async function baseUrl() {
+  const h = await headers();
+  const host = h.get("x-forwarded-host") ?? h.get("host") ?? "masarfin.com";
+  const proto = h.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
+  return `${proto}://${host}`;
+}
+export async function createShareLink(clientId: number): Promise<{ url?: string; error?: string }> {
+  const u = await requireUser();
+  if (!can(u, "client.edit")) return { error: "لا تملك صلاحية" };
+  const existing = await get<{ token: string }>("SELECT token FROM share_links WHERE client_id = ? AND revoked = 0 AND expires_at > datetime('now') ORDER BY id DESC LIMIT 1", clientId);
+  let token = existing?.token;
+  if (!token) {
+    token = crypto.randomBytes(18).toString("base64url");
+    await run(`INSERT INTO share_links (token, client_id, user_id, expires_at) VALUES (?, ?, ?, datetime('now','+${LINK_DAYS} days'))`, token, clientId, u.id);
+    await audit(u, "share_link", "client", clientId, { days: LINK_DAYS });
+  }
+  revalidatePath(`/clients/${clientId}`);
+  return { url: `${await baseUrl()}/s/${token}` };
+}
+export async function revokeShareLinks(clientId: number) {
+  const u = await requireUser();
+  if (!can(u, "client.edit")) return;
+  await run("UPDATE share_links SET revoked = 1 WHERE client_id = ?", clientId);
+  await audit(u, "share_revoke", "client", clientId);
+  revalidatePath(`/clients/${clientId}`);
+}
+export async function logWhatsapp(clientId: number, template: string, body: string) {
+  const u = await requireUser();
+  await run("INSERT INTO notes (client_id, kind, body, user_id) VALUES (?, 'whatsapp', ?, ?)", clientId, `[${template}]\n${body.slice(0, 4000)}`, u.id);
+  await audit(u, "wa_send", "client", clientId, { template });
+  revalidatePath(`/clients/${clientId}`);
+}
+
+/** رفع العميل لمستند عبر رابطه الخاص — بلا تسجيل دخول، مقيّد بالرمز والصلاحية والحجم والنوع */
+export async function portalUpload(token: string, docId: number, _: FormState, fd: FormData): Promise<FormState> {
+  const link = await get<{ client_id: number }>("SELECT client_id FROM share_links WHERE token = ? AND revoked = 0 AND expires_at > datetime('now')", token);
+  if (!link) return { error: "انتهت صلاحية الرابط — اطلب رابطاً جديداً" };
+  const f = fd.get("file");
+  if (!(f instanceof File) || f.size === 0) return { error: "اختر ملفاً" };
+  if (f.size > MAX) return { error: "الحد الأقصى 10 ميجابايت" };
+  const ext = ALLOWED.get(f.type);
+  if (!ext) return { error: "الأنواع المسموحة: PDF وصور" };
+  const buf = Buffer.from(await f.arrayBuffer());
+  if (!sniff(buf, f.type)) return { error: "محتوى الملف لا يطابق نوعه" };
+  const doc = await get<{ id: number; status: string }>("SELECT id, status FROM documents WHERE id = ? AND client_id = ?", docId, link.client_id);
+  if (!doc) return { error: "غير موجود" };
+  if (doc.status === "verified") return { error: "هذا المستند مستلم ومعتمد" };
+  await run("DELETE FROM file_blobs WHERE doc_id = ?", docId);
+  await run("INSERT INTO file_blobs (doc_id, data) VALUES (?, ?)", docId, buf);
+  const sha256 = crypto.createHash("sha256").update(buf).digest("hex");
+  await run(
+    "UPDATE documents SET status='received', file_name=?, stored_name=?, mime=?, size=?, sha256=?, uploaded_by=NULL, uploaded_at=datetime('now'), note='رفعه العميل عبر رابطه الخاص' WHERE id=?",
+    f.name.slice(0, 200), "db:" + crypto.randomUUID() + ext, f.type, f.size, sha256, docId,
+  );
+  await maybeAdvance(link.client_id);
+  await run("INSERT INTO audit_log (action, entity, entity_id, details) VALUES ('portal_upload', 'client', ?, ?)", link.client_id, JSON.stringify({ doc: docId, size: f.size }));
+  revalidatePath(`/clients/${link.client_id}`);
+  return { ok: "تم الاستلام ✅ شكراً لك" };
 }

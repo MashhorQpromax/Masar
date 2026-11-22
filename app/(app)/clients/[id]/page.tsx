@@ -2,7 +2,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { all } from "@/lib/db";
 import { requireUser, can, maskId } from "@/lib/auth";
-import { getClient, getObligations, studyFor, docProgress, products, lenderExperience, lenderRules, latestCredit, projectFor, dealFor } from "@/lib/data";
+import { getClient, getObligations, studyFor, docProgress, products, lenderExperience, lenderRules, latestCredit, projectFor, dealFor, waContextFor, activeShareLink } from "@/lib/data";
+import WhatsAppPanel from "@/components/whatsapp-panel";
+import { headers } from "next/headers";
 import DealEditor from "@/components/deal-editor";
 import { STAGES, STAGE_LABEL } from "@/lib/deal";
 import CreditView from "@/components/credit-view";
@@ -17,13 +19,14 @@ import { Badge, EligBadge, PageHeader, Progress, StatusBadge, sar, dateAr, dateT
 import ClientForm from "@/components/client-form";
 import { UploadButton, RevealId, SimahUpload } from "@/components/client-bits";
 import {
-  setStatus, setNextStep, saveDeal, setDealStage, recordOutcome, addObligation, deleteObligation, setDocStatus, addCustomDoc, createApplication, updateApplication, addNote, saveStudy, updateClient, deleteClient,
+  setStatus, setNextStep, saveDeal, setDealStage, createShareLink, revokeShareLinks, logWhatsapp, recordOutcome, addObligation, deleteObligation, setDocStatus, addCustomDoc, createApplication, updateApplication, addNote, saveStudy, updateClient, deleteClient,
 } from "@/app/actions";
 
 export const dynamic = "force-dynamic";
 
 const TABS = [
   ["deal", "الصفقة"],
+  ["wa", "واتساب"],
   ["overview", "نظرة عامة"],
   ["study", "دراسة الأهلية"],
   ["credit", "سمة"],
@@ -40,6 +43,11 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
   if (!c) notFound();
   const tab = (await searchParams).tab ?? (c.finance_type === "project" ? "overview" : "deal");
   const deal = c.finance_type === "project" ? null : await dealFor(c);
+  const share = await activeShareLink(id);
+  const hh = await headers();
+  const host = hh.get("x-forwarded-host") ?? hh.get("host") ?? "masarfin.com";
+  const shareUrl = share ? `${hh.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https")}://${host}/s/${share.token}` : null;
+  const wa = tab === "wa" ? await waContextFor(c, u.name, null) : null;
   const s = await studyFor(c);
   const cr = await latestCredit(id);
   const pj = projectFor(c);
@@ -76,6 +84,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
         title={<span className="flex flex-wrap items-center gap-3">{c.full_name} <span className="text-sm font-medium text-slate-400 num">{c.file_no}</span></span>}
         sub={<span className="flex flex-wrap items-center gap-2 mt-1"><StatusBadge s={c.status} /><EligBadge e={c.eligibility} /><span>· {FINANCE_TYPE[c.finance_type]} · <span className="num">{sar(c.requested_amount)}</span> ريال · المسؤول: {c.owner_name ?? "—"}</span></span>}
         actions={<>
+          <Link href="?tab=wa" className="btn-ghost !text-emerald-700">💬 واتساب</Link>
           <Link href={`/clients/${id}/report`} className="btn-ghost">📄 تقرير الدراسة</Link>
           {edit && (
             <form action={setStatus.bind(null, id)} className="flex gap-2">
@@ -124,6 +133,11 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
           </div>
           <DealEditor clientId={id} initial={deal.input} borrower={deal.borrower} credit={deal.credit} canEdit={edit} save={saveDeal} banks={BANKS} />
         </div>
+      )}
+
+      {tab === "wa" && wa && (
+        <WhatsAppPanel clientId={id} phone={c.phone} ctx={wa} initialLink={shareUrl} linkInfo={share ? { expires: share.expires_at, views: share.views, lastView: share.last_view_at } : null}
+          createLink={createShareLink} revokeLinks={revokeShareLinks} log={logWhatsapp} canEdit={edit} />
       )}
 
       {tab === "overview" && (

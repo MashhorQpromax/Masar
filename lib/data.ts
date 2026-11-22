@@ -3,6 +3,8 @@ import { all, get } from "./db";
 import { deepStudy } from "./advisor";
 import { analyzeCredit, type CreditReport } from "./simah";
 import { projectStudy, type ProjectInput } from "./project";
+import type { WaContext } from "./whatsapp";
+import { FINANCE_TYPE, BANKS } from "./labels";
 import { dealStudy, defaultInput, normFee, itemsFrom, type DealInput, type Borrower, type Stage } from "./deal";
 import { type Product, type Profile, type Sector, type FinanceType, type Simah, type Obligation } from "./engine";
 
@@ -279,5 +281,56 @@ export async function dealFor(c: ClientRow) {
     credit,
     borrower: borrowerOf(c),
     study: dealStudy(input, borrowerOf(c), credit),
+  };
+}
+
+// ===== واتساب ورابط العميل =====
+export async function missingDocs(clientId: number) {
+  return await all<{ id: number; label: string; status: string; required: number }>(
+    "SELECT id, label, status, required FROM documents WHERE client_id = ? AND required = 1 AND status IN ('missing','rejected') ORDER BY id", clientId,
+  );
+}
+export async function activeShareLink(clientId: number) {
+  return await get<{ token: string; expires_at: string; views: number; last_view_at: string | null }>(
+    "SELECT token, expires_at, views, last_view_at FROM share_links WHERE client_id = ? AND revoked = 0 AND expires_at > datetime('now') ORDER BY id DESC LIMIT 1", clientId,
+  );
+}
+export async function waContextFor(c: ClientRow, staffName: string, link: string | null, linkDays = 14): Promise<WaContext> {
+  const cr = await latestCredit(c.id);
+  const deal = c.finance_type === "project" ? null : await dealFor(c);
+  const pj = projectFor(c);
+  const items = deal?.input.items ?? [];
+  const ex = items.filter((i) => i.kind === "execution"), df = items.filter((i) => i.kind === "default");
+  const st = cr?.analysis.stats;
+  const credit = deal?.saved
+    ? { executions: ex.length, executionsAmount: ex.reduce((a, i) => a + i.original, 0), defaults: df.length, defaultsAmount: df.reduce((a, i) => a + i.original, 0), suspension: deal.credit?.suspension ?? false }
+    : st ? { executions: st.activeJudgments, executionsAmount: st.activeJudgmentsAmount, defaults: st.activeDefaults, defaultsAmount: st.activeDefaultsAmount, suspension: !!cr?.report.serviceSuspension } : null;
+  const s = await studyFor(c);
+  const d = deal?.saved ? deal.study : null;
+  const payoff = items.filter((i) => i.kind === "mortgage_payoff" || i.kind === "personal_payoff");
+  return {
+    firstName: c.full_name.split(" ")[0],
+    fullName: c.full_name,
+    fileNo: c.file_no,
+    staffName: staffName.split(" ")[0],
+    financeLabel: FINANCE_TYPE[c.finance_type as keyof typeof FINANCE_TYPE] ?? "",
+    isProject: c.finance_type === "project",
+    projectHeadline: pj?.study.headline ?? null,
+    salary: c.total_salary,
+    currentDbr: s.capacity.currentDbr,
+    credit,
+    deal: d && deal ? {
+      stage: deal.stage, verdict: d.verdict,
+      settleTotal: items.filter((i) => i.by === "company" && (i.kind === "execution" || i.kind === "default" || i.kind === "card" || i.kind === "other")).reduce((a, i) => a + i.pay, 0),
+      payoffTotal: payoff.reduce((a, i) => a + i.pay, 0),
+      payoffLenders: [...new Set(payoff.map((i) => i.label.split("—")[1]?.trim()).filter(Boolean) as string[])],
+      mortgage: d.financing.mortgage, personal: d.financing.personal, clientNet: d.clientNet,
+      bankName: deal.input.targetBank ? BANKS[deal.input.targetBank] ?? null : null,
+      capital: d.capital, fee: d.fee, feeSettle: d.feeSettle, feeFinance: d.feeFinance, roi: d.roi, cover: d.cover, days: d.days,
+      risks: d.risks.filter((r) => r.level !== "info").map((r) => r.text), breakEvenDiscount: d.breakEvenDiscount,
+    } : null,
+    missingDocs: (await missingDocs(c.id)).map((m) => ({ label: m.label })),
+    link,
+    linkDays,
   };
 }

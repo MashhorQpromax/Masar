@@ -102,6 +102,10 @@ export const BANKS: Record<string, string> = {
 export const AUDIT_ACTION: Record<string, string> = {
   deal_save: "حفظ دراسة الصفقة",
   password_change: "تغيير كلمة المرور",
+  share_link: "إنشاء رابط للعميل",
+  share_revoke: "إلغاء روابط العميل",
+  wa_send: "رسالة واتساب",
+  portal_upload: "رفع مستند من العميل",
   deal_stage: "تحديث مرحلة الصفقة",
   login: "تسجيل دخول",
   login_failed: "محاولة دخول فاشلة",
