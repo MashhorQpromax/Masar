@@ -538,14 +538,16 @@ export async function saveDeal(clientId: number, json: string): Promise<FormStat
       ...d,
       items: (raw.items ?? []).slice(0, 60).map((i, k) => ({
         id: String(i.id ?? `i${k}`).slice(0, 20), kind: i.kind ?? "other", label: String(i.label ?? "").slice(0, 200),
-        original: n(i.original, 0)!, pay: n(i.pay, 0)!, by: i.by === "bank" ? "bank" : "company", confirmed: !!i.confirmed, monthly: n(i.monthly, null),
+        original: n(i.original, 0)!, pay: n(i.pay, 0)!, by: i.by === "bank" ? "bank" : i.by === "out" ? "out" : "company", confirmed: !!i.confirmed, monthly: n(i.monthly, null),
       })),
       structure: raw.structure && raw.structure in STRUCTURES ? raw.structure : d.structure,
       propertyValue: n(raw.propertyValue, null), transferTaxPct: n(raw.transferTaxPct, d.transferTaxPct)!, saleTaxPct: n(raw.saleTaxPct, d.saleTaxPct)!,
       fixedCosts: n(raw.fixedCosts, d.fixedCosts)!, fee: normFee(raw.fee),
       targetBank: raw.targetBank ? String(raw.targetBank).slice(0, 40) : null, mortgageApr: n(raw.mortgageApr, d.mortgageApr)!, personalFlat: n(raw.personalFlat, d.personalFlat)!,
       personalMonths: n(raw.personalMonths, d.personalMonths)!, mortgageMaxAge: n(raw.mortgageMaxAge, d.mortgageMaxAge)!, mortgageMaxMonths: n(raw.mortgageMaxMonths, d.mortgageMaxMonths)!,
-      ltvPct: n(raw.ltvPct, d.ltvPct)!, bankMortgage: n(raw.bankMortgage, null), bankPersonal: n(raw.bankPersonal, null), notes: String(raw.notes ?? "").slice(0, 4000),
+      ltvPct: n(raw.ltvPct, d.ltvPct)!, bankMortgage: n(raw.bankMortgage, null), bankPersonal: n(raw.bankPersonal, null),
+      personalLender: raw.personalLender ? String(raw.personalLender).slice(0, 60) : null, personalLenderKind: raw.personalLenderKind === "finance_co" ? "finance_co" : raw.personalLenderKind === "bank" ? "bank" : null,
+      notes: String(raw.notes ?? "").slice(0, 4000),
     };
   } catch {
     return { error: "بيانات غير صالحة" };

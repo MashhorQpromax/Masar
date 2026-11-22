@@ -13,7 +13,7 @@ export interface DealItem {
   label: string;
   original: number; // المبلغ الأصلي/المسجل
   pay: number; // ما سيُدفع فعلاً (بعد التفاوض أو حسب خطاب المديونية)
-  by: "company" | "bank"; // company = من رأس مال الشركة، bank = يسدده البنك الجديد من التمويل الشخصي (إعادة تمويل داخلية)
+  by: "company" | "bank" | "out"; // company = من رأس مال الشركة، bank = يسدده البنك الجديد من التمويل الشخصي (إعادة تمويل داخلية)، out = خارج الصفقة (لا يُسدد فيها)
   confirmed?: boolean; // مؤكد بخطاب مديونية/مخالصة
   monthly?: number | null; // القسط الشهري الحالي (يُحسب في الاستقطاع إن بقي الالتزام قائماً)
 }
@@ -31,7 +31,7 @@ export const structureOf = (x: { structure?: Structure | null }) => STRUCTURES[x
 /** البنود الداخلة في الهيكل، والتي تبقى قائمة بأقساطها */
 export function splitItems(x: Pick<DealInput, "items" | "structure">) {
   const st = STRUCTURES[structureOf(x)];
-  const inDeal = (i: DealItem) => (st.mortgage || i.kind !== "mortgage_payoff") && (st.personal || i.by !== "bank");
+  const inDeal = (i: DealItem) => i.by !== "out" && (st.mortgage || i.kind !== "mortgage_payoff") && (st.personal || i.by !== "bank");
   return { active: x.items.filter(inDeal), kept: x.items.filter((i) => !inDeal(i)) };
 }
 export type FinanceBase = "total" | "personal" | "mortgage";
@@ -61,6 +61,8 @@ export interface DealInput {
   ltvPct: number;
   bankMortgage: number | null; // رقم موافقة/عرض البنك الفعلي إن وُجد
   bankPersonal: number | null;
+  personalLender?: string | null; // الجهة التي قدمت عرض الشخصي (مثل: إمكان)
+  personalLenderKind?: "bank" | "finance_co" | null; // شركة تمويل: هامش أعلى وأثر على التمويل اللاحق
   notes: string;
 }
 
@@ -184,9 +186,11 @@ export interface DealStudy {
   keptMonthly: number; // أقساط الالتزامات التي تبقى قائمة
   /** ملخص مبسط بترتيب: الالتزامات ← التمويل ← بعد السداد ← أتعابنا ← النتيجة */
   summary: {
-    obligations: { label: string; amount: number; byBank: boolean }[];
+    obligations: { label: string; amount: number; original: number; byBank: boolean }[];
     totalObligations: number;
-    kept: { label: string; monthly: number | null }[];
+    discountTotal: number; // مجموع الخصومات المتفاوض عليها على التنفيذ والتعثرات
+    kept: { label: string; monthly: number | null; amount: number; kind: ItemKind }[];
+    keptExecutions: number; // قرارات تنفيذ خارج الصفقة (الإيقاف يبقى)
     financing: { label: string; amount: number }[];
     totalFinancing: number;
     costs: { label: string; amount: number }[];
@@ -331,10 +335,16 @@ export function dealStudy(x: DealInput, b: Borrower, credit?: { bankReopenMonths
   if (st.mortgage && !V) risks.push({ level: "block", text: "قيمة العقار غير معروفة — اطلب تقييماً معتمداً؛ هو سعر البيع للبنك وأساس كل الحساب." });
   if (clientNet < 0) risks.push({ level: "block", text: `الصفقة لا تُغلق: عجز ${fmt(-clientNet)} ريال. ${st.mortgage ? "التمويل الجديد لا يغطي رأس المال + الأتعاب + الدفعة الأولى." : `صافي الشخصي بعد شراء الالتزام القائم ${fmt(personalCash)} فقط، والمطلوب رأس المال + الأتعاب ${fmt(capital + fee)}.`} شوف «حلول بديلة» بالأسفل.` });
   else if (clientNet < 20000) risks.push({ level: "warn", text: `هامش ضيق: يبقى للعميل ${fmt(clientNet)} ريال فقط — أي نقص في التقييم أو الموافقة يكسر الصفقة.` });
-  if (kept.length) {
-    const miss = kept.filter((i) => !i.monthly);
-    risks.push({ level: miss.length ? "warn" : "info", text: `التزامات تبقى قائمة: ${kept.map((i) => i.label.split("—")[0].trim()).join("، ")} بقسط ${fmt(keptMonthly)} شهرياً، وتُحسب في سقف الاستقطاع.${miss.length ? " أدخل القسط الشهري لكل بند منها في الجدول ليكون الحساب صحيحاً." : ""}` });
+  const keptInst = kept.filter((i) => i.kind !== "execution" && i.kind !== "default");
+  const keptExec = kept.filter((i) => i.kind === "execution");
+  const keptDef = kept.filter((i) => i.kind === "default");
+  if (keptInst.length) {
+    const miss = keptInst.filter((i) => !i.monthly);
+    risks.push({ level: miss.length ? "warn" : "info", text: `التزامات تبقى قائمة: ${keptInst.map((i) => i.label.split("—")[0].trim()).join("، ")} بقسط ${fmt(keptMonthly)} شهرياً، وتُحسب في سقف الاستقطاع.${miss.length ? " أدخل القسط الشهري لكل بند منها في الجدول ليكون الحساب صحيحاً." : ""}` });
   }
+  if (keptExec.length) risks.push({ level: "block", text: `${keptExec.length === 1 ? "قرار تنفيذ خارج الصفقة" : `${keptExec.length} قرارات تنفيذ خارج الصفقة`} بمبلغ ${fmt(keptExec.reduce((a, i) => a + i.pay, 0))}: الإيقاف (المادة 46) يبقى ما دام أي قرار مفتوحاً، ولا بنك ولا شركة تمويل تصرف لعميل عليه إيقاف، والراتب معرّض للحجز. إما تدخل في الصفقة، أو يسددها العميل بنفسه ويُثبت رفع الإيقاف قبل التقديم.` });
+  if (keptDef.length) risks.push({ level: "warn", text: `تعثر يبقى في سمة بدون سداد (${keptDef.map((i) => `${i.label.replace(/^تعثر\s*/, "").split("—")[0].trim()} ${fmt(i.pay)}`).join("، ")}): أغلب الجهات ترفض مع تعثر قائم مهما صغر، وسداده أرخص من رفض الطلب.` });
+  if (st.personal && x.personalLenderKind === "finance_co") risks.push({ level: "warn", text: `الشخصي من ${x.personalLender || "شركة تمويل"} (شركة تمويل): هامشها أعلى من البنوك${x.bankPersonal != null && personalEst > personal ? ` — نفس القسط ${fmt(personalInstallment)} يعطي ${fmt(personal)} بدل ≈ ${fmt(personalEst)} من بنك بهامش ${x.personalFlat}%` : ""}. ويظهر في سمة تمويلاً قائماً لدى شركة تمويل، وبعض البنوك تتحفظ عليه في أي تمويل لاحق (مثل إعادة تمويل العقار).` });
   if (!st.mortgage) risks.push({ level: "warn", text: "لا يوجد ضمان عقاري في هذا الهيكل: رأس مالنا مكشوف حتى صرف الشخصي. الضمانات: سند لأمر عبر «نافذ» بكامل المستحق، تعهد العميل بتحويل المبلغ فور الصرف، ويُفضّل كفيل غارم." });
   if (cover != null && cover < 1.1) risks.push({ level: "block", text: `تغطية الضمان ${cover}x: قيمة العقار لا تغطي رأس مالنا بهامش كافٍ. لو رفض البنك نبيع العقار بخسارة.` });
   else if (cover != null && cover < 1.3) risks.push({ level: "warn", text: `تغطية الضمان ${cover}x — مقبولة لكن حساسة لانخفاض التقييم.` });
@@ -380,7 +390,7 @@ export function dealStudy(x: DealInput, b: Borrower, credit?: { bankReopenMonths
     if (personalInstallment < byRule) ex.push({ group: G, label: "أقصى قسط شخصي", note: `محدود بسقف الاستقطاع الكلي ${pct(totalCap)} ناقص الأقساط القائمة`, calc: `${fmt(salary)} × ${pct(totalCap)} − ${fmt(keptMonthly)}`, value: personalInstallment });
     else ex.push({ group: G, label: "أقصى قسط شخصي", note: `ساما: ${pct(SAMA.salaryDeductionEmployee)} من الراتب`, calc: `${fmt(salary)} × ${pct(SAMA.salaryDeductionEmployee)}`, value: personalInstallment });
     ex.push({ group: G, label: "مجموع الأقساط", note: `${personalMonths} شهراً (أقصى مدة للشخصي)`, calc: `${fmt(personalInstallment)} × ${personalMonths}`, value: personalInstallment * personalMonths });
-    if (x.bankPersonal != null) ex.push({ group: G, label: "أصل التمويل (عرض البنك)", value: personal, tone: "total" });
+    if (x.bankPersonal != null) ex.push({ group: G, label: `أصل التمويل (عرض ${x.personalLender || "البنك"})`, note: x.personalLenderKind === "finance_co" ? "شركة تمويل" : undefined, value: personal, tone: "total" });
     else ex.push({ group: G, label: "أصل التمويل", note: `هامش ثابت ${x.personalFlat}% سنوياً لمدة ${Math.round((personalMonths / 12) * 10) / 10} سنوات`, calc: `${fmt(personalInstallment * personalMonths)} ÷ (1 + ${x.personalFlat}% × ${Math.round((personalMonths / 12) * 10) / 10})`, value: personal, tone: "total" });
     for (const i of bought) ex.push({ group: G, label: `− شراء ${i.label.split("—")[0].trim()}${i.label.includes("—") ? ` (${i.label.split("—")[1].trim()})` : ""}`, note: "يسدده البنك الجديد من نفس التمويل", value: -r0(i.pay), tone: "minus" });
     ex.push({ group: G, label: "− رسوم إدارية", note: "1% بحد أقصى 5,000", calc: `${fmt(personal)} × 1%`, value: -adminFee(personal), tone: "minus" });
@@ -420,8 +430,10 @@ export function dealStudy(x: DealInput, b: Borrower, credit?: { bankReopenMonths
     const [kind, rest] = l.split("—").map((t) => t.replace(/\(\d{4}\/\d{2}\/\d{2}\)/g, "").replace(/\b\d{6,}\b/g, "").replace(/\s+/g, " ").trim());
     return rest ? `${kind} — ${rest}` : kind;
   };
-  const obligations = active.map((i) => ({ label: short(i.label), amount: r0(i.pay), byBank: i.by === "bank" }));
-  const financingLines = [...(st.mortgage ? [{ label: "عقاري", amount: mortgage }] : []), ...(st.personal ? [{ label: "شخصي", amount: personal }] : [])];
+  const obligations = active.map((i) => ({ label: short(i.label), amount: r0(i.pay), original: r0(i.original || 0), byBank: i.by === "bank" }));
+  const discountTotal = r0(active.filter((i) => i.kind === "execution" || i.kind === "default" || i.kind === "card" || i.kind === "other").reduce((a, i) => a + Math.max(0, (i.original || 0) - (i.pay || 0)), 0));
+  const pLabel = `شخصي${x.personalLender ? ` — ${x.personalLender}` : ""}${x.personalLenderKind === "finance_co" ? " (شركة تمويل)" : ""}`;
+  const financingLines = [...(st.mortgage ? [{ label: "عقاري", amount: mortgage }] : []), ...(st.personal ? [{ label: pLabel, amount: personal }] : [])];
   const costs = [
     ...(st.personal ? [{ label: "رسوم إدارية للبنك", amount: adminFee(personal) }] : []),
     ...(transferTax ? [{ label: `ضريبة التصرفات ${x.transferTaxPct}%`, amount: transferTax }] : []),
@@ -431,7 +443,12 @@ export function dealStudy(x: DealInput, b: Borrower, credit?: { bankReopenMonths
   const totalObligations = obligations.reduce((a, o) => a + o.amount, 0);
   const totalFinancing = mortgage + personal;
   const afterSettle = r0(totalFinancing - totalObligations - costs.reduce((a, c) => a + c.amount, 0));
-  const summary = { obligations, totalObligations, kept: kept.map((i) => ({ label: short(i.label).replace(/^مخالصة\s+/, ""), monthly: i.monthly ?? null })), financing: financingLines, totalFinancing, costs, afterSettle, net: r0(afterSettle - fee) };
+  const summary = {
+    obligations, totalObligations, discountTotal,
+    kept: kept.map((i) => ({ label: short(i.label).replace(/^مخالصة\s+/, ""), monthly: i.monthly ?? null, amount: r0(i.pay), kind: i.kind })),
+    keptExecutions: r0(keptExec.reduce((a, i) => a + i.pay, 0)),
+    financing: financingLines, totalFinancing, costs, afterSettle, net: r0(afterSettle - fee),
+  };
 
   return {
     structure, keptMonthly, explain: ex, summary,

@@ -129,22 +129,31 @@ export default function DealEditor({
       <div className="card p-5">
         <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
           <h3 className="font-bold">ما سيُسدَّد عن العميل</h3>
-          <div className="text-sm text-slate-500">منّا: <b className="num text-slate-800">{f0(s.paidByCompany)}</b> · يعيد البنك تمويله: <b className="num text-slate-800">{f0(s.paidByBank)}</b></div>
+          <div className="text-sm text-slate-500">منّا: <b className="num text-slate-800">{f0(s.paidByCompany)}</b> · يعيد البنك تمويله: <b className="num text-slate-800">{f0(s.paidByBank)}</b>{s.summary.discountTotal > 0 && <> · وفّرنا بالتفاوض: <b className="num text-emerald-700">{f0(s.summary.discountTotal)}</b></>}</div>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full text-sm min-w-[860px]">
-            <thead><tr className="text-xs text-slate-500 text-start"><th className="text-start py-2">البند</th><th className="text-start">النوع</th><th className="text-start">المسجّل</th><th className="text-start">سنسدد</th><th className="text-start">يسدده</th><th className="text-start">القسط الشهري</th><th>مؤكد بخطاب</th><th /></tr></thead>
+          <table className="w-full text-sm min-w-[960px]">
+            <thead><tr className="text-xs text-slate-500 text-start"><th className="text-start py-2">البند</th><th className="text-start">النوع</th><th className="text-start">المسجّل</th><th className="text-start">الخصم %</th><th className="text-start">سنسدد</th><th className="text-start">يسدده</th><th className="text-start">القسط الشهري</th><th>مؤكد بخطاب</th><th /></tr></thead>
             <tbody className="divide-y divide-slate-100">
               {x.items.map((i) => (
                 <tr key={i.id} className={keptIds.has(i.id) ? "opacity-60" : ""}>
                   <td className="py-1.5 pe-2">
                     <input className="input" disabled={!canEdit} defaultValue={i.label} onBlur={(e) => updItem(i.id, { label: e.target.value })} />
-                    {keptIds.has(i.id) && <span className="text-[11px] text-amber-700">يبقى قائماً بقسطه في هذا الهيكل</span>}
+                    {keptIds.has(i.id) && <span className="text-[11px] text-amber-700">{i.by === "out" ? (i.kind === "execution" ? "⛔ خارج الصفقة — الإيقاف يبقى ما لم يُسدد" : "خارج الصفقة — لا يُسدد فيها") : "يبقى قائماً بقسطه في هذا الهيكل"}</span>}
                   </td>
                   <td className="pe-2"><select className="input" disabled={!canEdit} value={i.kind} onChange={(e) => updItem(i.id, { kind: e.target.value as ItemKind })}>{Object.entries(ITEM_KIND).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></td>
                   <td className="pe-2 num text-slate-500 whitespace-nowrap">{f0(i.original)}</td>
-                  <td className="pe-2 w-36"><input className="input num" disabled={!canEdit} defaultValue={i.pay} onBlur={(e) => updItem(i.id, { pay: numIn(e.target.value) ?? 0 })} /></td>
-                  <td className="pe-2"><select className="input" disabled={!canEdit} value={i.by} onChange={(e) => updItem(i.id, { by: e.target.value as DealItem["by"] })}><option value="company">الشركة</option><option value="bank">البنك الجديد (من الشخصي)</option></select></td>
+                  <td className="pe-2 w-24">
+                    {PAYOFF.has(i.kind) || !i.original ? <span className="text-xs text-slate-300" title="المخالصة حسب خطاب المديونية">—</span> : (
+                      <input key={`d${i.id}${i.pay}`} className="input num" inputMode="decimal" disabled={!canEdit} placeholder="0" defaultValue={i.pay < i.original ? Math.round((1 - i.pay / i.original) * 1000) / 10 : ""}
+                        onBlur={(e) => { const p = Math.min(100, Math.max(0, numIn(e.target.value) ?? 0)); updItem(i.id, { pay: Math.round(i.original * (1 - p / 100)) }); }} onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()} />
+                    )}
+                  </td>
+                  <td className="pe-2 w-36">
+                    <input key={`p${i.id}${i.pay}`} className="input num" disabled={!canEdit} defaultValue={i.pay} onBlur={(e) => updItem(i.id, { pay: numIn(e.target.value) ?? 0 })} onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()} />
+                    {!PAYOFF.has(i.kind) && i.original > i.pay + 1 && <span className="text-[11px] text-emerald-700">خصم <span className="num">{f0(i.original - i.pay)}</span></span>}
+                  </td>
+                  <td className="pe-2"><select className="input" disabled={!canEdit} value={i.by} onChange={(e) => updItem(i.id, { by: e.target.value as DealItem["by"] })}><option value="company">الشركة</option><option value="bank">البنك الجديد (من الشخصي)</option><option value="out">خارج الصفقة</option></select></td>
                   <td className="pe-2 w-28"><input key={`m${i.id}${i.monthly ?? ""}`} className="input num" disabled={!canEdit} defaultValue={i.monthly ?? ""} placeholder="—" onBlur={(e) => updItem(i.id, { monthly: numIn(e.target.value) })} /></td>
                   <td className="text-center"><input type="checkbox" disabled={!canEdit} checked={!!i.confirmed} onChange={(e) => updItem(i.id, { confirmed: e.target.checked })} /></td>
                   <td>{canEdit && <button type="button" className="text-rose-600 text-xs" onClick={() => upd({ items: x.items.filter((y) => y.id !== i.id) })}>حذف</button>}</td>
@@ -154,7 +163,7 @@ export default function DealEditor({
           </table>
         </div>
         {canEdit && <button type="button" className="btn-ghost mt-3" onClick={() => upd({ items: [...x.items, { id: `n${Date.now()}`, kind: "other", label: "بند جديد", original: 0, pay: 0, by: "company" }] })}>+ بند</button>}
-        <p className="text-xs text-slate-500 mt-2">عدّل «سنسدد» بعد التفاوض على الخصم أو بعد وصول خطاب المديونية. المخالصة التي يعيد البنك الجديد تمويلها تُخصم من التمويل الشخصي لا من رأس مالنا.</p>
+        <p className="text-xs text-slate-500 mt-2">اكتب نسبة الخصم المتفق عليها مع كل دائن (أو المبلغ مباشرة في «سنسدد»)، والحساب يتحدث فوراً. المخالصة التي يعيد البنك الجديد تمويلها تُخصم من التمويل الشخصي لا من رأس مالنا. «خارج الصفقة» لبند لن يُسدد فيها، وقرار التنفيذ خارج الصفقة يُبقي الإيقاف.</p>
       </div>
 
       <div className="grid lg:grid-cols-3 gap-4">
@@ -201,8 +210,20 @@ export default function DealEditor({
           </div>
           <div className="grid grid-cols-2 gap-3">
             <N disabled={!canEdit} label="عقاري حسب عرض البنك" value={x.bankMortgage} onChange={(v) => upd({ bankMortgage: v })} hint="يُلغي التقدير" />
-            <N disabled={!canEdit} label="شخصي حسب عرض البنك" value={x.bankPersonal} onChange={(v) => upd({ bankPersonal: v })} hint="يُلغي التقدير" />
+            <N disabled={!canEdit} label="شخصي حسب العرض الفعلي" value={x.bankPersonal} onChange={(v) => upd({ bankPersonal: v })} hint="يُلغي التقدير" />
           </div>
+          {st.personal && (
+            <div className="grid grid-cols-2 gap-3">
+              <label className="block"><span className="text-xs font-semibold text-slate-500">جهة عرض الشخصي</span>
+                <input key={x.personalLender ?? ""} className="input mt-1" disabled={!canEdit} defaultValue={x.personalLender ?? ""} placeholder="مثل: الأهلي، إمكان" onBlur={(e) => upd({ personalLender: e.target.value.trim() || null })} />
+              </label>
+              <label className="block"><span className="text-xs font-semibold text-slate-500">نوعها</span>
+                <select className="input mt-1" disabled={!canEdit} value={x.personalLenderKind ?? ""} onChange={(e) => upd({ personalLenderKind: (e.target.value || null) as DealInput["personalLenderKind"] })}>
+                  <option value="">—</option><option value="bank">بنك</option><option value="finance_co">شركة تمويل</option>
+                </select>
+              </label>
+            </div>
+          )}
         </div>
 
         <div className="card p-5">
@@ -245,6 +266,7 @@ export default function DealEditor({
   );
 }
 
+const PAYOFF = new Set<ItemKind>(["mortgage_payoff", "personal_payoff"]);
 const VERDICT: Record<string, string> = { go: "✅ تقفل", tight: "🟡 هامش ضيق", short: "🔴 عجز", needs_info: "⚪ ناقصة" };
 function CmpRow({ l, cells }: { l: string; cells: React.ReactNode[] }) {
   return <tr><td className="py-2 text-xs font-semibold text-slate-500 whitespace-nowrap pe-3">{l}</td>{cells.map((c, i) => <td key={i} className="py-2 pe-3">{c}</td>)}</tr>;

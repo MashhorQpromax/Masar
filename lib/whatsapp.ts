@@ -227,9 +227,10 @@ function internal(c: WaContext) {
   if (d.structureLabel) out[0] += `\nالهيكل: ${d.structureLabel}`;
 
   // 1) الالتزامات
-  const ob = m.obligations.map((o) => `• ${o.label}${o.byBank ? " _(يشتريه البنك الجديد)_" : ""}: ${n(o.amount)}`);
-  const kept = m.kept.length ? `\n_يبقى قائماً بدون سداد: ${m.kept.map((k) => `${k.label}${k.monthly ? ` بقسط ${n(k.monthly)} شهرياً` : ""}`).join("، ")}_` : "";
-  out.push(`${LINE}\n*1) الالتزامات اللي تتسدد*\n${ob.join("\n")}\n*الإجمالي: ${n(m.totalObligations)}*${kept}`);
+  const ob = m.obligations.map((o) => `• ${o.label}${o.byBank ? " _(تسدده جهة التمويل الجديدة)_" : ""}: ${n(o.amount)}${!o.byBank && o.original > o.amount + 1 && !/^مخالصة/.test(o.label) ? ` _(بعد خصم من ${n(o.original)})_` : ""}`);
+  const kept = m.kept.length ? `\n_يبقى قائماً بدون سداد: ${m.kept.map((k) => `${k.label}${k.monthly ? ` بقسط ${n(k.monthly)} شهرياً` : k.amount ? ` (${n(k.amount)})` : ""}`).join("، ")}_` : "";
+  const disc = m.discountTotal ? `\n_وفّرنا بالتفاوض: ${n(m.discountTotal)}_` : "";
+  out.push(`${LINE}\n*1) الالتزامات اللي تتسدد*\n${ob.join("\n")}\n*الإجمالي: ${n(m.totalObligations)}*${disc}${kept}`);
 
   // 2) التمويل الجديد
   out.push(`*2) التمويل الجديد*\n${m.financing.map((f) => `• ${f.label}: ${n(f.amount)}`).join("\n")}${m.financing.length > 1 ? `\n*الإجمالي: ${n(m.totalFinancing)}*` : ""}`);
@@ -249,6 +250,7 @@ function internal(c: WaContext) {
   out.push(`*5) النتيجة*\n${m.afterSettle >= 0 ? `يتبقى ${n(m.afterSettle)} ناقص أتعابنا ${n(d.fee)}` : `ينقص ${n(-m.afterSettle)} وفوقه أتعابنا ${n(d.fee)}`}\n${res}`);
 
   const extra = [`💼 رأس المال اللي ندفعه مؤقتاً: ${n(d.capital)} · المدة ≈ ${d.days} يوماً${d.cover ? ` · تغطية الضمان ${d.cover}x` : ""}`];
+  if (m.keptExecutions) extra.push(`⛔ قرارات تنفيذ خارج الحساب بـ ${n(m.keptExecutions)}: الإيقاف ما يرتفع إلا بسدادها كلها، وبدون رفعه ما فيه جهة تصرف`);
   if (m.net < 0 && d.breakEvenDiscount) extra.push(`⚠️ لسد العجز يلزم خصم ≈ ${Math.ceil(d.breakEvenDiscount)}% على التنفيذ والتعثرات`);
   if (d.bestAlt) extra.push(`💡 ${d.bestAlt}`);
   out.push(`${LINE}\n${extra.join("\n")}`);
