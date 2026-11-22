@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect, RedirectType } from "next/navigation";
 import { z } from "zod";
+import { can } from "@/domain/auth";
 import { requireActor } from "@/server/auth/actor";
 import { getDb } from "@/server/db/client";
 import { reviseDeal, startDeal } from "@/server/deals/service";
@@ -25,6 +26,8 @@ export async function saveDealForm(form: unknown): Promise<{ error: string }> {
   const parsed = formSchema.safeParse(form);
   if (!parsed.success) return { error: "INVALID_INPUT" };
   const { dealId, borrower, input } = parsed.data;
+  // Opening a file and changing a deal's numbers are two permissions.
+  if (!can(actor.role, dealId == null ? "client.create" : "deal.edit")) return { error: "FORBIDDEN" };
 
   let saved: number;
   try {

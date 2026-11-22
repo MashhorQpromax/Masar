@@ -7,7 +7,11 @@ export class DomainError extends Error {
       | "INVALID_STAGE"
       | "DEAL_ALREADY_OPEN"
       | "DEAL_ENDED"
-      | "FORBIDDEN",
+      | "FORBIDDEN"
+      | "EMAIL_TAKEN"
+      | "WRONG_PASSWORD"
+      | "PASSWORD_SHORT"
+      | "PASSWORD_LONG",
     message?: string,
   ) {
     super(message ?? code);

@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "تعديل الأرقام · مسار" };
 
 export default async function EditDealPage({ params }: { params: Promise<{ id: string }> }) {
-  await requireActor();
+  await requireActor("deal.edit");
   const dealId = Number((await params).id);
   if (!Number.isInteger(dealId) || dealId <= 0) notFound();
 

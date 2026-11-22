@@ -38,11 +38,37 @@ export const sessions = masar.table(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     expiresAt: at().notNull(),
+    /** How the session was opened: password, password+totp, passkey, totp or whatsapp. */
+    method: text().notNull(),
+    /** Until when the person has re-entered their password. Sign-in methods change only inside this window. */
+    confirmedUntil: at(),
     ip: text(),
     userAgent: text(),
     createdAt: createdAt(),
   },
   (t) => [index("sessions_user_idx").on(t.userId), index("sessions_expires_idx").on(t.expiresAt)],
+);
+
+export const authStepKind = masar.enum("auth_step_kind", ["second_factor", "passkey_login", "passkey_register"]);
+
+/**
+ * A sign-in that is half way: the password was right and the authenticator code is awaited, or a
+ * passkey challenge was handed to a browser. Kept on the server so each one is used once and expires.
+ */
+export const authSteps = masar.table(
+  "auth_steps",
+  {
+    /** SHA-256 of the cookie token. The token itself is never stored. */
+    tokenHash: text().primaryKey(),
+    kind: authStepKind().notNull(),
+    userId: integer().references(() => users.id, { onDelete: "cascade" }),
+    /** The WebAuthn challenge the browser must sign. */
+    challenge: text(),
+    remember: boolean().notNull().default(false),
+    expiresAt: at().notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [index("auth_steps_expires_idx").on(t.expiresAt)],
 );
 
 export const passkeys = masar.table(

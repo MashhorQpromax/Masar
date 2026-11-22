@@ -14,6 +14,7 @@ src/
     deal/      The settle-and-refinance engine: structures, study, risks, ledger, alternatives,
                the six stations of the road, portfolio totals, where the new financing goes,
                and the borrower facts a deal is computed from.
+    auth/      The four roles, what each may do, and the rule a new password must meet.
   copy/        Arabic wording for every code the domain returns, the choices a form offers,
                and number, date and count formatting.
   server/      Everything that touches the outside world (database, auth, WhatsApp). Server only.
@@ -21,7 +22,8 @@ src/
     deals/     Deal service: validate, compute with the engine, store, move stages, audit. Read views for screens.
                A new client's first deal and a revision of a deal's numbers are each one transaction.
     clients/   Client files: the facts a deal is computed from, and file numbering.
-    auth/      Who is acting. Every route and action asks here first.
+    auth/      Who is acting. Every route and action asks here first. Passwords, sessions,
+               authenticator codes, one-time codes, lockouts, and the accounts themselves.
     demo/      Fictional deals for a build that has no database.
   app/         Next.js routes. Thin: read through services, render, call server actions.
   ui/          Design system for the "الخريطة" identity: the road, tiles, dock, figures, form fields.
@@ -43,9 +45,11 @@ legacy/        The old application, parked as a read-only reference. Deleted bef
 7. **Schema changes are migrations.** No schema is created or altered at runtime.
 8. **No secrets in the repository.** Configuration comes from environment variables.
 9. **Its own database, by name.** All tables live in the Postgres schema `masar`, and the app reads only `MASAR_DATABASE_URL`. It never falls back to `DATABASE_URL` or `POSTGRES_URL`, so a preview of this branch cannot attach to the live data by accident.
-10. **No database means demo, never production.** Without `MASAR_DATABASE_URL` the app runs on an in-memory Postgres filled with fictional deals, shows a "بيانات تجريبية" mark, and refuses to start when `VERCEL_ENV` is `production`. With a database, every route fails closed until sign-in is ported: `requireActor` throws.
+10. **No database means demo, never production.** Without `MASAR_DATABASE_URL` the app runs on an in-memory Postgres filled with fictional deals, shows a "بيانات تجريبية" mark, and refuses to start when `VERCEL_ENV` is `production`. With a database, nothing is read before `requireActor` has found a session: a visitor without one goes to `/login`, and the app refuses to start without `MASAR_SECRET`.
 11. **Wording for the domain lives in one place.** Every code the domain returns (a verdict, a risk, a ledger line, an obligation kind, a refusal) gets its Arabic text from `src/copy`, and a test fails when one has none. A screen may hold its own headings and field labels. Numbers inside Arabic sentences are wrapped in direction isolates; negative amounts take a true minus sign.
 12. **The browser shows, the server decides.** The deal editor runs the same pure engine in the browser to show the result while a person types. Saving sends the inputs only; the service validates them, computes again and stores its own answer.
+13. **Every change names its permission.** A page or an action that changes something, or shows something private, calls `requireActor("deal.edit")` with the permission it needs. The table of who may do what is one object in `src/domain/auth`, frozen by a test. The interface hides what a role cannot do, and the server refuses it regardless.
+14. **No secret is stored as it is used.** Passwords are bcrypt hashes. A session cookie holds a random token and the database holds only its SHA-256, so a copy of the database opens no session. Authenticator secrets are sealed with AES-256-GCM under `MASAR_SECRET`; a code sent to a phone is stored as a keyed hash. Nothing typed into the sign-in form is written to the audit log except the email of an account that does not exist.
 
 ## The road
 
@@ -54,6 +58,18 @@ The home screen is a road with six stations. Each of the eleven stages belongs t
 - `stationOf`, `stationsFor`, `stationTimeline`: where a deal stands and when it reached or should reach each station.
 - `portfolio`: capital out, fees expected from deals that close, capital returning within 30 days, the deal nearest to disbursement and the stage deadline that comes first.
 - `fundsFlow`: the new financing split into capital recovered, loan bought out by the bank, fee, costs and what the client keeps. It adds up exactly on all 240 golden cases.
+
+## Sign-in
+
+A person signs in with their email and password, and with the six digits of their authenticator app when the account has one. The same six digits, with the email, also sign in without the password. `src/server/auth/signin.ts` holds every way in and is tested on a real Postgres engine in memory (`tests/server/signin.test.ts`).
+
+- **Sessions** live in the `sessions` table: half a day, or thirty days when the person asks to be remembered. Signing out, stopping an account or changing the password ends them on the server, so a copied cookie stops working. In production the cookie carries the `__Host-` prefix and is never readable by script.
+- **A half-way sign-in** (password accepted, code awaited) is a row in `auth_steps` that expires after five minutes and is taken once.
+- **Limits.** Five wrong passwords or second-step codes lock the account for fifteen minutes. Twenty failures from one address in fifteen minutes close every way in to that address. Five wrong codes stop sign-in by code alone until a password sign-in. An authenticator code is accepted once.
+- **One answer.** A wrong password, an unknown email and a stopped account get the same refusal after the same amount of work.
+- **Carried over.** Password hashes and sealed authenticator secrets have the old system's formats, so accounts move across with the data and keep working as long as `MASAR_SECRET` keeps its value.
+- **Codes over WhatsApp** are issued and checked here (`sendLoginCode`), with limits per person and per address. The sender itself arrives with the WhatsApp module; until then the form does not offer it.
+- **The first account** is made with `npm run user:create`. The screen that manages people comes with the remaining screens.
 
 ## The deal editor
 
@@ -85,7 +101,8 @@ Old module (under `legacy/lib`) and its state in the rebuild:
 - [ ] `project.ts` project finance
 - [ ] `advisor.ts`
 - [ ] `whatsapp.ts`, `wa-cloud.ts` messages and Meta Cloud API
-- [ ] `auth.ts`, `auth-methods.ts`, `totp.ts` sign-in: password, passkey, authenticator, WhatsApp code
+- [x] `auth.ts`, `totp.ts` sign-in with a password, sessions, roles and permissions, lockouts, the authenticator as a second step and as a code: `src/domain/auth`, `src/server/auth`, the `/login` screen
+- [ ] `auth-methods.ts` passkeys; enrolling an authenticator and changing a password from the account screen; delivery of the WhatsApp code
 - [x] `schema.ts`, `db.ts`: replaced by `src/server/db` (Drizzle schema, `db/migrations`, Postgres schema `masar`)
 - [x] deal storage and stages from `data.ts` and `actions.ts`: `src/server/deals` (save, stage, reject, reopen, read), tested on a real Postgres engine in memory
 - [ ] the rest of `data.ts` and `actions.ts`: clients, credit, lenders, documents, notes

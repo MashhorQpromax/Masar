@@ -25,6 +25,7 @@ import {
   type Risk,
   type Stage,
 } from "@/domain/deal";
+import { can } from "@/domain/auth";
 import { requireActor } from "@/server/auth/actor";
 import { getDb } from "@/server/db/client";
 import { borrowerOf } from "@/server/deals/mapping";
@@ -45,7 +46,8 @@ const SECTIONS: LedgerSection[] = ["personal", "mortgage", "dues", "result"];
 const VISIBLE_NOTES = 3;
 
 export default async function DealPage({ params }: { params: Promise<{ id: string }> }) {
-  await requireActor();
+  const me = await requireActor();
+  const mayEdit = can(me.role, "deal.edit");
   const dealId = Number((await params).id);
   if (!Number.isInteger(dealId) || dealId <= 0) notFound();
 
@@ -101,7 +103,7 @@ export default async function DealPage({ params }: { params: Promise<{ id: strin
             )}{" "}
             · {STRUCTURE[deal.structure]}
           </p>
-          {!ended && (
+          {!ended && mayEdit && (
             <Link className="edit-link" href={`/deals/${deal.id}/edit`}>
               <PenIcon size={16} />
               عدّل الأرقام
@@ -181,14 +183,14 @@ export default async function DealPage({ params }: { params: Promise<{ id: strin
               {timeline.stageDueInDays != null && <p className="due">{dueIn(timeline.stageDueInDays)}</p>}
             </div>
             <div className="actions">
-              {nextStage && (
+              {mayEdit && nextStage && (
                 <form action={moveDealStage}>
                   <input type="hidden" name="dealId" value={deal.id} />
                   <input type="hidden" name="stage" value={nextStage} />
                   <SubmitButton className="btn btn--navy">{step?.done}</SubmitButton>
                 </form>
               )}
-              {previousStage && (
+              {mayEdit && previousStage && (
                 <form action={moveDealStage}>
                   <input type="hidden" name="dealId" value={deal.id} />
                   <input type="hidden" name="stage" value={previousStage} />

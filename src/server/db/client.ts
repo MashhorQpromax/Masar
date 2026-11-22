@@ -75,7 +75,11 @@ export function databaseUrl(): string {
 }
 
 async function open(): Promise<Connection> {
-  if (dataMode() === "live") return connect(databaseUrl());
+  if (dataMode() === "live") {
+    // Real accounts need the application secret. Refuse to start without it, instead of failing at the first sign-in that uses it.
+    if ((process.env.MASAR_SECRET ?? "").length < 16) throw new Error("MASAR_SECRET is not set");
+    return connect(databaseUrl());
+  }
   const connection = await connect("pglite:");
   await connection.migrate();
   const { seedDemo } = await import("../demo/seed");

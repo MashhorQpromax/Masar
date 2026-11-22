@@ -84,3 +84,31 @@ export function PenIcon({ size = 18 }: { size?: number }) {
     </svg>
   );
 }
+
+export function EyeIcon({ size = 20 }: { size?: number }) {
+  return (
+    <svg {...base(size)}>
+      <path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z" />
+      <circle cx="12" cy="12" r="2.8" />
+    </svg>
+  );
+}
+
+export function EyeOffIcon({ size = 20 }: { size?: number }) {
+  return (
+    <svg {...base(size)}>
+      <path d="M9.9 5.8A9.6 9.6 0 0 1 12 5.5c6 0 9.5 6.500 9.500 6.500a15.600 15.600 0 0 1-2.400 3.100M6.300 7.700A15.300 15.300 0 0 0 2.500 12S6 18.500 12 18.500a9.300 9.300 0 0 0 4.200-1" />
+      <path d="M9.900 10.100a2.800 2.800 0 0 0 3.900 4" />
+      <path d="M4 4l16 16" />
+    </svg>
+  );
+}
+
+export function LeaveIcon({ size = 18 }: { size?: number }) {
+  return (
+    <svg {...base(size)}>
+      <path d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4" />
+      <path d="M10 8l-4 4 4 4M6 12h9" />
+    </svg>
+  );
+}

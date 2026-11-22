@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "صفقة جديدة · مسار" };
 
 export default async function NewDealPage() {
-  await requireActor();
+  await requireActor("client.create");
   return (
     <>
       <div className="head">

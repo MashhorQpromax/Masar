@@ -14,7 +14,7 @@ const moveSchema = z.object({
 
 /** Moves a deal to another stage of its road. The service checks the stage belongs to the deal. */
 export async function moveDealStage(formData: FormData): Promise<void> {
-  const actor = await requireActor();
+  const actor = await requireActor("deal.edit");
   const { dealId, stage } = moveSchema.parse({ dealId: formData.get("dealId"), stage: formData.get("stage") });
   await setDealStage(await getDb(), { dealId, stage: stage as (typeof STAGES)[number][0], actor });
   revalidatePath("/");
