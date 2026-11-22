@@ -1,9 +1,10 @@
 import "server-only";
 import { and, desc, eq, notInArray } from "drizzle-orm";
 import { ZodError } from "zod";
-import { dealStudy, stagesFor, type CreditFlags, type DealInput, type DealStudy, type Stage } from "@/domain/deal";
+import { creditFlags, dealStudy, stagesFor, type CreditFlags, type DealInput, type DealStudy, type Stage } from "@/domain/deal";
 import type { Db, Tx } from "../db/client";
 import { createClient, parseBorrower, updateBorrower } from "../clients/service";
+import { latestCredit, type CreditRecord } from "../credit/service";
 import { clients, dealItems, dealStageEvents, deals, notes, shareLinks } from "../db/schema";
 import type { Actor } from "../shared/actor";
 import { audit } from "../shared/audit";
@@ -216,17 +217,18 @@ export interface DealView {
   client: ClientRow;
   input: DealInput;
   study: DealStudy;
+  /** The client's newest credit record. Null when no report was read yet. */
+  credit: CreditRecord | null;
+  /** What that record changes in the study's risks and suggested fee. */
+  creditFlags: CreditFlags | null;
   /** When the deal entered its current stage. */
   stageEnteredAt: Date;
   /** Every stage the deal entered and when, oldest first. */
   history: { stage: Stage; at: Date }[];
 }
 
-/** A deal with its study recomputed from what is stored. */
-export async function getDeal(
-  db: Db,
-  args: { dealId: number; credit?: CreditFlags | null; now?: Date },
-): Promise<DealView | null> {
+/** A deal with its study recomputed from what is stored and from the client's credit record. */
+export async function getDeal(db: Db, args: { dealId: number; now?: Date }): Promise<DealView | null> {
   const now = args.now ?? new Date();
   const [deal] = await db.select().from(deals).where(eq(deals.id, args.dealId));
   if (!deal) return null;
@@ -239,11 +241,15 @@ export async function getDeal(
     .orderBy(dealStageEvents.id);
   const event = history.findLast((e) => e.stage === deal.stage);
   const input = dealInputOf(deal, items);
+  const credit = await latestCredit(db, client.id);
+  const flags = credit ? creditFlags(credit.report, credit.analysis) : null;
   return {
     deal,
     client,
     input,
-    study: dealStudy(input, borrowerOf(client, now), args.credit),
+    study: dealStudy(input, borrowerOf(client, now), flags),
+    credit,
+    creditFlags: flags,
     stageEnteredAt: event?.at ?? deal.updatedAt,
     history,
   };

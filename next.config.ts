@@ -11,7 +11,9 @@ const securityHeaders = [
 const config: NextConfig = {
   poweredByHeader: false,
   reactStrictMode: true,
-  serverExternalPackages: ["postgres", "@electric-sql/pglite"],
+  serverExternalPackages: ["postgres", "@electric-sql/pglite", "unpdf"],
+  // A SIMAH report is uploaded as a PDF through a server action. The file is at most 4 MB (REPORT_MAX_BYTES).
+  experimental: { serverActions: { bodySizeLimit: "5mb" } },
   // Files read from disk at run time: the migrations, and the in-memory Postgres used for demo data.
   outputFileTracingIncludes: {
     "/**": [

@@ -73,3 +73,9 @@ export const CREDIT_RULES = {
   /** A settled default younger than this many months still marks the record as late. */
   settledMarksLateMonths: 24,
 } as const;
+
+/**
+ * The largest report file taken, in bytes. A SIMAH report is a few hundred kilobytes, and the platform
+ * refuses a request above about 4.5 MB, so anything larger would fail without an answer.
+ */
+export const REPORT_MAX_BYTES = 4 * 1024 * 1024;
