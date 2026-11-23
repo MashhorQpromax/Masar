@@ -37,7 +37,11 @@ export interface DealItem {
 
 export type Structure = "settle_refi_personal" | "settle_personal" | "settle_refi";
 
-export type FinanceBase = "total" | "personal" | "mortgage";
+/**
+ * What the finance percent is counted on: all the new financing, one part of it, or what is left of it
+ * once every obligation the deal settles and every cost is paid (`net`), before the office's fee.
+ */
+export type FinanceBase = "total" | "personal" | "mortgage" | "net";
 
 export interface Fee {
   /** Percent on settled enforcement orders and defaults. */

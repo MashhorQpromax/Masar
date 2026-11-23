@@ -30,7 +30,7 @@ export const dealItemKind = masar.enum("deal_item_kind", [
   "other",
 ]);
 export const dealPaidBy = masar.enum("deal_paid_by", ["company", "bank", "out"]);
-export const financeBase = masar.enum("finance_base", ["total", "personal", "mortgage"]);
+export const financeBase = masar.enum("finance_base", ["total", "personal", "mortgage", "net"]);
 export const lenderKind = masar.enum("lender_kind", ["bank", "finance_co"]);
 
 /**

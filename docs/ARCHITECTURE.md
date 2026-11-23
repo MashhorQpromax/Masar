@@ -359,6 +359,10 @@ The manager sets the office's fee policy on `/settings/fees` (`settings.manage`)
 
 Choices the owner has not reviewed: the analyst may set a fee; ten characters of reason; the range binds each percent alone; the engine's suggestion still steps by five from its own ten.
 
+### What the finance percent is counted on
+
+Four bases (`FinanceBase`): all the new financing, the personal part, the mortgage part, and `net`, what is left of the financing once every obligation the deal settles (by the office or by the lender) and every cost (the lender's admin fee, the taxes, the fixed costs) is paid, before the office's fee. It is the summary's `afterSettle`, now worked out once before the fee and reused, and it is never below nothing: a deal with nothing left pays no finance percent. The first three are locked to the old engine by the golden tests; the fourth is new (migration `0011` adds it to `finance_base`) and is checked by hand in `tests/domain/deal.examples.test.ts`.
+
 ## What the office knows about lenders
 
 A lender's terms say what it publishes. `src/domain/knowledge` holds what the office learned beyond them, in two kinds:

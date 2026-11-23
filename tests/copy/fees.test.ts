@@ -11,6 +11,7 @@ describe("the wording of fees", () => {
   it("tells a deal's fee in one line, each part only when it is there", () => {
     expect(plain(feeText(policyFee(DEFAULT_POLICY)))).toBe("10% على السداد و10% على كامل التمويل");
     expect(plain(feeText({ settlePct: 12.5, financePct: 15, financeBase: "personal", settleIncludesPayoff: true, fixed: 5000 }))).toBe("12.5% على السداد والمخالصات و15% على الشخصي فقط ومبلغ مقطوع 5,000");
+    expect(plain(feeText({ ...policyFee(DEFAULT_POLICY), financeBase: "net" }))).toBe("10% على السداد و10% على الصافي بعد التسويات");
   });
 
   it("tells the policy as the settings page shows it", () => {

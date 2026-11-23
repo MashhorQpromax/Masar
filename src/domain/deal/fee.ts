@@ -18,7 +18,7 @@ export function normalizeFee(fee: unknown): Fee {
     settlePct: numberOr(o.settlePct, DEFAULT_FEE.settlePct),
     settleIncludesPayoff: !!o.settleIncludesPayoff,
     financePct: numberOr(o.financePct, DEFAULT_FEE.financePct),
-    financeBase: o.financeBase === "personal" || o.financeBase === "mortgage" ? o.financeBase : "total",
+    financeBase: o.financeBase === "personal" || o.financeBase === "mortgage" || o.financeBase === "net" ? o.financeBase : "total",
     fixed: numberOr(o.fixed, 0),
   };
 }

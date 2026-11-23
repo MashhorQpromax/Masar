@@ -56,6 +56,33 @@ describe("a deal that closes", () => {
   });
 });
 
+describe("what the finance percent is counted on", () => {
+  // The same deal: 720,000 mortgage and 200,000 personal; 580,000 of obligations; 12,000 of costs.
+  const on = (financeBase: DealInput["fee"]["financeBase"]) => dealStudy({ ...base, fee: { ...base.fee, financeBase } }, borrower);
+
+  it("is all the financing, the personal part, or the mortgage part", () => {
+    expect([on("total").financeBase, on("total").feeFinance]).toEqual([920000, 92000]);
+    expect([on("personal").financeBase, on("personal").feeFinance]).toEqual([200000, 20000]);
+    expect([on("mortgage").financeBase, on("mortgage").feeFinance]).toEqual([720000, 72000]);
+  });
+
+  it("or what is left once the obligations and the costs are paid, before the fee", () => {
+    const s = on("net");
+    expect(s.summary.afterSettle).toBe(328000); // 920,000 - 580,000 - 2,000 lender fee - 10,000 fixed costs
+    expect(s.financeBase).toBe(328000);
+    expect(s.feeFinance).toBe(32800);
+    expect(s.fee).toBe(46800); // + 14,000 on the settlement
+    expect(s.clientNet).toBe(281200); // 328,000 - 46,800
+    expect(s.summary.net).toBe(s.clientNet);
+  });
+
+  it("is nothing when nothing is left", () => {
+    const short = dealStudy({ ...base, bankPersonal: 50000, bankMortgage: 500000, fee: { ...base.fee, financeBase: "net" } }, borrower);
+    expect(short.summary.afterSettle).toBeLessThan(0);
+    expect([short.financeBase, short.feeFinance]).toEqual([0, 0]);
+  });
+});
+
 describe("a deal that does not close", () => {
   const s = dealStudy({ ...base, bankMortgage: 500000, bankPersonal: 100000 }, borrower);
 

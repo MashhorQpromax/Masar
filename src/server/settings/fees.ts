@@ -14,7 +14,7 @@ const pct = z.number().min(0).max(100);
 const policySchema = z.object({
   settlePct: pct,
   financePct: pct,
-  financeBase: z.enum(["total", "personal", "mortgage"]),
+  financeBase: z.enum(["total", "personal", "mortgage", "net"]),
   min: pct,
   max: pct,
 });

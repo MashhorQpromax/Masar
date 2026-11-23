@@ -33,6 +33,7 @@ export const FINANCE_BASE: Record<FinanceBase, string> = {
   total: "كامل التمويل",
   personal: "الشخصي فقط",
   mortgage: "العقاري فقط",
+  net: "الصافي بعد التسويات",
 };
 
 export const LENDER_KIND: Record<LenderKind, string> = {

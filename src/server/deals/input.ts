@@ -30,7 +30,7 @@ export const dealInputSchema = z
       settlePct: pct,
       settleIncludesPayoff: z.boolean(),
       financePct: pct,
-      financeBase: z.enum(["total", "personal", "mortgage"]),
+      financeBase: z.enum(["total", "personal", "mortgage", "net"]),
       fixed: amount,
     }),
     targetBank: z.string().trim().max(60).nullable(),

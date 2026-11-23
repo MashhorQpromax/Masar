@@ -96,6 +96,15 @@ describe("a deal's fee", () => {
     expect(await refusal(() => reviseDeal(c.db, { dealId, borrower, input: { ...input, notes: "اتصل العميل" }, actor, now, fee: { may: false, reason: null } }))).toBeNull();
   });
 
+  it("keeps a fee counted on what is left after the settlements, and reads it back", async () => {
+    const client = await newClient();
+    const net = { ...input, fee: { ...input.fee, financeBase: "net" as const } };
+    const { dealId, study } = await saveDeal(c.db, { clientId: client.id, input: net, actor, now });
+    const [row] = await c.db.select().from(deals).where(eq(deals.id, dealId));
+    expect(row!.feeFinanceBase).toBe("net");
+    expect(study.financeBase).toBe(study.summary.afterSettle);
+  });
+
   it("refuses a change from someone without the right, outside the range, or without a reason", async () => {
     const client = await newClient();
     const { dealId } = await saveDeal(c.db, { clientId: client.id, input: { ...input, fee: { ...input.fee, settlePct: 20, financePct: 20 } }, actor, now });

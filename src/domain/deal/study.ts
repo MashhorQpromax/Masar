@@ -167,10 +167,20 @@ export function dealStudy(x: DealInput, b: Borrower, credit?: CreditFlags | null
   const companyFromSale = st.mortgage ? price - saleTax : 0;
   const surplusBeforeFee = round0(mortgage + personalCash - capital - saleTax);
 
+  // The financing left once every obligation the deal settles and every cost is paid, before the office's fee.
+  const costsTotal = (st.personal ? lenderFee : 0) + transferTax + saleTax + fixedCosts;
+  const afterSettle = round0(mortgage + personal - sum(active, (i) => round0(i.pay)) - costsTotal);
+
   const fee = normalizeFee(x.fee);
   const settleBase = settlementBase(active, fee);
   const financeBase =
-    fee.financeBase === "personal" ? personal : fee.financeBase === "mortgage" ? mortgage : mortgage + personal;
+    fee.financeBase === "personal"
+      ? personal
+      : fee.financeBase === "mortgage"
+        ? mortgage
+        : fee.financeBase === "net"
+          ? Math.max(0, afterSettle)
+          : mortgage + personal;
   const feeSettle = round0((settleBase * fee.settlePct) / 100);
   const feeFinance = round0((financeBase * fee.financePct) / 100);
   const feeFixed = fee.fixed || 0;
@@ -413,7 +423,6 @@ export function dealStudy(x: DealInput, b: Borrower, credit?: CreditFlags | null
   if (fixedCosts) costs.push({ kind: "fixed_costs", amount: fixedCosts });
   const totalObligations = sum(obligations, (o) => o.amount);
   const totalFinancing = mortgage + personal;
-  const afterSettle = round0(totalFinancing - totalObligations - sum(costs, (c) => c.amount));
   const summary: DealSummary = {
     obligations,
     totalObligations,

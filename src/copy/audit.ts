@@ -159,7 +159,7 @@ function statedFigures(value: unknown): Partial<Record<PaperFact, number>> {
   return Object.fromEntries((Object.keys(PAPER_FACT) as PaperFact[]).flatMap((fact) => (number(kept[fact]) != null ? [[fact, number(kept[fact])!]] : [])));
 }
 
-const isBase = (value: unknown): value is FinanceBase => value === "total" || value === "personal" || value === "mortgage";
+const isBase = (value: unknown): value is FinanceBase => value === "total" || value === "personal" || value === "mortgage" || value === "net";
 
 /** A fee as the log kept it. Null when it does not read as one. */
 function keptFee(value: unknown): Fee | null {
