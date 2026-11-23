@@ -111,6 +111,11 @@ export const documents = masar.table(
     status: documentStatus().notNull().default("missing"),
     /** Why the paper was sent back. */
     note: text(),
+    /**
+     * The figures the person who checked the paper wrote down from it, by the fact each states: a
+     * salary, a year of birth. Kept only while the paper stands as verified. Null: nothing was written.
+     */
+    stated: jsonb().$type<Record<string, number>>(),
     createdAt: createdAt(),
     updatedAt: createdAt(),
   },

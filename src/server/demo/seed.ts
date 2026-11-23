@@ -2,7 +2,7 @@ import "server-only";
 import { emptyReport, type CreditReport, type ParsedReport } from "@/domain/credit";
 import { EMPTY_PROJECT, type ProjectFacts } from "@/domain/project";
 import { defaultDealInput, type DealInput, type Stage } from "@/domain/deal";
-import { INBOX_PAPER, type PaperCode } from "@/domain/documents";
+import { INBOX_PAPER, type PaperCode, type Stated } from "@/domain/documents";
 import type { ContractType, Sector } from "@/domain/eligibility";
 import { LINK_DAYS } from "@/domain/messages";
 import { addCreditReport } from "../credit/service";
@@ -62,10 +62,14 @@ interface DemoPaper {
   /** The names of the files kept for it. */
   files: string[];
   verdict?: "verified" | { sentBack: string };
+  /** What the made-up analyst wrote down from a paper she found good. */
+  stated?: Stated;
 }
 
 const kept = (paper: DemoPaper["paper"], ...files: string[]): DemoPaper => ({ paper, files });
 const good = (paper: DemoPaper["paper"], ...files: string[]): DemoPaper => ({ paper, files, verdict: "verified" });
+/** A paper found good, with the figures written down from it. */
+const stating = (stated: Stated, paper: DemoPaper["paper"], ...files: string[]): DemoPaper => ({ ...good(paper, ...files), stated });
 
 /**
  * A one-page PDF that says it is made up. The demo's papers open like real ones, and nothing in them
@@ -150,10 +154,11 @@ const DEALS: DemoDeal[] = [
     ],
     // Close to the end: everything arrived and was verified, but the SIMAH report was never read.
     papers: [
-      good("id", "الهوية.pdf"),
+      // What was written down from his papers is what his file says: his income and his age are proven.
+      stating({ birthYear: 1985 }, "id", "الهوية.pdf"),
       good("address", "العنوان الوطني.pdf"),
       good("obligations", "خطاب مديونية 1.pdf", "خطاب مديونية 2.pdf", "خطاب سداد مبكر.pdf"),
-      good("salary_cert", "تعريف بالراتب.pdf"),
+      stating({ totalSalary: 19800, basicSalary: 14500 }, "salary_cert", "تعريف بالراتب.pdf"),
       good("bank_3", "كشف الحساب.pdf"),
       good("deed", "الصك.pdf"),
       good("valuation", "التقييم.pdf"),
@@ -194,7 +199,9 @@ const DEALS: DemoDeal[] = [
     ],
     // Mid-way: some verified, some waiting to be looked at, one sent back, and what the bank will ask for still owed.
     papers: [
-      good("id", "الهوية.pdf"),
+      // His identity card gives a year of birth three years before the one in his file: a conflict
+      // nobody has settled, so no lender is answered for him until somebody does.
+      stating({ birthYear: 1986 }, "id", "الهوية.pdf"),
       good("address", "العنوان الوطني.pdf"),
       good("obligations", "خطاب مديونية.pdf", "خطاب سداد مبكر.pdf"),
       good("deed", "الصك.pdf"),
@@ -708,7 +715,7 @@ export async function seedDemo(db: Db, now: Date): Promise<void> {
         paperId = (await db.transaction((tx) => keepFile(tx, { clientId: client!.id, code, name, bytes, actor: SYSTEM, now: at }))).paperId;
       }
       if (paperId != null && entry.verdict) {
-        const review = entry.verdict === "verified" ? { verdict: "verified" } : { verdict: "rejected", note: entry.verdict.sentBack };
+        const review = entry.verdict === "verified" ? { verdict: "verified", stated: entry.stated } : { verdict: "rejected", note: entry.verdict.sentBack };
         await reviewPaper(db, { clientId: client!.id, paperId, review, actor: SYSTEM, now: at });
       }
       await dated(at);

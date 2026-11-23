@@ -104,6 +104,27 @@ describe("the detail beside an event", () => {
     expect(auditDetail("doc.open", {})).toBe("");
   });
 
+  it("says what was written down from a paper, and what the file took from one", () => {
+    const plain = (action: string, details: Record<string, unknown>) => auditDetail(action, details).replace(/[\u2066\u2069]/g, "");
+    expect(plain("doc.review", { paper: "salary_cert", verdict: "verified", stated: { totalSalary: 19800, basicSalary: 14500 } })).toBe("تعريف بالراتب لا يتجاوز شهراً، سليم، الراتب الإجمالي 19,800 · الأساسي 14,500");
+    expect(plain("doc.review", { paper: "id", verdict: "verified", stated: { birthYear: 1986 } })).toBe("الهوية الوطنية، سليم، سنة الميلاد 1986");
+    // A paper that goes back keeps no figure, whatever the log was handed.
+    expect(plain("doc.review", { paper: "id", verdict: "rejected", stated: { birthYear: 1986 } })).toBe("الهوية الوطنية، يُعاد");
+    expect(plain("doc.state", { paper: "id", stated: { birthYear: 1981 }, before: {} })).toBe("الهوية الوطنية، سنة الميلاد 1981");
+    expect(plain("doc.state", { paper: "id", stated: {}, before: { birthYear: 1981 } })).toBe("الهوية الوطنية، سُحب ما كُتب منه");
+    // A change to the file is said with both figures: the log is where a changed salary is traced back to its paper.
+    expect(plain("client.fact_rely", { paper: "salary_cert", changes: { totalSalary: { from: 14100, to: 15000 }, basicSalary: { from: null, to: 11200 } } })).toBe(
+      "الراتب الإجمالي: من 14,100 إلى 15,000، الراتب الأساسي: 11,200، عن تعريف الراتب",
+    );
+    expect(plain("client.fact_rely", { paper: "id", changes: { birthYear: { from: 1989, to: 1986 } } })).toBe("سنة الميلاد: من 1989 إلى 1986، عن الهوية");
+    expect(plain("client.fact_rely", { paper: "custom:ab12", changes: { birthYear: { from: 1989, to: 1986 } } })).toBe("سنة الميلاد: من 1989 إلى 1986، عن مستند أضفناه");
+    // A fact this wording does not know, and a figure that is not one, are left out.
+    expect(plain("client.fact_rely", { paper: "id", changes: { nationality: { from: "a", to: "b" }, birthYear: { from: "1989", to: "1986" } } })).toBe("عن الهوية");
+    expect(plain("client.fact_rely", {})).toBe("");
+    expect(auditAction("client.fact_rely")).toBe("اعتماد ما في مستند على الملف");
+    expect(auditAction("doc.state")).toBe("تسجيل ما في مستند");
+  });
+
   it("says what kind of message went out, and counts with Arabic agreement", () => {
     expect(auditDetail("wa.send", { kind: "papers" })).toBe("طلب المستندات");
     expect(auditDetail("wa.send", { kind: "reply", via: "manual" })).toBe("رد بكلماتك، من الجوال");

@@ -19,13 +19,14 @@ import {
   limitText,
   MISSING_FACT,
   OBLIGATION_KIND,
+  PAPER_FACT,
   pointText,
   SPECIAL_KIND,
   STUDY_VERDICT,
   UNMET,
   UNMET_CHOICE,
 } from "@/copy/eligibility";
-import { ASKED_KINDS, CONTRACT_TYPES, FINANCE_TYPES, INQUIRY_WINDOWS, requiredDocuments, SECTORS, SPECIAL_KINDS, specialChecks, study, type NewCondition, type Product, type Profile, type SpecialCondition } from "@/domain/eligibility";
+import { ASKED_KINDS, conflictChecks, CONTRACT_TYPES, FINANCE_TYPES, INQUIRY_WINDOWS, PAPER_FACTS, requiredDocuments, SECTORS, SPECIAL_KINDS, specialChecks, study, type NewCondition, type Product, type Profile, type SpecialCondition } from "@/domain/eligibility";
 
 const golden = JSON.parse(readFileSync(new URL("../golden/eligibility.json", import.meta.url), "utf8")) as {
   catalogue: Product[];
@@ -103,6 +104,17 @@ describe("eligibility wording", () => {
     expect(strip(adviceText({ code: "PAY_SMALLEST", lender: null, kind: "card" }))).toBe("سدّد أصغر التزام (بطاقة ائتمانية) أو أعد جدولته ليرتفع القسط المتاح.");
     expect(documentLabel("id", { financeType: "personal", sector: "gov", nationality: "non_saudi" })).toBe("الإقامة سارية المفعول");
     expect(documentLabel("deed", { financeType: "project", sector: "self", nationality: "saudi" })).toBe("صك الأرض ورقم الهوية العقارية");
+  });
+
+  it("says a conflict by the name of the fact, with no figure and no lender in it", () => {
+    for (const check of conflictChecks(PAPER_FACTS)) {
+      const text = checkText(check);
+      expect(text).toBe(`تعارض في ${PAPER_FACT[check.ref]} بين الملف والمستندات.`);
+      expect(text).not.toMatch(/\d/);
+      expect(CHECK_TITLE[check.key]).toBe("بيانات الملف");
+    }
+    expect(new Set(Object.values(PAPER_FACT)).size).toBe(PAPER_FACTS.length);
+    for (const fact of PAPER_FACTS) expect(PAPER_FACT[fact]).not.toMatch(/[a-z_]{3,}/);
   });
 
   it("names every kind of special condition, contract, answer and window, each in words of its own", () => {

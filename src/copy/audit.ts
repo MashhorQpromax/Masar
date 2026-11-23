@@ -4,9 +4,10 @@ import { isRole } from "@/domain/auth";
 import { DECISIONS, RULE_KINDS, type Decision, type RuleKind } from "@/domain/knowledge";
 import { ROLE } from "./auth";
 import { STAGE } from "./deal";
-import { PAPER_STATUS, paperLabel } from "./documents";
+import type { PaperFact } from "@/domain/eligibility";
+import { factValue, PAPER_STATUS, paperLabel, sourcePaper, statedLine } from "./documents";
 import { counted, dayFull, dayLong, dayOfIso, days, ltr, type CountForms } from "./format";
-import { FINANCE_TYPE, SPECIAL_KIND } from "./eligibility";
+import { FINANCE_TYPE, PAPER_FACT, SPECIAL_KIND } from "./eligibility";
 import { DECISION, PART, RULE_KIND } from "./knowledge";
 import { LENDER_TYPE, SOURCE_KIND } from "./lenders";
 import { MESSAGE_KIND } from "./messages";
@@ -44,6 +45,7 @@ const AUDIT_ACTION: Record<AuditAction, string> = {
   "client.note": "ملاحظة على الملف",
   "client.consent": "موافقة العميل على معالجة بياناته",
   "client.condition_answer": "جواب العميل عن شرط جهة",
+  "client.fact_rely": "اعتماد ما في مستند على الملف",
   "client.reject": "رفض الملف",
   "client.reopen": "إعادة الملف إلى الدراسة",
   "credit.report_add": "قراءة تقرير سمة",
@@ -56,6 +58,7 @@ const AUDIT_ACTION: Record<AuditAction, string> = {
   "doc.remove": "حذف ملف",
   "doc.move": "وضع ملف تحت مستنده",
   "doc.review": "مراجعة مستند",
+  "doc.state": "تسجيل ما في مستند",
   "doc.add": "إضافة مستند مطلوب",
   "doc.drop": "حذف مستند مطلوب",
   "doc.open": "الاطلاع على ملف مرفوع",
@@ -143,6 +146,12 @@ const isRuleKind = (value: unknown): value is RuleKind => (RULE_KINDS as readonl
 const isDecision = (value: unknown): value is Decision => (DECISIONS as readonly unknown[]).includes(value);
 const isPart = (value: unknown): value is "mortgage" | "personal" => value === "mortgage" || value === "personal";
 
+/** The figures written down from a paper, as the log kept them. */
+function statedFigures(value: unknown): Partial<Record<PaperFact, number>> {
+  const kept = record(value);
+  return Object.fromEntries((Object.keys(PAPER_FACT) as PaperFact[]).flatMap((fact) => (number(kept[fact]) != null ? [[fact, number(kept[fact])!]] : [])));
+}
+
 const fields = (value: unknown): string => joined(strings(value).map((name) => FIELD[name]));
 const role = (value: unknown): string | null => (isRole(value) ? ROLE[value] : null);
 
@@ -188,6 +197,19 @@ export function auditDetail(action: string, details: Record<string, unknown> | n
       const kind = text(d.kind);
       return joined([text(d.lender), kind && kind in SPECIAL_KIND ? SPECIAL_KIND[kind as keyof typeof SPECIAL_KIND] : null, d.answer === "met" ? "مستوفى" : d.answer === "unmet" ? "غير مستوفى" : d.answer === null && "سُحب الجواب"]);
     }
+    case "client.fact_rely": {
+      // What changed is said with both figures: the log is where a changed salary is traced back to its paper.
+      const changes = record(d.changes);
+      const said = (Object.keys(PAPER_FACT) as PaperFact[]).flatMap((fact) => {
+        const change = record(changes[fact]);
+        const to = number(change.to);
+        if (to == null) return [];
+        const from = number(change.from);
+        return [from == null ? `${PAPER_FACT[fact]}: ${factValue(fact, to)}` : `${PAPER_FACT[fact]}: من ${factValue(fact, from)} إلى ${factValue(fact, to)}`];
+      });
+      const source = text(d.paper);
+      return joined([...said, source && `عن ${sourcePaper({ code: source, label: source.startsWith("custom:") ? "مستند أضفناه" : null })}`]);
+    }
     case "client.reject":
       return text(d.reason) ?? "";
     case "credit.report_review":
@@ -207,7 +229,12 @@ export function auditDetail(action: string, details: Record<string, unknown> | n
     }
     case "doc.review": {
       const verdict = text(d.verdict);
-      return joined([paper(d.paper), verdict && verdict in PAPER_STATUS ? PAPER_STATUS[verdict as keyof typeof PAPER_STATUS] : null]);
+      // The figures a person wrote down with the verdict are part of what they said about the paper.
+      return joined([paper(d.paper), verdict && verdict in PAPER_STATUS ? PAPER_STATUS[verdict as keyof typeof PAPER_STATUS] : null, verdict === "verified" && statedLine(statedFigures(d.stated))]);
+    }
+    case "doc.state": {
+      const line = statedLine(statedFigures(d.stated));
+      return joined([paper(d.paper), line || "سُحب ما كُتب منه"]);
     }
     case "doc.move":
       return paper(d.to) ? `إلى ${paper(d.to)}` : "";

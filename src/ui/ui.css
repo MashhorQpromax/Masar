@@ -3578,6 +3578,100 @@
     border-color: var(--color-navy);
     background: #fff;
   }
+  /* What a paper states, written down by whoever checks it: a line under its name, and the fields it is typed in. */
+  .paper-stated {
+    flex-basis: 100%;
+    font-size: 13.5px;
+    line-height: 1.7;
+    color: var(--color-body);
+  }
+  .paper-stated[data-empty] {
+    color: var(--color-muted);
+  }
+  .paper-stated[data-conflict] {
+    color: var(--color-coral-ink);
+    font-weight: 500;
+  }
+  .paper:has(.paper-figures[open]) .paper-do {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+  }
+  .paper-figures form {
+    align-items: flex-end;
+  }
+  .figure {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    flex: 0 1 220px;
+    font-size: 12.5px;
+    color: var(--color-muted);
+  }
+  .figure .field-input {
+    flex: none;
+    width: 100%;
+    text-align: start;
+  }
+  .figure-say {
+    flex-basis: 100%;
+    font-size: 13px;
+    line-height: 1.7;
+    color: var(--color-muted);
+  }
+  .paper-figures .said {
+    flex-basis: 100%;
+  }
+
+  /* A fact the file and a checked paper state differently. It stands above the papers until it is settled. */
+  .conflicts {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    background: var(--color-coral-soft);
+    box-shadow: inset 0 0 0 1.5px rgba(138, 36, 16, 0.18);
+  }
+  .conflicts > .label {
+    color: #8a2410;
+  }
+  .conflicts-say {
+    max-width: 62ch;
+    font-size: 14.5px;
+    line-height: 1.75;
+    color: #8a2410;
+  }
+  .conflict {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 16px 18px;
+    border-radius: 18px;
+    background: #fff;
+  }
+  .conflict-what {
+    font-size: 17px;
+    font-weight: 600;
+    line-height: 1.7;
+    color: var(--color-ink);
+  }
+  .rely {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px 16px;
+  }
+  .rely-way {
+    flex: 1 1 320px;
+    font-size: 14px;
+    line-height: 1.75;
+    color: var(--color-body);
+  }
+  .rely .btn {
+    min-height: 46px;
+  }
+  .rely .said {
+    flex-basis: 100%;
+  }
+
   .paper-add {
     display: flex;
     flex-wrap: wrap;
@@ -7244,6 +7338,11 @@
   .an-gap[data-kind="unconfirmed"] .an-gap-kind {
     background: var(--color-sun-soft);
     color: var(--color-sun-ink);
+  }
+  /* Two sources that disagree come before what is merely missing, and are the loudest of the three. */
+  .an-gap[data-kind="conflict"] .an-gap-kind {
+    background: #8a2410;
+    color: #fff;
   }
   .an-gap p {
     font-size: 14.5px;

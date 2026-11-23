@@ -14,7 +14,7 @@
  * Amounts are Saudi riyals, tenors are months, rates are percent a year.
  */
 import type { Blocker, CreditAction, CreditAnalysis, CreditReport, Finding, ParsedReport } from "../credit";
-import type { Answer, AskedKind, Capacity, Check, CheckStatus, ContractType, Eligibility, Finding as StrictFinding, Limit, Nationality, Obligation, Point, Product, ProductKind, Sector, SourceStrength, Telling, Term } from "../eligibility";
+import type { Answer, AskedKind, Capacity, Check, CheckStatus, ContractType, Eligibility, Finding as StrictFinding, Limit, Nationality, Obligation, PaperFact, Point, Product, ProductKind, Sector, SourceStrength, Telling, Term } from "../eligibility";
 import type { RecordAfter, RouteCheck } from "../funding";
 
 /** What the client's file says about them, as far as the analysis reads it. */
@@ -43,6 +43,17 @@ export interface FileFacts {
   contractType?: ContractType | null;
   /** What a person answered for this client about lenders' special conditions, by the condition's id. */
   answers?: Readonly<Record<string, Answer>>;
+  /** Facts the file and the client's checked papers state differently. Absent or empty: none. */
+  conflicts?: readonly FileConflict[];
+}
+
+/** One fact the file and the client's checked papers state differently, with what each says. */
+export interface FileConflict {
+  fact: PaperFact;
+  /** What the file holds. Null when it holds nothing and a paper states the fact. */
+  file: number | null;
+  /** What each checked paper says. `code` names the paper; `label` is the name of one a person added. */
+  stated: { code: string; label: string | null; value: number }[];
 }
 
 /** The client's stored SIMAH record, with how it was read. */
@@ -73,11 +84,12 @@ export interface Commitment {
 }
 
 /**
- * - `verified`: a person checked a paper that states it.
+ * - `verified`: a person checked a paper that states it, and the paper says what the file says.
  * - `stated`: as written in the file, with no checked paper behind it.
+ * - `disputed`: a checked paper states another salary than the file, or two papers differ.
  * - `missing`: the file holds no salary.
  */
-export type IncomeBasis = "verified" | "stated" | "missing";
+export type IncomeBasis = "verified" | "stated" | "disputed" | "missing";
 
 /** The income every share is measured on. */
 export interface Income {
@@ -170,8 +182,9 @@ export type Mark = { source: "file"; point: Point } | { source: "record"; findin
  * Something the analysis could not stand on.
  * - `missing`: it is not there, and nothing was put in its place.
  * - `unconfirmed`: it is there, and nobody has confirmed it.
+ * - `conflict`: it is there twice, and the two do not agree.
  */
-export type Gap = { kind: "missing" | "unconfirmed" } & (
+export type Gap = { kind: "missing" | "unconfirmed" | "conflict" } & (
   | { code: "INCOME" }
   | { code: "TOTAL_SALARY" }
   | { code: "INCOME_PROOF" }
@@ -188,6 +201,8 @@ export type Gap = { kind: "missing" | "unconfirmed" } & (
   /** Products with a term that cannot be relied on today, out of the products studied. */
   | { code: "TERMS"; unverified: number; of: number }
   | { code: "CONSENT" }
+  /** The file and a checked paper, or two checked papers, state a fact differently. */
+  | ({ code: "CONFLICT" } & FileConflict)
 );
 
 export type GapCode = Gap["code"];
@@ -196,6 +211,11 @@ export type GapCode = Gap["code"];
 export type Step =
   | { code: "RECORD_CONSENT" }
   | { code: "COMPLETE_FILE"; missing: ("INCOME" | "AGE" | "SERVICE" | "SALARY_BANK" | "CONTRACT")[] }
+  /**
+   * The file and the client's checked papers state these facts differently. Nothing is answered, and
+   * nothing is paid, on a figure in dispute: a person settles it on the papers first.
+   */
+  | { code: "SETTLE_CONFLICTS"; facts: PaperFact[] }
   | { code: "REVIEW_READING" }
   | { code: "CONFIRM_SUSPENSION" }
   | { code: "CREDIT"; action: Exclude<CreditAction, { code: "NONE" }> }
@@ -224,7 +244,13 @@ export type Step =
       /** The lender's result when read strictly. Never `not_eligible`: nobody is sent to a lender that refuses. */
       eligibility: Eligibility;
       afterClearing: boolean;
-      /** The result can be relied on and a term that sets the figures cannot. */
+      /**
+       * A term of the lender that the result rests on is not confirmed. A result that needs verification
+       * with every such term confirmed waits on the client's file: a fact it lacks, a question nobody
+       * answered, or a fact its papers state differently.
+       */
+      termsOpen: boolean;
+      /** A term that sets the figures is not confirmed, and nothing above already says the terms are open. */
       estimated: boolean;
     };
 

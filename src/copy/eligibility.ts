@@ -18,6 +18,7 @@ import type {
   Nationality,
   NewCondition,
   Obligation,
+  PaperFact,
   Point,
   Sector,
   SpecialKind,
@@ -63,6 +64,14 @@ export const CHECK_TITLE: Record<Check["key"], string> = {
   ltv: "الدفعة الأولى",
   dbr: "القسط المتاح",
   special: "شروط الجهة الخاصة",
+  file: "بيانات الملف",
+};
+
+/** The facts of the file that a checked paper states too. */
+export const PAPER_FACT: Record<PaperFact, string> = {
+  totalSalary: "الراتب الإجمالي",
+  basicSalary: "الراتب الأساسي",
+  birthYear: "سنة الميلاد",
 };
 
 /** How a client is employed. */
@@ -236,6 +245,8 @@ export function checkText(c: Check): string {
       return c.status === "warn" ? `تشترط الجهة ولم يستوفه العميل بعد: ${askedLabel(c.params)}.` : `العميل لا يستوفي شرط الجهة: ${askedLabel(c.params)}.`;
     case "ASKED_OPEN":
       return `لم يُجب بعد عن شرط الجهة: ${askedLabel(c.params)}.`;
+    case "FACT_CONFLICT":
+      return `تعارض في ${PAPER_FACT[c.params.fact]} بين الملف والمستندات.`;
   }
 }
 

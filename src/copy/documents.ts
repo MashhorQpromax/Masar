@@ -5,8 +5,10 @@
 import { INBOX_PAPER, type FileKind, type PaperCategory, type PaperStatus } from "@/domain/documents";
 import type { Nationality } from "@/domain/eligibility";
 import type { Sector } from "@/domain/shared/sector";
-import { documentLabel } from "./eligibility";
-import { counted, type CountForms } from "./format";
+import type { FactReading, RelyProblem } from "@/domain/documents";
+import type { PaperFact } from "@/domain/eligibility";
+import { documentLabel, PAPER_FACT } from "./eligibility";
+import { counted, ltr, money, type CountForms } from "./format";
 
 export const PAPER_STATUS: Record<PaperStatus, string> = {
   missing: "ناقص",
@@ -46,6 +48,52 @@ export function paperLabel(paper: { code: string; label: string | null }, who: {
   return DEAL_PAPER[paper.code] ?? documentLabel(paper.code, { financeType: "mortgage", ...who });
 }
 
+/** The papers a figure is written down from, by the short name each goes by in a sentence. */
+const SOURCE_PAPER: Record<string, string> = {
+  id: "الهوية",
+  salary_cert: "تعريف الراتب",
+  payslip: "مسير الرواتب",
+  gosi: "برنت التأمينات",
+  pension: "تعريف المعاش",
+};
+
+/** A paper as the source of a figure: "تعريف الراتب". */
+export const sourcePaper = (paper: { code: string; label: string | null }): string => paper.label ?? SOURCE_PAPER[paper.code] ?? "مستند";
+
+/** A figure of the file or of a paper, as it is read: an amount, or a year. */
+export const factValue = (fact: PaperFact, value: number): string => (fact === "birthYear" ? ltr(value) : money(value));
+
+/** What a person is asked to write down from a paper, over its field. */
+export const STATED_FIELD: Record<PaperFact, string> = {
+  totalSalary: "الراتب الإجمالي في المستند",
+  basicSalary: "الراتب الأساسي في المستند",
+  birthYear: "سنة الميلاد في المستند",
+};
+
+/** What was written down from a paper, in a line under it: "الراتب الإجمالي 19,800 · الأساسي 14,500". */
+export function statedLine(stated: Partial<Record<PaperFact, number>>): string {
+  const SHORT: Record<PaperFact, string> = { totalSalary: "الراتب الإجمالي", basicSalary: "الأساسي", birthYear: "سنة الميلاد" };
+  return (Object.keys(SHORT) as PaperFact[]).flatMap((fact) => (stated[fact] != null ? [`${SHORT[fact]} ${factValue(fact, stated[fact]!)}`] : [])).join(" · ");
+}
+
+/** A fact the file and the checked papers state differently, with what each says. */
+export function conflictText(conflict: Pick<FactReading, "fact" | "file"> & { stated: readonly { code: string; label: string | null; value: number }[] }): string {
+  const papers = conflict.stated.map((statement) => `في ${sourcePaper(statement)} ${factValue(conflict.fact, statement.value)}`);
+  const name = PAPER_FACT[conflict.fact];
+  if (conflict.file == null) return `${name}: غير مدخل في الملف، و${papers.join("، و")}.`;
+  return `${name}: في الملف ${factValue(conflict.fact, conflict.file)}، و${papers.join("، و")}.`;
+}
+
+/** How a conflict is settled, under it. With papers that differ among themselves the file cannot simply follow one. */
+export const conflictWay = (reading: Pick<FactReading, "papersAgree">): string =>
+  reading.papersAgree ? "إن كان المستند هو الصحيح فاعتمد ما فيه، وإلا فصحّح ما كُتب منه أو أعده." : "المستندات نفسها مختلفة. أعد القديم أو الخاطئ منها، أو صحّح ما كُتب منه.";
+
+const RELY_ERROR: Record<RelyProblem, string> = {
+  NOT_STATED: "هذا المستند لم يعد يذكر هذا البيان. حدّث الصفحة.",
+  NO_CONFLICT: "لا تعارض الآن: الملف يوافق المستندات.",
+  PAPERS_DISAGREE: "المستندات نفسها مختلفة، فاعتماد أحدها لا يحسم. أعد الخاطئ منها أولاً.",
+};
+
 /** What a kept file is, in a word. */
 export const FILE_KIND: Record<FileKind, string> = { pdf: "PDF", jpeg: "صورة", png: "صورة", webp: "صورة" };
 
@@ -84,6 +132,13 @@ const PAPER_ERROR: Record<string, string> = {
   LINK_CLOSED: "انتهت صلاحية الرابط. اطلب رابطاً جديداً من مسؤول ملفك.",
   NOT_FOUND: "هذا المستند لم يعد موجوداً. حدّث الصفحة.",
   INVALID_INPUT: "تحقق مما كتبته ثم حاول مرة أخرى.",
+  NOT_ON_PAPER: "هذا المستند لا يذكر هذا البيان.",
+  OUT_OF_RANGE: "الرقم خارج الحدود المقبولة. تحقق منه ثم حاول مرة أخرى.",
+  BASIC_ABOVE_TOTAL: "الراتب الأساسي أكبر من الإجمالي. تحقق من الرقمين.",
+  NOT_VERIFIED: "يُكتب ما في المستند بعد التحقق من سلامته.",
+  FILE_BASIC_ABOVE_TOTAL: "اعتماده يجعل الراتب الأساسي في الملف أكبر من الإجمالي. صحّح الراتب الآخر في بيانات الصفقة أولاً.",
+  FORBIDDEN: "لا تملك صلاحية تعديل بيانات العميل.",
+  ...RELY_ERROR,
   UNREADABLE: "تعذرت قراءة الصورة. جرّب صورة أخرى.",
 };
 

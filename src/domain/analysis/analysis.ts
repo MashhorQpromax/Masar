@@ -3,6 +3,7 @@ import { runningFinance } from "../deal";
 import {
   amountsOpen,
   capacity,
+  conflictChecks,
   eligibilityOf,
   eligibilityRank,
   findingOf,
@@ -22,6 +23,7 @@ import {
   type Eligibility,
   type Inquiries,
   type Obligation,
+  type PaperFact,
   type Point,
   type Product,
   type ProductKind,
@@ -100,15 +102,15 @@ const ofRecord = (check: RouteCheck): check is Extract<RouteCheck, { key: "simah
 const ofPerson = (check: Check): check is Exclude<Check, { key: "simah" }> => check.key !== "simah";
 
 /** One product held against the client and one reading of their record. */
-function fitOf(profile: Profile, room: Capacity, product: Product, record: RecordAfter): Scored {
+function fitOf(profile: Profile, room: Capacity, product: Product, record: RecordAfter, disputed: readonly PaperFact[]): Scored {
   const match = matchProduct(profile, room, product);
   const checks: FitCheck[] = [...match.checks.filter(ofPerson), ...recordChecks(product, record).filter(ofRecord)];
   // A term cut short by the lender's age limit is already in the months and the amount: nothing the client has to meet.
   const conditions = checks.filter((check) => check.status === "warn" && check.code !== "TENOR_SHORTENED");
   const refusals = checks.filter((check) => check.status === "fail");
   // The same conditions, each asked whether its answer can be relied on.
-  // And whether the lender's list of special conditions is itself complete.
-  const findings = [...checks, listCheck(product.special)].map((check) => findingOf(check, ROUTE_RULES[check.code], product.terms));
+  // And whether the lender's list of special conditions is itself complete, and whether the file's own facts are in dispute.
+  const findings = [...checks, listCheck(product.special), ...conflictChecks(disputed)].map((check) => findingOf(check, ROUTE_RULES[check.code], product.terms));
   const asked = profile.requestedAmount ?? 0;
   return {
     ...tell(
@@ -169,9 +171,9 @@ function better(a: Scored, b: Scored): number {
 /** A lender that would lend nothing is not a lender that takes the client, whatever its conditions answer. */
 const gives = (fit: Fit, result: Eligibility): boolean => fit.eligibility === result && fit.amount > 0;
 
-function reading(profile: Profile, room: Capacity, products: readonly Product[], record: RecordAfter): Reading {
+function reading(profile: Profile, room: Capacity, products: readonly Product[], record: RecordAfter, disputed: readonly PaperFact[]): Reading {
   const fits: Fit[] = products
-    .map((product) => fitOf(profile, room, product, record))
+    .map((product) => fitOf(profile, room, product, record, disputed))
     .sort(better)
     .map(({ score: _score, ...fit }) => fit);
   return {
@@ -219,8 +221,12 @@ export function analyzeClient(args: { file: FileFacts; record: RecordFacts; prod
   const inquiries: Inquiries = { m6: report.inquiries6m ?? null, m12: report.inquiries12m ?? null };
   const consumer = profileFor("personal", file, obligations, inquiries);
   const counted = incomeOf(consumer);
+  const conflicts = file.conflicts ?? [];
+  const disputed = conflicts.map((conflict) => conflict.fact);
+  // The salary the income is counted from: the total one, or the basic one when the file holds no total.
+  const salaryDisputed = disputed.includes(consumer.totalSalary ? "totalSalary" : "basicSalary");
   const income: Income = {
-    basis: counted.salary <= 0 ? "missing" : file.incomeVerified ? "verified" : "stated",
+    basis: counted.salary <= 0 ? "missing" : salaryDisputed ? "disputed" : file.incomeVerified ? "verified" : "stated",
     salary: counted.salary,
     basicOnly: !consumer.totalSalary && !!consumer.basicSalary,
     other: counted.other,
@@ -253,7 +259,7 @@ export function analyzeClient(args: { file: FileFacts; record: RecordFacts; prod
         if (!offered.length) return [];
         const profile = profileFor(kind, file, obligations, inquiries);
         const room = kind === "personal" ? consumerRoom : capacity(profile);
-        return [{ kind, room, today: reading(profile, room, offered, today), cleared: after ? reading(profile, room, offered, after) : null }];
+        return [{ kind, room, today: reading(profile, room, offered, today, disputed), cleared: after ? reading(profile, room, offered, after, disputed) : null }];
       })
     : [];
 
@@ -278,8 +284,8 @@ export function analyzeClient(args: { file: FileFacts; record: RecordFacts; prod
     ...fromFile(points.risks),
   ];
 
-  // What the analysis could not stand on.
-  const gaps: Gap[] = [];
+  // What the analysis could not stand on. A fact in dispute comes first: every figure below may rest on it.
+  const gaps: Gap[] = conflicts.map((conflict) => ({ kind: "conflict", code: "CONFLICT", ...conflict }));
   if (!known) gaps.push({ kind: "missing", code: "INCOME" });
   else {
     if (income.basicOnly) gaps.push({ kind: "missing", code: "TOTAL_SALARY" });
@@ -311,6 +317,7 @@ export function analyzeClient(args: { file: FileFacts; record: RecordFacts; prod
   if (!file.consent) steps.push({ code: "RECORD_CONSENT" });
   const lacking = FILE_FACTS.filter((code) => gaps.some((gap) => gap.code === code));
   if (lacking.length) steps.push({ code: "COMPLETE_FILE", missing: lacking });
+  if (disputed.length) steps.push({ code: "SETTLE_CONFLICTS", facts: disputed });
   if (doubted) steps.push({ code: "REVIEW_READING" });
   if (assumed) steps.push({ code: "CONFIRM_SUSPENSION" });
   for (const action of analysis.actions) if (action.code !== "NONE") steps.push({ code: "CREDIT", action });
@@ -349,18 +356,23 @@ export function analyzeClient(args: { file: FileFacts; record: RecordFacts; prod
     if (!same) confirms.push({ code: "CONFIRM_TERMS", lender, kinds: [kind], terms: TERMS.filter((term) => open.includes(term)), beforePaying: afterClearing });
     else Object.assign(same, { kinds: [...same.kinds, kind], terms: TERMS.filter((term) => same.terms.includes(term) || open.includes(term)) });
   }
-  const applies: Step[] = picks.map(({ kind, fit, afterClearing }) => ({
-    code: "APPLY",
-    kind,
-    lender: fit.product.lenderName,
-    product: fit.product.name,
-    amount: fit.amount,
-    installment: fit.installment,
-    months: fit.months,
-    eligibility: fit.eligibility,
-    afterClearing,
-    estimated: fit.eligibility !== "needs_verification" && fit.estimated,
-  }));
+  const applies: Step[] = picks.map(({ kind, fit, afterClearing }) => {
+    // What the result waits on: a term nobody confirmed, or only the client's own file.
+    const termsOpen = fit.doubts.some((doubt) => doubt.doubt !== "FACT_MISSING");
+    return {
+      code: "APPLY",
+      kind,
+      lender: fit.product.lenderName,
+      product: fit.product.name,
+      amount: fit.amount,
+      installment: fit.installment,
+      months: fit.months,
+      eligibility: fit.eligibility,
+      afterClearing,
+      termsOpen,
+      estimated: fit.estimated && !termsOpen,
+    };
+  });
   // Asking a lender costs nothing and clearing a record does: what must be asked first goes ahead of what the record needs.
   const early = [...asks, ...confirms].filter((step) => step.beforePaying);
   const clearing = steps.findIndex((step) => step.code === "CREDIT");

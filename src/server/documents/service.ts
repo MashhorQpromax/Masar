@@ -15,7 +15,9 @@ import {
   isPaperCode,
   PAPER_MAX_FILES,
   SIMAH_PAPER,
+  statedOf,
   type Checklist,
+  type FactReading,
   type FileKind,
   type KeptPaper,
   type PaperStatus,
@@ -25,10 +27,12 @@ import { SECTORS, type Sector } from "@/domain/shared/sector";
 import type { Db, Tx } from "../db/client";
 import { clients, deals, documentFiles, documents, fileBlobs } from "../db/schema";
 import { getDeal, type DealView } from "../deals/service";
+import { fileStanding } from "./facts";
 import type { Actor } from "../shared/actor";
 import { audit } from "../shared/audit";
 import { DomainError } from "../shared/errors";
 import { paperLabelSchema, reviewSchema, type PaperReview } from "./input";
+import { statedFor } from "./stated";
 
 const ENDED = ["closed", "lost"];
 
@@ -72,6 +76,8 @@ async function keptPapers(db: Tx, clientId: number): Promise<KeptPaper[]> {
     label: row.label,
     status: row.status,
     note: row.note,
+    // A figure counts only while the paper it was written from stands as checked.
+    stated: row.status === "verified" ? statedOf(row.code, row.stated) : {},
     files: files.flatMap((file) => (file.docId === row.id && isFileKind(file.kind) ? [{ id: file.id, name: file.name, kind: file.kind, size: file.size }] : [])),
   }));
 }
@@ -94,12 +100,15 @@ export interface PapersView {
   ended: boolean;
   /** Whether the deal closes. A client is asked for papers only while it may. */
   verdict: DealView["study"]["verdict"];
+  /** The facts of the file that a paper states too, each with what the file and the checked papers say. */
+  facts: FactReading[];
 }
 
 export async function getPapers(db: Db, args: { dealId: number; now?: Date }): Promise<PapersView | null> {
   const view = await getDeal(db, args);
   if (!view) return null;
-  return { deal: view.deal, client: view.client, who: whoOf(view.client), list: await papersOf(db, view), ended: ENDED.includes(view.deal.stage), verdict: view.study.verdict };
+  const { readings } = await fileStanding(db, view.client);
+  return { deal: view.deal, client: view.client, who: whoOf(view.client), list: await papersOf(db, view), ended: ENDED.includes(view.deal.stage), verdict: view.study.verdict, facts: readings };
 }
 
 async function clientExists(tx: Tx, clientId: number): Promise<void> {
@@ -170,7 +179,8 @@ export async function keepFile(
     .values({ docId: paper.id, name: cleanFileName(args.name, kind), kind, size: bytes.length, sha256, uploadedBy: args.actor.userId, uploadedAt: now })
     .returning({ id: documentFiles.id });
   await tx.insert(fileBlobs).values({ fileId: file!.id, data: bytes });
-  await tx.update(documents).set({ status: "received", note: null, updatedAt: now }).where(eq(documents.id, paper.id));
+  // What was written down from the paper described the files it held then.
+  await tx.update(documents).set({ status: "received", note: null, stated: null, updatedAt: now }).where(eq(documents.id, paper.id));
   await audit(tx, args.actor, "doc.upload", "client", args.clientId, { paper: paper.code, fileId: file!.id, kind, size: bytes.length, ...(args.via ? { via: args.via } : {}) });
   return { paperId: paper.id, fileId: file!.id, added: true };
 }
@@ -211,7 +221,7 @@ export async function removePaperFile(db: Db, args: { clientId: number; fileId: 
     const status: PaperStatus = paper.status === "rejected" ? "rejected" : left > 0 ? "received" : "missing";
     await tx
       .update(documents)
-      .set({ status, note: status === "rejected" ? paper.note : null, updatedAt: now })
+      .set({ status, note: status === "rejected" ? paper.note : null, stated: null, updatedAt: now })
       .where(eq(documents.id, paper.id));
     await audit(tx, args.actor, "doc.remove", "client", args.clientId, { paper: paper.code, fileId: args.fileId });
   });
@@ -248,19 +258,23 @@ export async function movePaperFile(db: Db, args: { clientId: number; fileId: nu
     } else {
       if ((await filesOf(tx, to.id)) >= PAPER_MAX_FILES) throw new DomainError("FILE_LIMIT", `paper ${to.code}`);
       await tx.update(documentFiles).set({ docId: to.id }).where(eq(documentFiles.id, args.fileId));
-      await tx.update(documents).set({ status: "received", note: null, updatedAt: now }).where(eq(documents.id, to.id));
+      await tx.update(documents).set({ status: "received", note: null, stated: null, updatedAt: now }).where(eq(documents.id, to.id));
     }
     const left = await filesOf(tx, from.id);
     const status: PaperStatus = from.status === "rejected" ? "rejected" : left > 0 ? "received" : "missing";
     await tx
       .update(documents)
-      .set({ status, note: status === "rejected" ? from.note : null, updatedAt: now })
+      .set({ status, note: status === "rejected" ? from.note : null, stated: null, updatedAt: now })
       .where(eq(documents.id, from.id));
     await audit(tx, args.actor, "doc.move", "client", args.clientId, { fileId: args.fileId, from: from.code, to: to.code });
   });
 }
 
-/** Says a paper is good, or sends it back with the reason. Only a paper that has files can be judged. */
+/**
+ * Says a paper is good, or sends it back with the reason. Only a paper that has files can be judged.
+ * The person who says it is good writes down the figures it states, and they are kept with it for as
+ * long as it stands: a paper sent back, or one that gets another file, says nothing any more.
+ */
 export async function reviewPaper(db: Db, args: { clientId: number; paperId: number; review: unknown; actor: Actor; now?: Date }): Promise<void> {
   const review: PaperReview = valid(() => reviewSchema.parse(args.review));
   const now = args.now ?? new Date();
@@ -276,11 +290,13 @@ export async function reviewPaper(db: Db, args: { clientId: number; paperId: num
     // What arrived by WhatsApp is not a paper yet: it is put under one first.
     if (paper.code === INBOX_PAPER) throw new DomainError("INVALID_INPUT", "a file from WhatsApp is put under a paper first");
     if ((await filesOf(tx, paper.id)) === 0) throw new DomainError("PAPER_EMPTY", `paper ${paper.code}`);
+    const stated = review.verdict === "verified" ? statedFor(paper.code, review.stated, now) : {};
+    const facts = Object.keys(stated);
     await tx
       .update(documents)
-      .set({ status: review.verdict, note: review.verdict === "rejected" ? review.note : null, updatedAt: now })
+      .set({ status: review.verdict, note: review.verdict === "rejected" ? review.note : null, stated: facts.length ? stated : null, updatedAt: now })
       .where(eq(documents.id, paper.id));
-    await audit(tx, args.actor, "doc.review", "client", args.clientId, { paper: paper.code, verdict: review.verdict });
+    await audit(tx, args.actor, "doc.review", "client", args.clientId, { paper: paper.code, verdict: review.verdict, ...(facts.length ? { stated } : {}) });
   });
 }
 

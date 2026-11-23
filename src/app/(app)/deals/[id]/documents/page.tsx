@@ -3,10 +3,10 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { CSSProperties } from "react";
 import { STAGE } from "@/copy/deal";
-import { BY_OFFICE, FILE_KIND, fileTitle, owedBrief, PAPER_CATEGORY, PAPER_STATUS, paperLabel, TRAY } from "@/copy/documents";
+import { BY_OFFICE, conflictText, FILE_KIND, fileTitle, owedBrief, PAPER_CATEGORY, PAPER_STATUS, paperLabel, sourcePaper, statedLine, TRAY } from "@/copy/documents";
 import { counted, ltr } from "@/copy/format";
 import { can } from "@/domain/auth";
-import { INBOX_PAPER, PAPER_CATEGORIES, PAPER_MAX_FILES, SIMAH_PAPER, type Paper, type PaperStatus } from "@/domain/documents";
+import { INBOX_PAPER, PAPER_CATEGORIES, PAPER_MAX_FILES, SIMAH_PAPER, statesOf, type Paper, type PaperStatus } from "@/domain/documents";
 import { clientReachable, messageGate } from "@/domain/messages";
 import { requireActor } from "@/server/auth/actor";
 import { getDb } from "@/server/db/client";
@@ -14,6 +14,7 @@ import { getPapers } from "@/server/documents/service";
 import { BackIcon, CheckIcon, CloseIcon } from "@/ui/icons";
 import { SubmitButton } from "@/ui/SubmitButton";
 import { AddPaper } from "./AddPaper";
+import { PaperFigures, RelyOn } from "./PaperFigures";
 import { PaperUpload } from "@/ui/PaperUpload";
 import { dropPaper, fileUnder, judgePaper, removeFile, uploadPaperFile } from "./actions";
 
@@ -52,6 +53,10 @@ export default async function DocumentsPage({ params }: { params: Promise<{ id: 
   const mayUpload = can(me.role, "doc.upload") && !ended;
   const mayVerify = can(me.role, "doc.verify") && !ended;
   const mayOpen = can(me.role, "client.view_pii");
+  // The file takes a paper's figure by the word of someone who may judge papers and may change the file.
+  const mayRely = mayVerify && can(me.role, "client.edit");
+  const conflicts = view.facts.filter((reading) => reading.state === "conflict");
+  const disputedPapers = new Set(conflicts.flatMap((reading) => reading.stated.map((statement) => statement.paperId)));
 
   const name = (paper: Paper) => paperLabel(paper, who);
   const required = list.papers.filter((paper) => paper.required);
@@ -74,6 +79,9 @@ export default async function DocumentsPage({ params }: { params: Promise<{ id: 
     const label = name(paper);
     const simah = paper.code === SIMAH_PAPER;
     const hasFiles = paper.files.length > 0;
+    // The figures this paper states, which whoever checks it writes down.
+    const states = statesOf(paper.code);
+    const said = statedLine(paper.stated);
     return (
       <li key={paper.code} className="paper" data-status={paper.status}>
         <div className="paper-what">
@@ -84,6 +92,11 @@ export default async function DocumentsPage({ params }: { params: Promise<{ id: 
           {paper.by === "office" && paper.status !== "verified" && <small>{BY_OFFICE}</small>}
           {!paper.required && <small>{paper.asked ? "اختياري" : "غير مطلوب الآن"}</small>}
           {paper.status === "rejected" && paper.note && <p className="paper-why">{paper.note}</p>}
+          {paper.status === "verified" && states.length > 0 && (
+            <p className="paper-stated" data-conflict={(paper.id != null && disputedPapers.has(paper.id)) || undefined} data-empty={!said || undefined}>
+              {said || "لم يُكتب ما فيه، فلا يثبت به رقم."}
+            </p>
+          )}
         </div>
         <div className="paper-files">
           {paper.files.map((file, index) => {
@@ -125,13 +138,16 @@ export default async function DocumentsPage({ params }: { params: Promise<{ id: 
             )
           ) : (
             <>
-              {mayVerify && hasFiles && paper.id != null && paper.status !== "verified" && (
+              {mayVerify && hasFiles && paper.id != null && paper.status !== "verified" && states.length === 0 && (
                 <form action={judgePaper}>
                   <input type="hidden" name="dealId" value={deal.id} />
                   <input type="hidden" name="paperId" value={paper.id} />
                   <input type="hidden" name="verdict" value="verified" />
                   <SubmitButton className="btn btn--navy">سليم</SubmitButton>
                 </form>
+              )}
+              {mayVerify && hasFiles && paper.id != null && states.length > 0 && (
+                <PaperFigures key={paper.status} dealId={deal.id} paperId={paper.id} name={label} facts={states} stated={paper.stated} verify={paper.status !== "verified"} />
               )}
               {mayVerify && hasFiles && paper.id != null && paper.status !== "rejected" && (
                 <details className="send-back">
@@ -274,6 +290,22 @@ export default async function DocumentsPage({ params }: { params: Promise<{ id: 
             </p>
           )}
         </section>
+
+        {conflicts.length > 0 && (
+          <section className="tile tile--wide conflicts">
+            <p className="label">تعارض بين الملف والمستندات</p>
+            <p className="conflicts-say">كل جهة تبقى «بحاجة إلى تحقق» حتى يُحسم: لا جواب يُعتمد على رقم مختلف عليه.</p>
+            {conflicts.map((reading) => {
+              const first = reading.stated[0]!;
+              return (
+                <div key={reading.fact} className="conflict">
+                  <p className="conflict-what">{conflictText(reading)}</p>
+                  <RelyOn dealId={deal.id} paperId={first.paperId} fact={reading.fact} value={first.value} paper={sourcePaper(first)} papersAgree={reading.papersAgree} may={mayRely} />
+                </div>
+              );
+            })}
+          </section>
+        )}
 
         <section className="tile tile--wide">
           {tray && (

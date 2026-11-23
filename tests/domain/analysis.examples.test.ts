@@ -206,7 +206,7 @@ describe("the lenders held against a record nothing blocks", () => {
   it("is eligible, and names the lender to apply to for each kind", () => {
     expect([a.verdict, a.afterClearing]).toEqual(["eligible", null]);
     expect(a.steps).toEqual([
-      { code: "APPLY", kind: "personal", lender: "جهة a", product: "منتج", amount: 177000, installment: 3422, months: 60, eligibility: "eligible", afterClearing: false, estimated: false },
+      { code: "APPLY", kind: "personal", lender: "جهة a", product: "منتج", amount: 177000, installment: 3422, months: 60, eligibility: "eligible", afterClearing: false, termsOpen: false, estimated: false },
       expect.objectContaining({ code: "APPLY", kind: "mortgage", lender: "جهة a", afterClearing: false }),
     ]);
   });
@@ -522,6 +522,66 @@ describe("what the analysis could not stand on", () => {
   it("is pending when the catalogue holds no lender for the client", () => {
     const a = analyzeClient({ file: file(), record: record(report()), products: [] });
     expect([a.verdict, a.kinds, a.steps]).toEqual(["pending", [], []]);
+  });
+});
+
+describe("a fact the file and a checked paper state differently", () => {
+  const facilities = [loan({ installment: 1000, balance: 20000 })];
+  const year = { fact: "birthYear" as const, file: 1991, stated: [{ code: "id", label: null, value: 1986 }] };
+  const salary = { fact: "totalSalary" as const, file: 16000, stated: [{ code: "salary_cert", label: null, value: 13000 }] };
+  const products = [...catalogue, product("4", "c", { minSalary: 20000 })];
+  const settled = analyzeClient({ file: file(), record: record(report({ facilities })), products });
+  const a = analyzeClient({ file: file({ conflicts: [year] }), record: record(report({ facilities })), products });
+  const fits = (of: typeof a) => of.kinds.flatMap((k) => k.today.fits);
+
+  it("leaves no lender answered, though every term is confirmed", () => {
+    expect(settled.verdict).toBe("eligible");
+    expect(a.verdict).toBe("needs_verification");
+    expect(fits(settled).map((fit) => fit.eligibility)).toEqual(["eligible", "conditional", "not_eligible", "eligible"]);
+    // A confirmed refusal is still a refusal: the conflict takes away a yes, and never a no.
+    expect(fits(a).map((fit) => fit.eligibility)).toEqual(["needs_verification", "needs_verification", "not_eligible", "needs_verification"]);
+  });
+
+  it("changes what can be relied on, and not one figure or one lender's condition", () => {
+    const plain = (of: typeof a) => fits(of).map((fit) => [fit.product.id, fit.status, fit.amount, fit.installment, fit.months, fit.conditions.map((c) => c.code), fit.refusals.map((c) => c.code)]);
+    expect(plain(a)).toEqual(plain(settled));
+    expect([a.income, a.burden]).toEqual([settled.income, settled.burden]);
+  });
+
+  it("says so on every lender as a doubt about the file, once for each fact", () => {
+    for (const fit of fits(a)) expect(fit.doubts.filter((doubt) => doubt.check.code === "FACT_CONFLICT").map((doubt) => [doubt.check.key, "ref" in doubt.check ? doubt.check.ref : null, doubt.doubt, doubt.basis])).toEqual([["file", "birthYear", "FACT_MISSING", "client"]]);
+    const both = analyzeClient({ file: file({ conflicts: [salary, year] }), record: record(report({ facilities })), products });
+    expect(fits(both)[0]!.doubts.map((doubt) => ("ref" in doubt.check ? doubt.check.ref : null))).toEqual(["totalSalary", "birthYear"]);
+  });
+
+  it("names the conflict before every other gap, and settling it before anything is asked of a lender", () => {
+    expect(settled.gaps).toEqual([]);
+    expect(a.gaps).toEqual([{ kind: "conflict", code: "CONFLICT", ...year }]);
+    expect(a.steps[0]).toEqual({ code: "SETTLE_CONFLICTS", facts: ["birthYear"] });
+    expect(a.steps.slice(1).every((step) => step.code === "APPLY")).toBe(true);
+    // Every term of the lenders is confirmed: what the application waits on is the file, and no lender is to be asked.
+    for (const step of a.steps.slice(1)) expect(step).toMatchObject({ eligibility: "needs_verification", termsOpen: false, estimated: false });
+    expect(a.steps.some((step) => step.code === "CONFIRM_TERMS")).toBe(false);
+    // The income is not what is in dispute here.
+    expect(a.income.basis).toBe("verified");
+
+    const incomplete = analyzeClient({ file: file({ serviceMonths: null, consent: false, conflicts: [year] }), record: record(report({ facilities })), products });
+    expect(incomplete.gaps[0]).toMatchObject({ kind: "conflict", code: "CONFLICT", fact: "birthYear" });
+    expect(incomplete.steps.slice(0, 3).map((step) => step.code)).toEqual(["RECORD_CONSENT", "COMPLETE_FILE", "SETTLE_CONFLICTS"]);
+  });
+
+  it("puts the income in dispute when the salary it is counted from is the fact", () => {
+    const b = analyzeClient({ file: file({ conflicts: [salary] }), record: record(report({ facilities })), products });
+    expect(b.income).toEqual({ ...settled.income, basis: "disputed" });
+    // A disputed income is not asked for again as a paper: the paper is there, and it says something else.
+    expect(b.gaps.map((gap) => gap.code)).toEqual(["CONFLICT"]);
+    expect(b.steps.map((step) => step.code)).not.toContain("VERIFY_INCOME");
+
+    // The other salary in dispute leaves the counted one as it stood.
+    const basic = { fact: "basicSalary" as const, file: 12000, stated: [{ code: "gosi", label: null, value: 9000 }] };
+    expect(analyzeClient({ file: file({ conflicts: [basic] }), record: record(report({ facilities })), products }).income.basis).toBe("verified");
+    // Unless the file holds no total, and the basic salary is what the income is counted from.
+    expect(analyzeClient({ file: file({ totalSalary: null, conflicts: [basic] }), record: record(report({ facilities })), products }).income.basis).toBe("disputed");
   });
 });
 

@@ -179,6 +179,16 @@ export async function amendDeal(
   return writeDeal(tx, { client, deal, input, actor: args.actor, now: args.now });
 }
 
+/**
+ * Computes a client's deal in progress again after a fact about the client changed outside the deal's
+ * own form, inside the caller's transaction. The stored result never lags behind the file. Does
+ * nothing when the client has no deal in progress.
+ */
+export async function recomputeOpenDeal(tx: Tx, args: { clientId: number; actor: Actor; now: Date }): Promise<void> {
+  const deal = await openDealOf(tx, args.clientId);
+  if (deal) await amendDeal(tx, { dealId: deal.id, terms: {}, actor: args.actor, now: args.now });
+}
+
 /** Moves a deal to another stage of its structure and records when. Rejection goes through `rejectDeal`. */
 export async function setDealStage(
   db: Db,

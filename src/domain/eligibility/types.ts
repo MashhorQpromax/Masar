@@ -10,6 +10,7 @@
  */
 import type { RateType } from "../finance/amortization";
 import type { Sector } from "../shared/sector";
+import type { ConflictCheck } from "./conflict";
 import type { Answer, ContractType, Inquiries, SpecialCheck, SpecialCondition } from "./special";
 import type { Term, TermStanding } from "./terms";
 
@@ -145,8 +146,12 @@ export interface Capacity {
 
 export type CheckStatus = "pass" | "warn" | "fail";
 
-/** One condition of a product, held against the client. */
-export type Check = TermCheck | SpecialCheck;
+/**
+ * One condition of a product, held against the client. A disputed fact of the file is a condition
+ * too, of every product alike. The matching engine never raises it: it reads the file as it stands,
+ * and whether the file can be relied on is asked by the strict reading.
+ */
+export type Check = TermCheck | SpecialCheck | ConflictCheck;
 
 /** A condition that rests on one of the terms every product has, on SAMA's rules or on a fact about the client. */
 export type TermCheck = { status: CheckStatus } & (

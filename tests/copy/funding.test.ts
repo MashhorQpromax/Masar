@@ -179,6 +179,25 @@ describe("funding wording", () => {
     expect(routeDoubtCount(empty)).toEqual(["الراتب غير مدخل.", "سنة الميلاد غير مدخلة.", "مدة الخدمة غير مدخلة.", "لم يُقرأ تقرير سمة بعد.", "شرط واحد لم يؤكَّد."]);
   });
 
+  it("says a conflict between the file and its papers once, under no lender's name", () => {
+    const gov = people[0]!;
+    const clean = records[0]!;
+    const one = (products: Product[], disputed: ("totalSalary" | "basicSalary" | "birthYear")[]) => fundingRoutes({ input: deal, borrower: gov, who: { nationality: "saudi", salaryBank: "a", record: clean, disputed }, products })[0]!;
+
+    // Every term confirmed, at one lender: the conflict is all that stands in the way.
+    const sure = one([product("1", "a", { terms: terms() }), home("2", "a", { terms: terms() })], ["birthYear"]);
+    expect(sure.eligibility).toBe("needs_verification");
+    expect(routeDoubtLines(sure)).toEqual(["تعارض في سنة الميلاد بين الملف والمستندات."]);
+    expect(routeDoubtCount(sure)).toEqual(["تعارض في سنة الميلاد بين الملف والمستندات."]);
+    expect(routeLeanLines(sure)).toEqual([]);
+
+    // At two lenders it still carries no name: it is the file's, and it comes before what each lender leaves open.
+    const two = one([product("1", "a", { terms: terms(["salary"]), requiresSalaryTransfer: false }), home("2", "b", { terms: terms() })], ["totalSalary", "birthYear"]);
+    expect(routeDoubtLines(two)).toEqual(["تعارض في الراتب الإجمالي بين الملف والمستندات.", "تعارض في سنة الميلاد بين الملف والمستندات.", "جهة a: لم يؤكَّد: أدنى راتب."]);
+    expect(routeDoubtCount(two)).toEqual(["تعارض في الراتب الإجمالي بين الملف والمستندات.", "تعارض في سنة الميلاد بين الملف والمستندات.", "شرط واحد لم يؤكَّد."]);
+    for (const line of [...routeDoubtLines(two), ...routeDoubtCount(two)]) expect(line.startsWith(":")).toBe(false);
+  });
+
   it("says a refusal on an unconfirmed term as what the record leans to, and a confirmed one as a blocker only", () => {
     const late = { ...records[0]!, delays: true };
     const routes = (products: Product[]) => fundingRoutes({ input: deal, borrower: people[0]!, who: { nationality: "saudi", salaryBank: "a", record: late }, products });

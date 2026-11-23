@@ -13,6 +13,7 @@ import {
   amountsOpen,
   capacity,
   CHECK_RULES,
+  conflictChecks,
   eligibilityOf,
   eligibilityRank,
   findingOf,
@@ -27,11 +28,13 @@ import {
   type Check,
   type Answer,
   type CheckStatus,
+  type ConflictCheck,
   type ContractType,
   type Eligibility,
   type Finding,
   type Inquiries,
   type Nationality,
+  type PaperFact,
   type Product,
   type Profile,
   type Rule,
@@ -110,6 +113,8 @@ export interface Applicant {
   contractType?: ContractType | null;
   /** What a person answered for this client about lenders' special conditions, by the condition's id. */
   answers?: Readonly<Record<string, Answer>>;
+  /** Facts of the file that a checked paper states differently. Until a person settles them no route is answered. */
+  disputed?: readonly PaperFact[];
 }
 
 type PersonCheck = Extract<Check, { key: "salary" | "sector" | "nationality" | "age" | "service" | "transfer" }>;
@@ -122,6 +127,7 @@ export type RouteCheck =
   | PersonCheck
   | RecordCheck
   | SpecialCheck
+  | ConflictCheck
   | { key: "simah"; status: "fail"; code: "SETTLED_WAIT"; params: { months: number } }
   | { key: "transfer"; status: "fail"; code: "TWO_SALARY_TRANSFERS"; params: Record<string, never> };
 
@@ -375,6 +381,9 @@ function route(args: Args, mortgageProduct: Product | null, personalProduct: Pro
     const both = weaker(mortgage.product.terms?.transfer ?? UNCONFIRMED, personal.product.terms?.transfer ?? UNCONFIRMED);
     findings.push({ lender: personal.product.lenderName, finding: findingOf(check, ROUTE_RULES.TWO_SALARY_TRANSFERS, { transfer: both }) });
   }
+  // A fact the file and a checked paper state differently is the same doubt for every lender. It is no
+  // lender's condition, so it is not among the notes of what the lenders ask: it is asked of the file.
+  for (const check of conflictChecks(who.disputed)) findings.push({ lender: "", finding: findingOf(check, ROUTE_RULES.FACT_CONFLICT, undefined) });
   const read = findings.map((f) => f.finding);
   const told = tell(
     findings,

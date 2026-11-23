@@ -98,6 +98,8 @@ export const CHECK_RULES = {
   ASKED: { basis: "lender", term: "special" },
   // Nobody asked the client yet. It is this lender's question, and the answer is a fact about the client.
   ASKED_OPEN: { basis: "lender", term: "special", missing: true },
+  // The file and a checked paper say different things. Until a person settles it the fact is as good as missing.
+  FACT_CONFLICT: { basis: "client", missing: true },
 } as const satisfies Record<Check["code"], Rule>;
 
 /** Reads one answer strictly. `terms` are the standings of the product that gave it. */

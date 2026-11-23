@@ -1,20 +1,20 @@
 import "server-only";
-import { and, desc, eq, inArray } from "drizzle-orm";
-import { analyzeClient, reportAgeMonths, type ClientAnalysis, type FileFacts } from "@/domain/analysis";
-import { INCOME_PROOF } from "@/domain/documents";
+import { desc, eq } from "drizzle-orm";
+import { analyzeClient, reportAgeMonths, type ClientAnalysis, type FileConflict, type FileFacts } from "@/domain/analysis";
 import { contractOf, PRODUCT_KINDS, SECTORS, type Answer, type ProductKind, type Sector } from "@/domain/eligibility";
 import { answersOf } from "../clients/conditions";
 import type { ClientRow } from "../clients/service";
 import { latestCredit, type CreditRecord } from "../credit/service";
 import type { Db } from "../db/client";
-import { clients, deals, documents, lenders } from "../db/schema";
+import { clients, deals, lenders } from "../db/schema";
+import { conflictsOf, fileStanding } from "../documents/facts";
 import { listProducts } from "../lenders/service";
 import { riyadhDay } from "../shared/clock";
 
 const ENDED = ["closed", "lost"];
 
 /** What a client's file says about them, as the analysis reads it in a given year. */
-export function fileFacts(client: ClientRow, args: { incomeVerified: boolean; now: Date; answers?: Readonly<Record<string, Answer>> }): FileFacts {
+export function fileFacts(client: ClientRow, args: { incomeVerified: boolean; now: Date; answers?: Readonly<Record<string, Answer>>; conflicts?: readonly FileConflict[] }): FileFacts {
   const kind = (PRODUCT_KINDS as readonly string[]).includes(client.financeType) ? (client.financeType as ProductKind) : null;
   return {
     age: client.birthYear != null ? args.now.getFullYear() - client.birthYear : null,
@@ -33,6 +33,7 @@ export function fileFacts(client: ClientRow, args: { incomeVerified: boolean; no
     consent: client.consentAt != null,
     contractType: contractOf(client.contractType),
     answers: args.answers ?? {},
+    conflicts: args.conflicts ?? [],
   };
 }
 
@@ -59,14 +60,11 @@ export async function getAnalysis(db: Db, args: { clientId: number; now?: Date }
   const [client] = await db.select().from(clients).where(eq(clients.id, args.clientId));
   if (!client) return null;
   const [deal] = await db.select({ id: deals.id, stage: deals.stage }).from(deals).where(eq(deals.clientId, client.id)).orderBy(desc(deals.id)).limit(1);
-  const [proof] = await db
-    .select({ id: documents.id })
-    .from(documents)
-    .where(and(eq(documents.clientId, client.id), eq(documents.status, "verified"), inArray(documents.code, [...INCOME_PROOF])))
-    .limit(1);
+  // The income is proven by a checked paper that states it, not by a paper having been looked at.
+  const standing = await fileStanding(db, client);
   const [bank] = client.salaryBank ? await db.select({ name: lenders.name }).from(lenders).where(eq(lenders.bankCode, client.salaryBank)).limit(1) : [];
   const record = await latestCredit(db, client.id);
-  const file = fileFacts(client, { incomeVerified: proof != null, now, answers: await answersOf(db, client.id) });
+  const file = fileFacts(client, { incomeVerified: standing.incomeProven, now, answers: await answersOf(db, client.id), conflicts: conflictsOf(standing) });
   const analysis = record
     ? analyzeClient({
         file,

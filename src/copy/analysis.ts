@@ -6,7 +6,8 @@
 import type { AnalysisVerdict, ClientAnalysis, Commitment, Fit, FitCheck, Gap, Income, IncomeBasis, KindFit, Mark, Reading, Step } from "@/domain/analysis";
 import type { Capacity } from "@/domain/eligibility";
 import { actionText, actionTitle, blockerText, findingText } from "./credit";
-import { askedLabel, capRuleText, checkText, FINANCE_TYPE, pointText } from "./eligibility";
+import { conflictText } from "./documents";
+import { askedLabel, capRuleText, checkText, FINANCE_TYPE, PAPER_FACT, pointText } from "./eligibility";
 import { counted, ltr, money, months, type CountForms } from "./format";
 import { ELIGIBILITY, routeCheckText, strictDoubtLines, strictLines, strictRefusalLines } from "./funding";
 import { TERM_NAME } from "./lenders";
@@ -94,6 +95,7 @@ export function verdictSay(a: Pick<ClientAnalysis, "verdict" | "afterClearing" |
 export const INCOME_BASIS: Record<IncomeBasis, string> = {
   verified: "عليه مستند دخل موثّق",
   stated: "كما كُتب في الملف، بلا مستند موثّق",
+  disputed: "يخالف ما في مستند موثّق",
   missing: "غير مدخل",
 };
 
@@ -153,7 +155,7 @@ export function markText(mark: Mark): string {
   return "blocker" in mark ? blockerText(mark.blocker) : findingText(mark.finding);
 }
 
-export const GAP_KIND: Record<Gap["kind"], string> = { missing: "ناقص", unconfirmed: "غير مؤكد" };
+export const GAP_KIND: Record<Gap["kind"], string> = { missing: "ناقص", unconfirmed: "غير مؤكد", conflict: "تعارض" };
 
 const READING_NOTES: CountForms = { one: "ملاحظة واحدة", two: "ملاحظتان", few: "ملاحظات", many: "ملاحظة" };
 
@@ -165,7 +167,7 @@ export function gapText(gap: Gap): string {
     case "TOTAL_SALARY":
       return "الراتب الإجمالي غير مدخل، فحسبنا على الأساسي. التقدير متحفظ.";
     case "INCOME_PROOF":
-      return "الدخل كما كُتب في الملف. لم يوثَّق تعريف راتب ولا كشف تأمينات بعد.";
+      return "الدخل كما كُتب في الملف. لم يُكتب راتب من مستند موثّق يطابقه بعد.";
     case "AGE":
       return "سنة الميلاد غير مدخلة، فلم نقس حد العمر عند الجهات.";
     case "SERVICE":
@@ -189,6 +191,8 @@ export function gapText(gap: Gap): string {
       return gap.unverified === gap.of ? "شروط الجهات استرشادية، ولم تؤكَّد مع أي جهة بعد." : `شروط ${ltr(gap.unverified)} من ${ltr(gap.of)} منتجاً لم تؤكَّد كلها مع جهاتها.`;
     case "CONSENT":
       return "موافقة العميل على معالجة بياناته وتقريره غير مسجلة.";
+    case "CONFLICT":
+      return conflictText(gap);
   }
 }
 
@@ -207,6 +211,8 @@ export function stepTitle(step: Step): string {
       return "سجّل موافقة العميل";
     case "COMPLETE_FILE":
       return "أكمل الملف";
+    case "SETTLE_CONFLICTS":
+      return "احسم التعارض";
     case "REVIEW_READING":
       return "طابق قراءة التقرير";
     case "CONFIRM_SUSPENSION":
@@ -225,7 +231,9 @@ export function stepTitle(step: Step): string {
       return step.beforePaying ? `قبل أي سداد: اسأل العميل عن شروط ${step.lender}` : `اسأل العميل عن شروط ${step.lender}`;
     case "APPLY":
       if (step.afterClearing) return `بعد السداد: ${step.lender}`;
-      return step.eligibility === "needs_verification" ? `بعد التأكيد: ${step.lender}` : `قدّم إلى ${step.lender}`;
+      if (step.eligibility !== "needs_verification") return `قدّم إلى ${step.lender}`;
+      // What it waits for is said: the lender's word on its terms, or the client's own file.
+      return step.termsOpen ? `بعد التأكيد: ${step.lender}` : `بعد استكمال الملف: ${step.lender}`;
   }
 }
 
@@ -236,6 +244,8 @@ export function stepText(step: Step): string {
       return "التحليل يعالج بيانات العميل وتقريره الائتماني. سجّل موافقته قبل الاعتماد عليه أو التقديم لأي جهة.";
     case "COMPLETE_FILE":
       return `ينقصه: ${step.missing.map((fact) => FILE_FACT[fact]).join("، ")}. ما ينقص يبقى شرطاً عند كل جهة ولا يُحسب قبولاً.`;
+    case "SETTLE_CONFLICTS":
+      return `الملف والمستندات يختلفان في: ${step.facts.map((fact) => PAPER_FACT[fact]).join("، ")}. احسمه من صفحة المستندات قبل أي وعد أو سداد. كل الجهات تبقى بحاجة إلى تحقق حتى يُحسم.`;
     case "REVIEW_READING":
       return "قارن ما قُرئ بالتقرير الأصلي قبل الاعتماد على الأرقام.";
     case "CONFIRM_SUSPENSION":
@@ -247,7 +257,7 @@ export function stepText(step: Step): string {
     case "FREE_ROOM":
       return `لا قسط متاح اليوم. سداد ${step.lender} يحرر ${money(step.monthly)} في الشهر، وهو أصغر التزام رصيداً.`;
     case "VERIFY_INCOME":
-      return "اطلب تعريف الراتب أو كشف التأمينات وراجعه قبل التقديم. المبالغ هنا محسوبة على الراتب المكتوب في الملف.";
+      return "اطلب تعريف الراتب وراجعه واكتب الراتب كما ورد فيه قبل التقديم. المبالغ هنا محسوبة على الراتب المكتوب في الملف.";
     case "CONFIRM_TERMS": {
       const what = `${step.kinds.map((kind) => kindTitle({ kind })).join(" و")}. لم يؤكَّد: ${step.terms.map((term) => TERM_NAME[term]).join("، ")}.`;
       return step.beforePaying ? `${what} اسأل الجهة واحفظ مصدر جوابها قبل أن يُسدَّد عن العميل شيء: السداد لا يضمن القبول.` : `${what} اسأل الجهة واحفظ مصدر جوابها قبل وعد العميل أو التقديم.`;
@@ -258,7 +268,7 @@ export function stepText(step: Step): string {
       const offer = `${kindTitle(step)} حتى ${money(step.amount)} بقسط ${money(step.installment)} لمدة ${months(step.months)}.`;
       const notes = [
         step.eligibility === "conditional" ? "تقبل بشروط مذكورة عندها." : null,
-        step.eligibility === "needs_verification" ? "الأرقام على شروطها المسجلة، ولم تؤكَّد." : null,
+        step.eligibility !== "needs_verification" ? null : step.termsOpen ? "الأرقام على شروطها المسجلة، ولم تؤكَّد." : "الأرقام على الملف كما هو، وفيه ما لم يُحسم بعد.",
         step.afterClearing ? "سداد التعثر لا يضمن القبول." : null,
         step.estimated ? "المبلغ والهامش استرشاديان حتى يؤكَّدا." : null,
       ].filter(Boolean);

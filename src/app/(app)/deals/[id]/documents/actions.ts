@@ -2,9 +2,13 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { numberText } from "@/copy/format";
+import { can } from "@/domain/auth";
 import { FILE_MAX_BYTES } from "@/domain/documents";
+import { PAPER_FACTS, type PaperFact } from "@/domain/eligibility";
 import { requireActor } from "@/server/auth/actor";
 import { getDb } from "@/server/db/client";
+import { relyOnPaper, statePaper } from "@/server/documents/facts";
 import { addPaper, addPaperFile, clientOfDeal, movePaperFile, removePaper, removePaperFile, reviewPaper } from "@/server/documents/service";
 import { DomainError } from "@/server/shared/errors";
 
@@ -22,6 +26,17 @@ function refresh(dealId: number): void {
   revalidatePath(`/deals/${dealId}/documents`);
 }
 
+/** The figures a person typed for a paper, as numbers. A field left empty is a figure nobody wrote. */
+function figuresOf(formData: FormData): Partial<Record<PaperFact, number>> {
+  const stated: Partial<Record<PaperFact, number>> = {};
+  for (const fact of PAPER_FACTS) {
+    const typed = formData.get(fact);
+    const text = typeof typed === "string" ? numberText(typed, fact === "birthYear" ? 0 : 2) : "";
+    if (text !== "") stated[fact] = Number(text);
+  }
+  return stated;
+}
+
 /** Runs a change on the papers of a deal's client, and turns an expected refusal into its code. */
 async function change(dealId: unknown, run: (clientId: number) => Promise<void>): Promise<PaperAnswer> {
   const deal = id.safeParse(dealId);
@@ -31,7 +46,8 @@ async function change(dealId: unknown, run: (clientId: number) => Promise<void>)
   try {
     await run(clientId);
   } catch (error) {
-    if (error instanceof DomainError) return { error: error.code };
+    // A refusal that says what is wrong with a figure is worded by that, not by the refusal's own name.
+    if (error instanceof DomainError) return { error: error.params.problem ?? error.code };
     throw error;
   }
   refresh(deal.data);
@@ -69,6 +85,28 @@ export async function judgePaper(formData: FormData): Promise<void> {
   if (!paperId.success) return;
   const review = { verdict: formData.get("verdict"), note: formData.get("note") ?? "" };
   await change(formData.get("dealId"), async (clientId) => reviewPaper(await getDb(), { clientId, paperId: paperId.data, review, actor }));
+}
+
+/** Says a paper is good and keeps the figures the person wrote down from it. */
+export async function verifyPaper(dealId: number, paperId: number, _previous: PaperAnswer, formData: FormData): Promise<PaperAnswer> {
+  const actor = await requireActor("doc.verify");
+  return change(dealId, async (clientId) => reviewPaper(await getDb(), { clientId, paperId, review: { verdict: "verified", stated: figuresOf(formData) }, actor }));
+}
+
+/** Writes down, or corrects, the figures a checked paper states. */
+export async function stateFigures(dealId: number, paperId: number, _previous: PaperAnswer, formData: FormData): Promise<PaperAnswer> {
+  const actor = await requireActor("doc.verify");
+  return change(dealId, async (clientId) => statePaper(await getDb(), { clientId, paperId, stated: figuresOf(formData), actor }));
+}
+
+/** The file takes what a checked paper says about a fact in dispute. It changes the file, so it takes both rights. */
+export async function relyOn(dealId: number, paperId: number, fact: PaperFact, _previous: PaperAnswer, _formData: FormData): Promise<PaperAnswer> {
+  const actor = await requireActor("doc.verify");
+  if (!can(actor.role, "client.edit")) return { error: "FORBIDDEN" };
+  const answer = await change(dealId, async (clientId) => relyOnPaper(await getDb(), { clientId, paperId, fact, actor }));
+  // The salary and the age feed every screen of the deal.
+  if (answer.done) revalidatePath("/", "layout");
+  return answer;
 }
 
 /** Adds a paper by name to the file. */

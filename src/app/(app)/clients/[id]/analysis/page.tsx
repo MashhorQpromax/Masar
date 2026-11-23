@@ -252,6 +252,7 @@ function stepDoor(step: Step, at: { clientId: number; deal: { id: number; open: 
       return { href: record, label: "ارفع تقريراً أحدث" };
     case "FREE_ROOM":
       return at.deal ? { href: `/deals/${at.deal.id}`, label: "افتح الصفقة" } : null;
+    case "SETTLE_CONFLICTS":
     case "VERIFY_INCOME":
       return at.deal ? { href: `/deals/${at.deal.id}/documents`, label: "افتح المستندات" } : null;
     case "CONFIRM_TERMS":

@@ -10,8 +10,11 @@ import { getDeal } from "@/server/deals/service";
 import { roadView } from "@/server/deals/views";
 import { DEMO_ANSWERED, DEMO_BANK, DEMO_COMPANY, DEMO_PAPER, DEMO_WORD, seedDemoLenders } from "@/server/demo/lenders";
 import { seedDemo } from "@/server/demo/seed";
+import { relyOnPaper } from "@/server/documents/facts";
+import { getPapers } from "@/server/documents/service";
 import { getFunding } from "@/server/funding/service";
 import { listCatalogue } from "@/server/lenders/service";
+import { SYSTEM } from "@/server/shared/actor";
 import { riyadhDay } from "@/server/shared/clock";
 import { testDb } from "../helpers/db";
 
@@ -269,5 +272,33 @@ describe("the two example lenders of the demonstration", () => {
     const noura = await analysisOf("نورة");
     expect(noura.afterClearing).toBe("eligible");
     expect(noura.steps.map((step) => step.code)).not.toContain("CONFIRM_TERMS");
+  });
+});
+
+describe("the demonstration's files against their papers", () => {
+  it("shows one file its checked papers stand behind, and one a paper speaks against", async () => {
+    const { deals } = await roadView(c.db, now);
+    const papersOf = async (name: string) => (await getPapers(c.db, { dealId: deals.find((deal) => deal.clientName === name)!.dealId, now }))!;
+    expect((await papersOf("فهد")).facts.map((reading) => reading.state)).toEqual(["agrees", "agrees", "agrees"]);
+    const salem = await papersOf("سالم");
+    expect(salem.facts.filter((reading) => reading.state === "conflict").map((reading) => [reading.fact, reading.file, reading.stated.map((statement) => statement.value), reading.papersAgree])).toEqual([["birthYear", 1989, [1986], true]]);
+    // The conflict is one, on one client: every other screen of the demonstration reads as it did.
+    for (const name of ["نورة", "ريم"]) expect((await papersOf(name)).facts.some((reading) => reading.state === "conflict"), name).toBe(false);
+  });
+
+  it("holds every lender of that client back until the conflict is settled, and shows them once it is", async () => {
+    const { deals } = await roadView(c.db, now);
+    const dealId = deals.find((deal) => deal.clientName === "سالم")!.dealId;
+    const results = async () => new Set((await getFunding(c.db, { dealId, now }))!.routes.map((route) => route.eligibility));
+    const before = await results();
+    expect([...before].some((result) => result === "eligible" || result === "conditional")).toBe(false);
+    expect(before.has("needs_verification")).toBe(true);
+
+    const papers = (await getPapers(c.db, { dealId, now }))!;
+    const card = papers.list.papers.find((paper) => paper.code === "id")!;
+    await relyOnPaper(c.db, { clientId: papers.client.id, paperId: card.id!, fact: "birthYear", actor: SYSTEM, now });
+    // One press, and the example lender that takes him answers: the demonstration shows what settling is for.
+    const after = await results();
+    expect([...after].some((result) => result === "eligible" || result === "conditional")).toBe(true);
   });
 });

@@ -10,6 +10,7 @@ import { applyRoute, getFunding, setSalaryBank } from "@/server/funding/service"
 import { confirmTerms, listCatalogue, listProducts, seedCatalogue, updateProductTerms, withdrawTerms } from "@/server/lenders/service";
 import { SYSTEM } from "@/server/shared/actor";
 import { testDb } from "../helpers/db";
+import { withoutDemoConflict } from "../helpers/demo";
 
 let c: Connection;
 const now = new Date("2026-11-22T09:00:00Z");
@@ -18,6 +19,8 @@ const ids: Record<string, number> = {};
 beforeAll(async () => {
   c = await testDb();
   await seedDemo(c.db, now);
+  // The conflict the demonstration carries has tests of its own. These read each client as the file stands.
+  await withoutDemoConflict(c.db);
   for (const deal of (await roadView(c.db, now)).deals) ids[deal.clientName] = deal.dealId;
 });
 afterAll(async () => {

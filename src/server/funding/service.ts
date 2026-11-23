@@ -8,6 +8,7 @@ import type { Db, Tx } from "../db/client";
 import { clients, lenders } from "../db/schema";
 import { answersOf } from "../clients/conditions";
 import { amendDeal, getDeal } from "../deals/service";
+import { fileStanding } from "../documents/facts";
 import { borrowerOf, type ClientRow, type DealRow } from "../deals/mapping";
 import { listProducts } from "../lenders/service";
 import type { Actor } from "../shared/actor";
@@ -58,6 +59,7 @@ export async function fundingIn(db: Tx, args: { dealId: number; now: Date }): Pr
       record,
       contractType: contractOf(client.contractType),
       answers: await answersOf(db, client.id),
+      disputed: (await fileStanding(db, client)).disputed,
     },
     products: await listProducts(db, { now: args.now }),
     credit: view.creditFlags,

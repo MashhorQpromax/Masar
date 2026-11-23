@@ -309,6 +309,31 @@ describe("a route read strictly", () => {
     expect(old.remarks).toEqual([]);
   });
 
+  it("needs verification while the file and a checked paper differ, though every lender's term is confirmed", () => {
+    const [settled] = routes([mortgage("1", "a"), personal("2", "a")]);
+    const [route] = routes([mortgage("1", "a"), personal("2", "a")], who({ disputed: ["birthYear"] }));
+    expect(route!.eligibility).toBe("needs_verification");
+    // It is asked of the file once, and of no lender: no lender's condition changes, and no figure.
+    expect(route!.doubts.map((d) => [d.lender, d.finding.check.code, "ref" in d.finding.check ? d.finding.check.ref : null, d.finding.doubt])).toEqual([["", "FACT_CONFLICT", "birthYear", "FACT_MISSING"]]);
+    expect([route!.status, route!.conditions, route!.refusals]).toEqual(["pass", [], []]);
+    expect(route!.blockedAsWritten).toBe(false);
+    expect([route!.terms, route!.study]).toEqual([settled!.terms, settled!.study]);
+  });
+
+  it("names every disputed fact, and leaves a confirmed blocker to decide alone", () => {
+    const paid = who({ record: { ...clean, settledMonthsAgo: 0 }, disputed: ["basicSalary", "totalSalary"] });
+    const [route] = routes([mortgage("1", "a", { settledDefaultWaitMonths: 12 }), personal("2", "a")], paid);
+    expect(route!.eligibility).toBe("not_eligible");
+    expect(route!.blockers.map((b) => b.finding.check.code)).toEqual(["SETTLED_WAIT"]);
+    expect(route!.doubts.map((d) => ("ref" in d.finding.check ? d.finding.check.ref : null))).toEqual(["totalSalary", "basicSalary"]);
+  });
+
+  it("raises nothing about the file when nothing is in dispute", () => {
+    const list = routes([mortgage("1", "a"), personal("2", "a")], who({ disputed: [] }));
+    expect(list[0]!.eligibility).toBe("eligible");
+    expect(list[0]!.doubts).toEqual([]);
+  });
+
   it("lists a route that can be relied on above one that cannot, though the other leaves the client more", () => {
     const list = routes([mortgage("1", "a", { maxAmount: 650_000 }), mortgage("3", "c", { terms: undefined }), personal("2", "a"), personal("4", "c", { terms: undefined })]);
     const [first, second] = list;

@@ -8,6 +8,7 @@ import { clients, documents } from "@/server/db/schema";
 import { seedDemo } from "@/server/demo/seed";
 import { SYSTEM } from "@/server/shared/actor";
 import { testDb } from "../helpers/db";
+import { withoutDemoConflict } from "../helpers/demo";
 
 /**
  * The analysis of the demo clients, read from what is stored: the file, the newest credit record and
@@ -21,6 +22,8 @@ const people: Record<string, number> = {};
 beforeAll(async () => {
   c = await testDb();
   await seedDemo(c.db, now);
+  // The conflict the demonstration carries has tests of its own. These read each client as the file stands.
+  await withoutDemoConflict(c.db);
   for (const row of await c.db.select({ id: clients.id, name: clients.fullName }).from(clients)) people[row.name.split(" ")[0]!] = row.id;
 });
 afterAll(async () => {
@@ -147,19 +150,46 @@ describe("a client's analysis", () => {
     expect(stepCodes(after)).toContain("REFRESH_REPORT");
   });
 
-  it("takes the income as verified once a person has checked a paper that states it", async () => {
+  it("takes the income as verified once a person has written the salary a checked paper states", async () => {
     const clientId = people["سالم"]!;
-    await c.db
-      .insert(documents)
-      .values({ clientId, code: "salary_cert", status: "verified" })
-      .onConflictDoUpdate({ target: [documents.clientId, documents.code], set: { status: "verified" } });
+    const certificate = and(eq(documents.clientId, clientId), eq(documents.code, "salary_cert"));
+    const keep = async (status: "verified" | "received", stated: Record<string, number> | null) =>
+      c.db.insert(documents).values({ clientId, code: "salary_cert", status, stated }).onConflictDoUpdate({ target: [documents.clientId, documents.code], set: { status, stated } });
+
+    // The certificate was checked and the salary written from it is the one on the file.
+    await keep("verified", { totalSalary: 15200 });
     const a = await analysed("سالم");
     expect(a.income.basis).toBe("verified");
     expect(a.gaps.some((gap) => gap.code === "INCOME_PROOF")).toBe(false);
     expect(stepCodes(a)).toEqual(["CONFIRM_TERMS", "APPLY", "APPLY"]);
-    // A paper that came in and nobody has checked yet proves nothing.
-    await c.db.update(documents).set({ status: "received" }).where(and(eq(documents.clientId, clientId), eq(documents.code, "salary_cert")));
-    expect((await analysed("سالم")).income.basis).toBe("stated");
+
+    // A rounding is not a difference: 15,250 against 15,200 is within one part in a hundred.
+    await keep("verified", { totalSalary: 15250 });
+    expect((await analysed("سالم")).income.basis).toBe("verified");
+
+    // A checked paper nobody wrote a figure from proves no figure.
+    await keep("verified", null);
+    const unwritten = await analysed("سالم");
+    expect(unwritten.income.basis).toBe("stated");
+    expect(unwritten.gaps.some((gap) => gap.code === "INCOME_PROOF")).toBe(true);
+    expect(stepCodes(unwritten)).toContain("VERIFY_INCOME");
+
+    // A paper that states another salary puts the income in dispute, and settling it comes before anything else.
+    await keep("verified", { totalSalary: 13000 });
+    const disputed = await analysed("سالم");
+    expect(disputed.income.basis).toBe("disputed");
+    expect(disputed.gaps[0]).toEqual({ kind: "conflict", code: "CONFLICT", fact: "totalSalary", file: 15200, stated: [{ code: "salary_cert", label: null, value: 13000 }] });
+    expect(disputed.gaps.some((gap) => gap.code === "INCOME_PROOF")).toBe(false);
+    expect(disputed.steps[0]).toEqual({ code: "SETTLE_CONFLICTS", facts: ["totalSalary"] });
+    expect(stepCodes(disputed)).not.toContain("VERIFY_INCOME");
+    expect(disputed.verdict).toBe("needs_verification");
+
+    // A paper that came in and nobody has checked yet proves nothing, whatever is kept beside it.
+    await keep("received", { totalSalary: 13000 });
+    const waiting = await analysed("سالم");
+    expect(waiting.income.basis).toBe("stated");
+    expect(waiting.gaps.some((gap) => gap.code === "CONFLICT")).toBe(false);
+    await c.db.update(documents).set({ stated: null }).where(certificate);
   });
 
   it("says so when the client's consent is not on the file", async () => {

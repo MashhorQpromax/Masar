@@ -117,6 +117,14 @@ const files: FileFacts[] = [
   file({ sector: "retired", age: 62, serviceMonths: null, totalSalary: 9000, basicSalary: 9000 }),
   file({ age: 58, totalSalary: 30000, request: { kind: "mortgage", amount: 900000, tenor: 240 }, propertyValue: 1_000_000, housingSupport: true }),
   file({ totalSalary: 5000, basicSalary: 4000, request: { kind: "auto", amount: 80000, tenor: 60 } }),
+  // A file its checked papers speak against: the year of birth, the salary the income is counted from, and a fact left empty.
+  file({
+    conflicts: [
+      { fact: "totalSalary", file: 16000, stated: [{ code: "salary_cert", label: null, value: 13000 }] },
+      { fact: "basicSalary", file: null, stated: [{ code: "gosi", label: null, value: 9000 }, { code: "custom:1", label: "خطاب من جهة العمل", value: 9500 }] },
+      { fact: "birthYear", file: 1991, stated: [{ code: "id", label: null, value: 1986 }] },
+    ],
+  }),
 ];
 const readings: Partial<RecordFacts>[] = [{}, { confidence: "medium", readingWarnings: 2, ageMonths: 4 }, { confidence: "low", readingWarnings: 1 }, { confidence: "medium" }];
 
@@ -209,9 +217,9 @@ describe("analysis wording", () => {
       if (how) sentence(how, "income");
     }
     // Every gap and every step the engine has, each met at least once.
-    const gaps: Gap["code"][] = ["INCOME", "TOTAL_SALARY", "INCOME_PROOF", "AGE", "SERVICE", "SALARY_BANK", "CONTRACT", "INSTALLMENT", "CARD_SHARE", "REPORT_AGE", "READING", "SUSPENSION", "TERMS", "CONSENT"];
+    const gaps: Gap["code"][] = ["INCOME", "TOTAL_SALARY", "INCOME_PROOF", "AGE", "SERVICE", "SALARY_BANK", "CONTRACT", "INSTALLMENT", "CARD_SHARE", "REPORT_AGE", "READING", "SUSPENSION", "TERMS", "CONSENT", "CONFLICT"];
     for (const code of gaps) expect(seen, code).toContain(`gap.${code}`);
-    const steps: Step["code"][] = ["RECORD_CONSENT", "COMPLETE_FILE", "REVIEW_READING", "CONFIRM_SUSPENSION", "CREDIT", "REFRESH_REPORT", "FREE_ROOM", "VERIFY_INCOME", "CONFIRM_TERMS", "ASK_CLIENT", "APPLY"];
+    const steps: Step["code"][] = ["RECORD_CONSENT", "COMPLETE_FILE", "SETTLE_CONFLICTS", "REVIEW_READING", "CONFIRM_SUSPENSION", "CREDIT", "REFRESH_REPORT", "FREE_ROOM", "VERIFY_INCOME", "CONFIRM_TERMS", "ASK_CLIENT", "APPLY"];
     for (const code of steps) expect(seen, code).toContain(`step.${code}`);
     const met = [
       "verdict.eligible.null",
@@ -314,17 +322,36 @@ describe("analysis wording", () => {
     expect(noInstallment({ kind: "personal" })).toBe("القسط غير مذكور");
   });
 
+  it("says a conflict with both figures, and what to do about it before anything else", () => {
+    expect(GAP_KIND.conflict).toBe("تعارض");
+    expect(strip(gapText({ kind: "conflict", code: "CONFLICT", fact: "birthYear", file: 1989, stated: [{ code: "id", label: null, value: 1986 }] }))).toBe("سنة الميلاد: في الملف 1989، وفي الهوية 1986.");
+    expect(strip(gapText({ kind: "conflict", code: "CONFLICT", fact: "basicSalary", file: null, stated: [{ code: "gosi", label: null, value: 9000 }] }))).toBe("الراتب الأساسي: غير مدخل في الملف، وفي برنت التأمينات 9,000.");
+    const settle: Step = { code: "SETTLE_CONFLICTS", facts: ["totalSalary", "birthYear"] };
+    expect(stepTitle(settle)).toBe("احسم التعارض");
+    expect(stepText(settle)).toBe("الملف والمستندات يختلفان في: الراتب الإجمالي، سنة الميلاد. احسمه من صفحة المستندات قبل أي وعد أو سداد. كل الجهات تبقى بحاجة إلى تحقق حتى يُحسم.");
+    // An income a checked paper speaks against is neither verified nor merely written: it is in dispute.
+    expect(INCOME_BASIS.disputed).toBe("يخالف ما في مستند موثّق");
+    expect(new Set(Object.values(INCOME_BASIS)).size).toBe(Object.keys(INCOME_BASIS).length);
+    // A verified paper is not proof of a salary nobody wrote down from it.
+    expect(gapText({ kind: "unconfirmed", code: "INCOME_PROOF" })).toBe("الدخل كما كُتب في الملف. لم يُكتب راتب من مستند موثّق يطابقه بعد.");
+    expect(stepText({ code: "VERIFY_INCOME" })).toBe("اطلب تعريف الراتب وراجعه واكتب الراتب كما ورد فيه قبل التقديم. المبالغ هنا محسوبة على الراتب المكتوب في الملف.");
+  });
+
   it("words a step with what it takes and never promises a lender's yes", () => {
-    const apply: Step = { code: "APPLY", kind: "personal", lender: "جهة أ", product: "منتج", amount: 177000, installment: 3422, months: 60, eligibility: "conditional", afterClearing: true, estimated: true };
+    const apply: Step = { code: "APPLY", kind: "personal", lender: "جهة أ", product: "منتج", amount: 177000, installment: 3422, months: 60, eligibility: "conditional", afterClearing: true, termsOpen: false, estimated: true };
     expect(stepTitle(apply)).toBe("بعد السداد: جهة أ");
     expect(strip(stepText(apply))).toBe("تمويل شخصي حتى 177,000 بقسط 3,422 لمدة 60 شهراً. تقبل بشروط مذكورة عندها. سداد التعثر لا يضمن القبول. المبلغ والهامش استرشاديان حتى يؤكَّدا.");
     const sure: Step = { ...apply, eligibility: "eligible", afterClearing: false, estimated: false };
     expect(stepTitle(sure)).toBe("قدّم إلى جهة أ");
     expect(strip(stepText(sure))).toBe("تمويل شخصي حتى 177,000 بقسط 3,422 لمدة 60 شهراً.");
     // Nobody is told to apply to a lender whose terms nobody confirmed: the step waits for the confirmation.
-    const unsure: Step = { ...sure, eligibility: "needs_verification" };
+    const unsure: Step = { ...sure, eligibility: "needs_verification", termsOpen: true };
     expect(stepTitle(unsure)).toBe("بعد التأكيد: جهة أ");
     expect(strip(stepText(unsure))).toBe("تمويل شخصي حتى 177,000 بقسط 3,422 لمدة 60 شهراً. الأرقام على شروطها المسجلة، ولم تؤكَّد.");
+    // A lender whose terms are all confirmed waits on the client's own file, and is not sent to be asked.
+    const waiting: Step = { ...sure, eligibility: "needs_verification", termsOpen: false };
+    expect(stepTitle(waiting)).toBe("بعد استكمال الملف: جهة أ");
+    expect(strip(stepText(waiting))).toBe("تمويل شخصي حتى 177,000 بقسط 3,422 لمدة 60 شهراً. الأرقام على الملف كما هو، وفيه ما لم يُحسم بعد.");
     const ask: Step = { code: "CONFIRM_TERMS", lender: "جهة أ", kinds: ["personal"], terms: ["salary", "transfer", "settled"], beforePaying: false };
     expect(stepTitle(ask)).toBe("أكّد شروط جهة أ");
     expect(stepText(ask)).toBe("تمويل شخصي. لم يؤكَّد: أدنى راتب، تحويل الراتب، بعد سداد التعثر. اسأل الجهة واحفظ مصدر جوابها قبل وعد العميل أو التقديم.");

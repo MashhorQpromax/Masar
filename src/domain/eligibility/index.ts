@@ -1,6 +1,7 @@
 export * from "./types";
 export * from "./terms";
 export * from "./special";
+export * from "./conflict";
 export * from "./strict";
 export * from "./capacity";
 export * from "./match";
