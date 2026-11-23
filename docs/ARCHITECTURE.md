@@ -346,7 +346,7 @@ Choices the owner has not reviewed: the manager alone approves, the length of a 
 
 ## Fees and the client's net
 
-Phase two of the owner's roadmap. Its first part is built; the client sees no fee anywhere until the owner decides whether they should.
+Phase two of the owner's roadmap. Its first four parts are built; the client sees no fee anywhere until the owner decides whether they should.
 
 ### The fee policy
 
@@ -373,6 +373,23 @@ The manager approves a deal's fee plan (`fee.approve`; `src/domain/deal/plan.ts`
 - The tile sits on `/deals/[id]` above the step-by-step account. In the demonstration one invented deal's plan stands and another's fell (`seedDemoPlans`).
 
 Nothing of the plan reaches a client yet. Whether a client sees the fee waits on the owner; when it does, it will be the approved copy that is shown.
+
+### Confirmed and estimated
+
+Every figure of the client's net says where it comes from (`clientNet` in `src/domain/deal/net.ts`). A figure is **confirmed** when a paper from whoever sets it says so: the lender's written offer for a financing (its recorded decision, or the offer typed into the deal), and the creditor's own letter for an obligation (the deal item's `confirmed`). Everything else is an **estimate**: a financing counted from the salary and the rules, or held by a lender's ceiling; the lender's admin fee, the taxes on the expected valuation and the costs typed as expected, which no paper in the system confirms yet.
+
+- The net is read as five lines: the mortgage, the personal financing, the obligations the deal settles, the costs, and the office's fee. They add up to the study's own `clientNet` to the riyal on every golden case (the mortgage counts up to the sale price, as the study does).
+- The obligations line is confirmed only when every obligation has its letter; with some of them it is an estimate that keeps how much and how many are confirmed (`partly`).
+- The fee is as sure as what its percents are counted on: the settlement percent on its items' letters, the finance percent on its base. A fee on `net` is an estimate while any cost is counted.
+- A sum is confirmed only when every line is. A sum of both never goes without saying which lines are which (`netWhy` in `src/copy/net.ts`).
+- The deduction after the financing is shown beside its cap, always as an estimate: its installments are counted from the rates the study assumes, even on a written offer.
+
+Where it shows:
+
+- On `/deals/[id]`, a badge beside what the client keeps, and the tile "صافي العميل": the lines, each with its source and its badge, and what they come to, with which is which and the deduction. Hidden while the valuation is missing.
+- In the client's study message and on their own page, each financing part is said as written when the lender's offer gives it (to the riyal, "بعرض مكتوب من الجهة"), and as near when counted ("نحو …" and "(تقديري)"). What the client keeps is marked the same way. The note under the figures appears only when one of them is an estimate. `ClientFacts` carries each part's certainty and the net's, and still nothing of the fee.
+
+Choices the owner has not reviewed: the lender's admin fee counts as an estimate even with a written offer, since the offer's own fee is not recorded; the valuation has no confirmed state, so the taxes on it stay estimates; the client is told a confirmed amount to the riyal.
 
 ## What the office knows about lenders
 

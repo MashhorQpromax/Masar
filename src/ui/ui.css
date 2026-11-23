@@ -1107,6 +1107,146 @@
     color: var(--color-coral-ink);
   }
 
+  /* ---------- Confirmed or estimated, beside a figure ---------- */
+  /* A written word stands behind it: solid, with a tick. Counted from general terms: a dashed outline. */
+  .certain {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    min-width: 64px;
+    padding: 2px 10px;
+    border: 1.5px solid transparent;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.6;
+    white-space: nowrap;
+    vertical-align: middle;
+  }
+  .certain[data-certainty="confirmed"] {
+    background: var(--color-navy);
+    color: #fff;
+  }
+  .certain[data-certainty="estimated"] {
+    border-style: dashed;
+    border-color: var(--color-sun-ink);
+    color: var(--color-sun-ink);
+  }
+  .tile--verdict .certain {
+    align-self: center;
+  }
+  .tile--verdict .certain[data-certainty="confirmed"] {
+    background: var(--color-sun);
+    color: var(--color-navy);
+  }
+  .tile--verdict .certain[data-certainty="estimated"] {
+    border-color: rgba(255, 255, 255, 0.55);
+    color: #dbe3ea;
+  }
+
+  /* ---------- The client's net, line by line ---------- */
+  /* The lines on one side, what they come to on the other: a receipt, and its total in a card. */
+  .net {
+    display: grid;
+    grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr);
+    align-items: start;
+    gap: 8px 40px;
+    animation-delay: 0.44s;
+  }
+  .net-head {
+    grid-column: 1 / -1;
+  }
+  .net-line {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--color-line);
+    font-size: 15px;
+  }
+  .net-line:last-child {
+    border-bottom: 0;
+  }
+  .net-line small {
+    display: block;
+    font-size: 12.5px;
+    line-height: 1.6;
+    color: var(--color-muted);
+  }
+  .net-figure {
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+    flex: none;
+    font-weight: 500;
+  }
+  /* Every figure ends at the same edge, so the units line up down the column. */
+  .net-figure .num {
+    display: inline-block;
+    min-width: 92px;
+    text-align: right;
+  }
+  .net-sum {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 20px 22px;
+    border-radius: 20px;
+    background: var(--color-ground);
+  }
+  .net-big {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px 10px;
+    font-size: 16px;
+    color: var(--color-body);
+  }
+  .net-big .num {
+    font-size: clamp(32px, 3vw, 42px);
+    font-weight: 700;
+    line-height: 1.15;
+    color: var(--color-ink);
+  }
+  .net-sum[data-deficit="true"] .net-big .num {
+    color: var(--color-coral-ink);
+  }
+  .net-why {
+    font-size: 13.5px;
+    line-height: 1.75;
+    color: var(--color-body);
+  }
+  .net-deduction {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px 10px;
+    padding-top: 12px;
+    border-top: 1px solid var(--color-line);
+    font-size: 13.5px;
+    color: var(--color-body);
+  }
+  @media (max-width: 900px) {
+    .net {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+  @media (max-width: 560px) {
+    .net-line {
+      align-items: flex-start;
+    }
+    .net-figure {
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 6px;
+    }
+    .net-figure .num {
+      min-width: 0;
+    }
+  }
+
   /* ---------- Head extras ---------- */
   .head-side {
     display: flex;
@@ -4238,6 +4378,13 @@
     font-size: 12.5px;
     line-height: 1.7;
     margin-top: 14px;
+  }
+  .portal-plan .certain[data-certainty="estimated"] {
+    border-color: rgba(15, 42, 67, 0.6);
+    color: var(--color-navy);
+  }
+  .portal-keep .certain {
+    align-self: center;
   }
   .portal-papers {
     animation-delay: 0.16s;

@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
 import { paperLabel } from "@/copy/documents";
-import { dayShort, ltr } from "@/copy/format";
-import { about, CLIENT_NOW, CLIENT_STEP, firstName } from "@/copy/messages";
+import { dayShort, ltr, plainMoney } from "@/copy/format";
+import { about, CLIENT_NOW, CLIENT_STEP, ESTIMATE_NOTE, firstName, hasEstimate } from "@/copy/messages";
 import { dataMode, getDb } from "@/server/db/client";
 import { portalView, type PortalPaper } from "@/server/messages/portal";
+import { Certain } from "@/ui/Certain";
 import { CheckIcon, Mark } from "@/ui/icons";
 import { PaperUpload } from "@/ui/PaperUpload";
 import { sendPaper } from "./actions";
@@ -84,9 +85,10 @@ export default async function ClientPage({ params }: { params: Promise<{ token: 
             <p className="label">{view.facts.offered ? "عرض تمويلك" : "المتوقع لك"}</p>
             {view.facts.keeps > 0 && (
               <p className="portal-keep">
-                <span>يبقى لك نحو</span>
-                <b className="num">{about(view.facts.keeps)}</b>
+                <span>{view.facts.keepsCertainty === "confirmed" ? "يبقى لك" : "يبقى لك نحو"}</span>
+                <b className="num">{view.facts.keepsCertainty === "confirmed" ? plainMoney(view.facts.keeps) : about(view.facts.keeps)}</b>
                 <span>ريال</span>
+                <Certain value={view.facts.keepsCertainty} />
               </p>
             )}
             {view.facts.financing.length > 0 && (
@@ -95,13 +97,13 @@ export default async function ClientPage({ params }: { params: Promise<{ token: 
                   <div key={part.part}>
                     <dt>{PART[part.part]}</dt>
                     <dd>
-                      <span className="num">{about(part.amount)}</span> ريال
+                      <span className="num">{part.certainty === "confirmed" ? plainMoney(part.amount) : about(part.amount)}</span> ريال <Certain value={part.certainty} />
                     </dd>
                   </div>
                 ))}
               </dl>
             )}
-            <p className="portal-fine">أرقام تقديرية حتى موافقة الجهة والتقييم الرسمي.</p>
+            <p className="portal-fine">{hasEstimate(view.facts) ? ESTIMATE_NOTE : "الأرقام من عرض الجهة المكتوب."}</p>
           </section>
         )}
 

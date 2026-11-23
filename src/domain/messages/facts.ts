@@ -1,4 +1,4 @@
-import { splitItems, splitLabel, structureOf, type DealInput, type DealStudy, type LenderKind, type Stage, type Structure } from "../deal";
+import { clientNet, splitItems, splitLabel, structureOf, type Certainty, type DealInput, type DealStudy, type LenderKind, type Stage, type Structure } from "../deal";
 
 /**
  * What a client may be told about their deal, and nothing else. The company's fee, its capital and
@@ -13,12 +13,17 @@ export interface ClientFacts {
   payoff: number;
   /** Who holds that financing, each named once. */
   payoffAt: string[];
-  /** The new financing, one entry per part the deal has. */
-  financing: { part: "mortgage" | "personal"; amount: number; lender: string | null; lenderKind: LenderKind | null }[];
-  /** True when the amounts are what a lender actually offered. */
+  /**
+   * The new financing, one entry per part the deal has. A part is confirmed when the lender's written
+   * offer gives it, and an estimate when it is counted from the salary and the rules.
+   */
+  financing: { part: "mortgage" | "personal"; amount: number; lender: string | null; lenderKind: LenderKind | null; certainty: Certainty }[];
+  /** True when a lender actually offered at least one part. */
   offered: boolean;
   /** Cash the client keeps at the end. Zero when nothing is left over. */
   keeps: number;
+  /** Confirmed only when every figure behind it stands on a written word: an offer and the creditors' letters, nothing counted. */
+  keepsCertainty: Certainty;
   /** How long the whole road takes, as a range of weeks. */
   weeks: { from: number; to: number };
 }
@@ -26,7 +31,7 @@ export interface ClientFacts {
 const PAYOFF_KINDS: ReadonlySet<string> = new Set(["mortgage_payoff", "personal_payoff", "card"]);
 
 /** The client's side of a deal, taken from its study. */
-export function clientFacts(deal: { stage: Stage; input: Pick<DealInput, "items" | "structure">; study: DealStudy }): ClientFacts {
+export function clientFacts(deal: { stage: Stage; input: DealInput; study: DealStudy }): ClientFacts {
   const structure = structureOf(deal.input);
   const { active } = splitItems({ items: deal.input.items, structure });
   const paidOff = active.filter((item) => PAYOFF_KINDS.has(item.kind));
@@ -34,6 +39,8 @@ export function clientFacts(deal: { stage: Stage; input: Pick<DealInput, "items"
   const sum = (items: typeof active) => items.reduce((total, item) => total + item.pay, 0);
   const holders = paidOff.map((item) => splitLabel(item.label).party).filter((party): party is string => !!party);
   const weeks = Math.round(deal.study.days / 7);
+  const net = clientNet(deal.input, deal.study);
+  const certainty = (part: "mortgage" | "personal"): Certainty => net.lines.find((line) => line.part === part)?.certainty ?? "estimated";
   return {
     stage: deal.stage,
     structure,
@@ -42,9 +49,10 @@ export function clientFacts(deal: { stage: Stage; input: Pick<DealInput, "items"
     payoffAt: [...new Set(holders)],
     financing: deal.study.summary.financing
       .filter((part) => part.amount > 0)
-      .map((part) => ({ part: part.kind, amount: part.amount, lender: part.lender, lenderKind: part.lenderKind })),
+      .map((part) => ({ part: part.kind, amount: part.amount, lender: part.lender, lenderKind: part.lenderKind, certainty: certainty(part.kind) })),
     offered: deal.study.financing.source === "bank",
     keeps: Math.max(0, deal.study.clientNet),
+    keepsCertainty: net.certainty,
     weeks: { from: Math.max(4, weeks - 2), to: Math.max(6, weeks + 2) },
   };
 }

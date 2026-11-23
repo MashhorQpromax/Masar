@@ -126,14 +126,15 @@ function expectedFinancing(
   };
 }
 
+/** Whether the settlement percent counts this obligation of the deal: what the company pays, payoffs only when the fee says so. */
+export function inSettlementBase(i: DealItem, fee: Pick<Fee, "settleIncludesPayoff">): boolean {
+  return i.by === "company" && (isSettled(i) || i.kind === "card" || i.kind === "other" || (fee.settleIncludesPayoff && isPayoff(i)));
+}
+
 /** Amount the settlement percent applies to. */
 function settlementBase(active: DealItem[], fee: Fee): number {
   return sum(
-    active.filter(
-      (i) =>
-        i.by === "company" &&
-        (isSettled(i) || i.kind === "card" || i.kind === "other" || (fee.settleIncludesPayoff && isPayoff(i))),
-    ),
+    active.filter((i) => inSettlementBase(i, fee)),
     (i) => i.pay || 0,
   );
 }

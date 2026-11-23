@@ -122,6 +122,16 @@ function found(facts: ClientFacts, nameLender: boolean): string | null {
     : `*بشارة: وفرنا لك جهة تمويلية*\nبعد دراسة ملفك وجدنا لك جهة (${who}) تمولك بما يصل إلى ${amount}.`;
 }
 
+/** Beside a figure the client is told that is counted from general terms, not written by the lender. */
+export const ESTIMATE_MARK = "(تقديري)";
+/** Under the figures, when any of them is an estimate. */
+export const ESTIMATE_NOTE = "ما عُلّم «تقديري» محسوب من الشروط العامة، ويثبت بعد موافقة الجهة والتقييم الرسمي.";
+
+/** Whether anything the client is told about their money is an estimate. */
+export function hasEstimate(facts: Pick<ClientFacts, "financing" | "keeps" | "keepsCertainty">): boolean {
+  return facts.financing.some((part) => part.certainty === "estimated") || (facts.keeps > 0 && facts.keepsCertainty === "estimated");
+}
+
 /** A holder written without its name reads as the one the client knows: "the bank". */
 const HOLDER: Record<string, string> = { بنك: "البنك", "شركة تمويل": "شركة التمويل" };
 const holder = (name: string): string => HOLDER[name] ?? name;
@@ -139,13 +149,24 @@ export function studyText(facts: ClientFacts, x: MessageExtras): string {
   plan.push(`نتقدم لك بتمويل ${kinds || "جديد"}${kinds ? " جديد" : ""}.`);
   out.push(`*الحل*\n${plan.map((line, index) => `${index + 1}. ${line}`).join("\n")}`);
 
-  const ends = facts.financing.map((part) => `- تمويل ${PART[part.part]} نحو *${about(part.amount)}* ريال`);
-  if (facts.keeps > 0) ends.push(`- يبقى لك نقداً بعد سداد كل التزاماتك نحو *${about(facts.keeps)}* ريال`);
+  // A figure from the lender's written offer is said as it is. A counted one is said as near, and marked.
+  const ends = facts.financing.map((part) =>
+    part.certainty === "confirmed"
+      ? `- تمويل ${PART[part.part]} *${plainMoney(part.amount)}* ريال، بعرض مكتوب من الجهة`
+      : `- تمويل ${PART[part.part]} نحو *${about(part.amount)}* ريال ${ESTIMATE_MARK}`,
+  );
+  if (facts.keeps > 0) {
+    ends.push(
+      facts.keepsCertainty === "confirmed"
+        ? `- يبقى لك نقداً بعد سداد كل التزاماتك *${plainMoney(facts.keeps)}* ريال`
+        : `- يبقى لك نقداً بعد سداد كل التزاماتك نحو *${about(facts.keeps)}* ريال ${ESTIMATE_MARK}`,
+    );
+  }
   if (ends.length) out.push(`*المتوقع لك*\n${ends.join("\n")}`);
 
   out.push(`*المدة:* من ${facts.weeks.from} إلى ${counted(facts.weeks.to, WEEKS)} تقريباً.`);
   if (x.owed.length) out.push(`*${opening ? "المطلوب لتثبيت العرض" : "المطلوب منك الآن"}*\n${owedLines(x.owed.slice(0, 8)).join("\n")}`);
-  out.push("_الأرقام تقديرية حتى موافقة الجهة والتقييم الرسمي._");
+  if (hasEstimate(facts)) out.push(`_${ESTIMATE_NOTE}_`);
   out.push(closing(x));
   return out.join("\n\n");
 }

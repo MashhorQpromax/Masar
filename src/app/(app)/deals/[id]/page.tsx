@@ -18,11 +18,14 @@ import { GRADE } from "@/copy/credit";
 import { missingText } from "@/copy/documents";
 import { differenceText } from "@/copy/editor";
 import { feeText, planLine, planState } from "@/copy/fees";
+import { deductionText, lineSource, NET_DEFICIT, NET_PART, NET_TOTAL, netWhy } from "@/copy/net";
 import { counted, days, dayShort, dueIn, ltr, money, percent, plainMoney } from "@/copy/format";
 import {
+  clientNet,
   dealAlternatives,
   dealTimeline,
   fundsFlow,
+  NET_INCOME,
   recordDifferences,
   stagesFor,
   stationTimeline,
@@ -37,6 +40,7 @@ import { borrowerOf } from "@/server/deals/mapping";
 import { planApprovalsOf, planOf } from "@/server/deals/plan";
 import { getDeal } from "@/server/deals/service";
 import { papersOf } from "@/server/documents/service";
+import { Certain } from "@/ui/Certain";
 import { BackIcon, ChevronIcon, PenIcon } from "@/ui/icons";
 import { Num } from "@/ui/Num";
 import { SubmitButton } from "@/ui/SubmitButton";
@@ -72,6 +76,9 @@ export default async function DealPage({ params }: { params: Promise<{ id: strin
   const timeline = dealTimeline(deal.structure, deal.stage, view.stageEnteredAt, now);
   const stations = stationTimeline(deal.structure, timeline, history);
   const flow = fundsFlow(study);
+  // What the client keeps, line by line, each with whether a written word stands behind it.
+  const net = clientNet(input, study);
+  const deduction = deductionText(net.deduction);
   const closes = study.verdict === "go" || study.verdict === "tight";
   const alternatives =
     study.verdict === "short"
@@ -174,7 +181,7 @@ export default async function DealPage({ params }: { params: Promise<{ id: strin
             <h2 className="verdict-say">{VERDICT[study.verdict]}</h2>
             {closes && (
               <p className="verdict-keep">
-                <span>يبقى للعميل</span> <b className="num">{plainMoney(study.clientNet)}</b> <span>ريال</span>
+                <span>يبقى للعميل</span> <b className="num">{plainMoney(study.clientNet)}</b> <span>ريال</span> <Certain value={net.certainty} />
               </p>
             )}
             {study.verdict === "short" && study.clientNet < 0 && (
@@ -378,6 +385,39 @@ export default async function DealPage({ params }: { params: Promise<{ id: strin
                   </div>
                 );
               })}
+            </div>
+          </section>
+        )}
+
+        {study.verdict !== "needs_info" && (
+          <section className="tile tile--wide net" data-certainty={net.certainty}>
+            <p className="label net-head">صافي العميل</p>
+            <div className="net-lines">
+              {net.lines.map((line) => (
+                <p key={line.part} className="net-line" data-in={NET_INCOME.has(line.part)}>
+                  <span>
+                    {NET_PART[line.part]}
+                    <small>{lineSource(line)}</small>
+                  </span>
+                  <span className="net-figure">
+                    <Num value={NET_INCOME.has(line.part) ? line.amount : -line.amount} />
+                    <Certain value={line.certainty} />
+                  </span>
+                </p>
+              ))}
+            </div>
+            <div className="net-sum" data-deficit={net.net < 0}>
+              <p className="label">{net.net < 0 ? NET_DEFICIT : NET_TOTAL}</p>
+              <p className="net-big">
+                <Num value={Math.abs(net.net)} /> <span>ريال</span> <Certain value={net.certainty} />
+              </p>
+              <p className="net-why">{netWhy(net)}</p>
+              {deduction && (
+                <p className="net-deduction">
+                  <span>{deduction}</span>
+                  <Certain value="estimated" />
+                </p>
+              )}
             </div>
           </section>
         )}

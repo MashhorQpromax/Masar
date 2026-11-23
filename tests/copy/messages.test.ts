@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import { plainMoney } from "@/copy/format";
 import {
   about,
+  ESTIMATE_MARK,
+  ESTIMATE_NOTE,
   CLIENT_NOW,
   CLIENT_STEP,
   firstName,
@@ -52,6 +54,8 @@ describe("the messages for the client", () => {
       const total = facts.financing.reduce((sum, part) => sum + part.amount, 0);
       const allowed = new Set<string>([
         ...[facts.settles, facts.payoff, facts.keeps, total, ...facts.financing.map((part) => part.amount)].flatMap((amount) => numbers(about(amount))),
+        // What a lender wrote is said to the riyal.
+        ...[...facts.financing.filter((part) => part.certainty === "confirmed").map((part) => part.amount), ...(facts.keepsCertainty === "confirmed" ? [facts.keeps] : [])].flatMap((amount) => numbers(plainMoney(amount))),
         String(facts.weeks.from),
         String(facts.weeks.to),
         String(LINK_DAYS),
@@ -81,7 +85,7 @@ describe("the messages for the client", () => {
     expect(text).toContain(extras.link!);
     expect(text).toContain(`صالح ${LINK_DAYS} يوماً`);
     expect(text).toContain("1. تعريف بالراتب لا يتجاوز شهراً (نحتاجه من جديد: مضى عليه أكثر من شهر)");
-    expect(text).toContain("_الأرقام تقديرية حتى موافقة الجهة والتقييم الرسمي._");
+    expect(text).toContain(`_${ESTIMATE_NOTE}_`);
     expect(studyText(facts, { ...extras, staff: null, link: null })).toContain(`معك فريق *${OFFICE_NAME}*.`);
     expect(studyText(facts, { ...extras, link: null })).not.toContain("رابط");
   });
@@ -100,6 +104,36 @@ describe("the messages for the client", () => {
     const offered = clientFacts({ stage: "approval", input: withOffer, study: dealStudy(withOffer, borrower) });
     expect(studyText(offered, extras)).toContain("*بشارة: صدر عرض تمويلك*");
     expect(studyText(offered, extras)).toContain("*850,000* ريال");
+  });
+
+  it("say a figure from the lender's written offer as it is, and mark a counted one as an estimate", () => {
+    const input: DealInput = { ...cases[0]!.input, structure: "settle_refi_personal", propertyValue: 1_000_000, bankMortgage: 700000, bankPersonal: null };
+    const borrower = { age: 38, basicSalary: 15000, totalSalary: 21000, serviceMonths: 160, sector: "gov" };
+    const facts = clientFacts({ stage: "approval", input, study: dealStudy(input, borrower) });
+    expect(facts.financing.map((part) => [part.part, part.certainty])).toEqual([
+      ["mortgage", "confirmed"],
+      ["personal", "estimated"],
+    ]);
+    const text = studyText(facts, extras);
+    expect(text).toContain("- تمويل عقاري *700,000* ريال، بعرض مكتوب من الجهة");
+    expect(text).toMatch(new RegExp(`- تمويل شخصي نحو \\*[\\d,]+\\* ريال \\(تقديري\\)`));
+    // What the client keeps rests on counted costs too, so it is marked, and the note says why.
+    expect(facts.keepsCertainty).toBe("estimated");
+    if (facts.keeps > 0) expect(text).toContain(`ريال ${ESTIMATE_MARK}\n`);
+    expect(text).toContain(`_${ESTIMATE_NOTE}_`);
+  });
+
+  it("drop the note when everything they are told stands on written words", () => {
+    const facts = {
+      financing: [{ part: "mortgage" as const, amount: 700000, lender: null, lenderKind: null, certainty: "confirmed" as const }],
+      keeps: 52000,
+      keepsCertainty: "confirmed" as const,
+    };
+    const full = { ...clientFacts({ stage: "approval", input: cases[0]!.input, study: dealStudy(cases[0]!.input, cases[0]!.borrower, cases[0]!.credit) }), ...facts };
+    const text = studyText(full, extras);
+    expect(text).toContain("- يبقى لك نقداً بعد سداد كل التزاماتك *52,000* ريال\n");
+    expect(text).not.toContain(ESTIMATE_MARK);
+    expect(text).not.toContain(ESTIMATE_NOTE);
   });
 
   it("ask for the papers owed and nothing else", () => {

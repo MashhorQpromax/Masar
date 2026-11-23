@@ -86,7 +86,8 @@ describe("what a client may be told", () => {
     for (const c of cases) {
       const s = dealStudy(c.input, c.borrower, c.credit);
       const f = clientFacts({ stage: "study", input: c.input, study: s });
-      expect(Object.keys(f).sort()).toEqual(["financing", "keeps", "offered", "payoff", "payoffAt", "settles", "stage", "structure", "weeks"]);
+      expect(Object.keys(f).sort()).toEqual(["financing", "keeps", "keepsCertainty", "offered", "payoff", "payoffAt", "settles", "stage", "structure", "weeks"]);
+      for (const part of f.financing) expect(Object.keys(part).sort()).toEqual(["amount", "certainty", "lender", "lenderKind", "part"]);
       expect(f.keeps).toBeGreaterThanOrEqual(0);
       expect(f.weeks.to).toBeGreaterThan(f.weeks.from);
     }
