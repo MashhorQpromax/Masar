@@ -250,6 +250,8 @@ export function draftLabel(source: DraftSource): string {
       return joinLabel(`تعثر ${source.lender}`, source.product);
     case "obligation":
       return joinLabel(PAYOFF_TITLE[source.kind], source.lender ?? "");
+    case "product":
+      return joinLabel(source.product, source.lender);
   }
 }
 

@@ -1462,6 +1462,88 @@
     background: #fff;
   }
 
+  /* What the client's credit report shows and the deal does not hold yet. Nothing joins the deal unasked. */
+  .offer {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
+    background: var(--color-sun-soft);
+    border-radius: 20px;
+    padding: 14px 16px 8px;
+    color: var(--color-navy);
+    animation: rise 0.5s var(--ease-out) backwards;
+    /* A link from the credit record lands here with the section's title still in sight. */
+    scroll-margin-top: 104px;
+  }
+  .offer-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px 16px;
+    flex-wrap: wrap;
+    padding-bottom: 8px;
+  }
+  .offer-head p {
+    display: grid;
+    gap: 2px;
+    line-height: 1.6;
+  }
+  .offer-head b {
+    font-size: 15px;
+    font-weight: 600;
+  }
+  .offer-head span {
+    font-size: 13px;
+    color: var(--color-sun-ink);
+  }
+  .offer-list li {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    align-items: center;
+    gap: 4px 14px;
+    padding: 8px 0;
+    border-top: 1px solid rgb(16 42 67 / 0.1);
+  }
+  .offer-what {
+    display: grid;
+    min-width: 0;
+  }
+  .offer-what b {
+    font-size: 15px;
+    font-weight: 600;
+    overflow-wrap: anywhere;
+  }
+  .offer-what small {
+    font-size: 13px;
+    color: var(--color-body);
+    overflow-wrap: anywhere;
+  }
+  .offer-sum {
+    font-size: 15px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+  .offer .add-chip {
+    min-height: 40px;
+    border-style: solid;
+    border-color: var(--color-navy);
+    background: #fff;
+  }
+  .offer-done {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px 10px;
+    background: var(--color-sun-soft);
+    border-radius: 16px;
+    padding: 10px 16px;
+    font-size: 14px;
+    line-height: 1.7;
+    color: var(--color-navy);
+  }
+  .offer-done b {
+    font-weight: 600;
+  }
+
   /* The result follows the form down the page and changes with every number. */
   .result {
     position: sticky;

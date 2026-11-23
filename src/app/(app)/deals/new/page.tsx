@@ -3,13 +3,15 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { phoneTyped } from "@/copy/clients";
 import { can } from "@/domain/auth";
-import { defaultDealInput, SECTORS, type Sector } from "@/domain/deal";
+import { creditFlags, defaultDealInput, SECTORS, type Sector } from "@/domain/deal";
 import { normalizePhone } from "@/domain/shared/phone";
 import { requireActor } from "@/server/auth/actor";
 import { getClientCard } from "@/server/clients/directory";
+import { latestCredit } from "@/server/credit/service";
 import { getDb } from "@/server/db/client";
 import { BackIcon } from "@/ui/icons";
 import { DealEditor } from "../DealEditor";
+import { reportOffer } from "../report-offer";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "صفقة جديدة · مسار" };
@@ -28,11 +30,14 @@ export default async function NewDealPage({ searchParams }: { searchParams: Prom
   const year = new Date().getFullYear();
 
   if (clientId) {
-    const card = await getClientCard(await getDb(), clientId);
+    const db = await getDb();
+    const card = await getClientCard(db, clientId);
     if (!card) notFound();
     const open = card.deals.find((deal) => deal.stage !== "closed" && deal.stage !== "lost");
     if (open) redirect(`/deals/${open.id}`);
     const { client } = card;
+    // A new deal for someone whose record was read is noted by that record, and starts from what it shows.
+    const record = await latestCredit(db, client.id);
     return (
       <>
         <div className="head">
@@ -57,6 +62,9 @@ export default async function NewDealPage({ searchParams }: { searchParams: Prom
             serviceMonths: client.serviceMonths,
           }}
           input={{ ...defaultDealInput(), propertyValue: client.propertyValue }}
+          credit={record ? creditFlags(record.report, record.analysis) : null}
+          // The record's own lines are for those who may read the record.
+          fromReport={record && can(me.role, "client.view_pii") ? reportOffer(record.report) : null}
         />
       </>
     );

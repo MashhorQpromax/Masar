@@ -1,6 +1,6 @@
 /** Wording of the deal editor: what a person chooses from, and what they are told when saving fails. */
-import type { FinanceBase, ItemKind, LenderKind, PaidBy, Sector } from "@/domain/deal";
-import { ltr } from "./format";
+import type { DraftGap, FinanceBase, ItemKind, LenderKind, PaidBy, Sector } from "@/domain/deal";
+import { counted, dayOfRecord, ltr } from "./format";
 
 /** Also the default title of an obligation of that kind. */
 export const ITEM_KIND: Record<ItemKind, string> = {
@@ -38,6 +38,26 @@ export const LENDER_KIND: Record<LenderKind, string> = {
   bank: "بنك",
   finance_co: "شركة تمويل",
 };
+
+/** Under a field the credit report left empty, on an item that came from the report. */
+export const DRAFT_GAP: Record<DraftGap, string> = {
+  amount: "لم يذكره التقرير. اكتبه من خطاب الجهة.",
+  monthly: "لم يذكره التقرير.",
+};
+
+/** Under the payoff of a loan that came from the report, until a person writes the real figure. */
+export const PAYOFF_ESTIMATED = "تقدير للسداد المبكر. يؤكده خطاب المخالصة.";
+
+const NOT_IN_DEAL = { one: "التزام واحد ليس في الصفقة", two: "التزامان ليسا في الصفقة", few: "التزامات ليست في الصفقة", many: "التزاماً ليست في الصفقة" };
+
+/** The day a credit report was issued, as the editor says where its suggestions come from. */
+export const reportDay = (day: string | null): string => (day ? `تقرير سمة، ${dayOfRecord(day)}` : "تقرير سمة");
+
+/** How many of the report's commitments the deal does not hold yet. */
+export const notInDeal = (count: number): string => counted(count, NOT_IN_DEAL);
+
+/** Said once the report's commitments were put in a new deal for the person to review. */
+export const REPORT_FILLED = "وضعنا ما في التقرير. راجع كل رقم قبل الحفظ.";
 
 const SAVE_ERROR: Record<string, (params: Record<string, string>) => string> = {
   INVALID_INPUT: () => "في الأرقام قيمة غير مقبولة. راجعها ثم احفظ.",

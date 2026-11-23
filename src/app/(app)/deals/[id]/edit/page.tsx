@@ -1,18 +1,20 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
+import { can } from "@/domain/auth";
 import { SECTORS, type Sector } from "@/domain/deal";
 import { requireActor } from "@/server/auth/actor";
 import { getDb } from "@/server/db/client";
 import { getDeal } from "@/server/deals/service";
 import { BackIcon } from "@/ui/icons";
 import { DealEditor } from "../../DealEditor";
+import { reportOffer } from "../../report-offer";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "تعديل الأرقام · مسار" };
 
 export default async function EditDealPage({ params }: { params: Promise<{ id: string }> }) {
-  await requireActor("deal.edit");
+  const me = await requireActor("deal.edit");
   const dealId = Number((await params).id);
   if (!Number.isInteger(dealId) || dealId <= 0) notFound();
 
@@ -47,6 +49,8 @@ export default async function EditDealPage({ params }: { params: Promise<{ id: s
         }}
         input={input}
         credit={view.creditFlags}
+        // The record's own lines are for those who may read the record.
+        fromReport={view.credit && can(me.role, "client.view_pii") ? reportOffer(view.credit.report) : null}
       />
     </>
   );

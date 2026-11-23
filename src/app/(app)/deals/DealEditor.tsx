@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { FEE_REASON, riskText, STRUCTURE, VERDICT } from "@/copy/deal";
-import { FINANCE_BASE, ITEM_KIND, LENDER_KIND, PAID_BY, saveError, SECTOR } from "@/copy/editor";
+import { DRAFT_GAP, FINANCE_BASE, ITEM_KIND, LENDER_KIND, notInDeal, PAID_BY, PAYOFF_ESTIMATED, REPORT_FILLED, reportDay, saveError, SECTOR } from "@/copy/editor";
 import { ltr, percent, plainMoney } from "@/copy/format";
 import {
   borrowerIn,
@@ -13,14 +13,17 @@ import {
   FEE_MIN,
   joinLabel,
   labelParts,
+  pendingDrafts,
   STRUCTURES,
   structureOf,
   type CreditFlags,
   type DealInput,
   type DealItem,
+  type DraftGap,
   type ItemKind,
   type LenderKind,
   type PaidBy,
+  type ReportDraft,
   type Sector,
 } from "@/domain/deal";
 import { gregorianBirthYear } from "@/domain/shared/calendar";
@@ -37,6 +40,16 @@ export interface BorrowerDraft {
   serviceMonths: number | null;
 }
 
+/** A commitment the client's credit report shows, worded and ready to be put in the deal. */
+export type OfferedDraft = ReportDraft & { label: string };
+
+/** What the client's stored credit report offers a deal. */
+export interface ReportOffer {
+  /** The day the report was issued, as SIMAH prints it. */
+  day: string | null;
+  drafts: OfferedDraft[];
+}
+
 /** An obligation while it is being typed. An empty amount after discount means no discount. */
 interface Row {
   id: string;
@@ -48,11 +61,16 @@ interface Row {
   by: PaidBy;
   confirmed: boolean;
   monthly: number | null;
+  /** On an item that came from the credit report: what the report did not give. */
+  missing?: DraftGap[];
+  /** On a loan that came from the report: the payoff we estimated, until a person writes another. */
+  estimate?: number | null;
 }
 
 const KINDS = Object.keys(ITEM_KIND) as ItemKind[];
 const PAYOFF = new Set<ItemKind>(["mortgage_payoff", "personal_payoff"]);
 const NO_LENDER_KIND = { "": "غير محدد", ...LENDER_KIND };
+const NO_DRAFTS: OfferedDraft[] = [];
 
 const toRow = (item: DealItem): Row => ({
   id: item.id,
@@ -64,6 +82,23 @@ const toRow = (item: DealItem): Row => ({
   confirmed: !!item.confirmed,
   monthly: item.monthly ?? null,
 });
+
+/** An item from the credit report as a row a person reviews. Nothing is kept until the deal is saved. */
+const draftRow = (draft: OfferedDraft, id: string): Row => {
+  const estimated = PAYOFF.has(draft.kind) && draft.pay !== draft.original;
+  return {
+    id,
+    kind: draft.kind,
+    ...labelParts(draft.label),
+    original: draft.original || null,
+    pay: draft.pay === draft.original ? null : draft.pay,
+    by: draft.by,
+    confirmed: false,
+    monthly: draft.monthly ?? null,
+    missing: draft.missing,
+    estimate: estimated ? draft.pay : null,
+  };
+};
 
 const toItem = (row: Row): DealItem => {
   const original = row.original ?? 0;
@@ -87,6 +122,7 @@ export function DealEditor({
   borrower,
   input,
   credit = null,
+  fromReport = null,
 }: {
   /** The deal being revised, or null for a new deal. */
   dealId: number | null;
@@ -100,13 +136,18 @@ export function DealEditor({
   input: DealInput;
   /** What the client's credit record adds to the notes. Null for a client with no report read. */
   credit?: CreditFlags | null;
+  /** What the client's credit report says the deal has to deal with. Null with no report, or for someone who may not read it. */
+  fromReport?: ReportOffer | null;
 }) {
   const [who, setWho] = useState(borrower);
   const [born, setBorn] = useState(borrower.birthYear);
   const [phone, setPhone] = useState(knownPhone);
   const opensFile = dealId == null && clientId == null;
   const [x, setX] = useState<DealInput>(() => ({ ...input, items: [] }));
-  const [rows, setRows] = useState<Row[]>(() => input.items.map(toRow));
+  const offered = fromReport?.drafts ?? NO_DRAFTS;
+  // A new deal starts from what the report shows, for the person to review. A deal that has items is the person's own list.
+  const filled = dealId == null && input.items.length === 0 && offered.length > 0;
+  const [rows, setRows] = useState<Row[]>(() => (filled ? offered.map((draft, index) => draftRow(draft, `i${index + 1}`)) : input.items.map(toRow)));
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const added = useRef<string | null>(null);
@@ -115,6 +156,8 @@ export function DealEditor({
   const birthYear = born == null ? null : gregorianBirthYear(born);
   const facts = useMemo(() => ({ ...who, birthYear }), [who, birthYear]);
   const full = useMemo<DealInput>(() => ({ ...x, items: rows.map(toItem) }), [x, rows]);
+  /** What the report shows and the deal does not hold yet. */
+  const unplaced = useMemo(() => pendingDrafts(offered, full.items), [offered, full.items]);
   const study = useMemo(() => dealStudy(full, borrowerIn(facts, year), credit), [full, facts, year, credit]);
   /** What the engine estimates from the salary, shown beside a bank offer. */
   const estimate = useMemo(
@@ -142,6 +185,19 @@ export function DealEditor({
       while (prev.some((row) => row.id === `i${n}`)) n++;
       added.current = `i${n}`;
       return [...prev, { id: `i${n}`, kind, title: ITEM_KIND[kind], party: "", original: null, pay: null, by: DEFAULT_PAYER[kind], confirmed: false, monthly: null }];
+    });
+  }
+
+  function addDrafts(drafts: OfferedDraft[]) {
+    setRows((prev) => {
+      const next = [...prev];
+      for (const draft of drafts) {
+        let n = next.length + 1;
+        while (next.some((row) => row.id === `i${n}`)) n++;
+        next.push(draftRow(draft, `i${n}`));
+        added.current ??= `i${n}`;
+      }
+      return next;
     });
   }
 
@@ -245,6 +301,45 @@ export function DealEditor({
           <h2 className="form-title">
             <i>2</i>ما يُسدَّد عنه
           </h2>
+          {fromReport && unplaced.length > 0 && (
+            <div className="offer" id="from-report">
+              <div className="offer-head">
+                <p>
+                  <b>{reportDay(fromReport.day)}</b>
+                  <span>{notInDeal(unplaced.length)}</span>
+                </p>
+                {unplaced.length > 1 && (
+                  <button type="button" className="add-chip" onClick={() => addDrafts(unplaced)}>
+                    <PlusIcon size={16} />
+                    أضف الكل
+                  </button>
+                )}
+              </div>
+              <ul className="offer-list">
+                {unplaced.map((draft, index) => {
+                  const { title, party } = labelParts(draft.label);
+                  return (
+                    <li key={`${draft.label}-${index}`}>
+                      <span className="offer-what">
+                        <b>{title}</b>
+                        {party && <small>{party}</small>}
+                      </span>
+                      <span className="offer-sum num">{draft.original ? plainMoney(draft.original) : "-"}</span>
+                      <button type="button" className="add-chip" aria-label={`أضف ${title}${party ? `، ${party}` : ""}`} onClick={() => addDrafts([draft])}>
+                        أضف
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          )}
+          {fromReport && filled && unplaced.length === 0 && (
+            <p className="offer-done" id="from-report">
+              <b>{reportDay(fromReport.day)}</b>
+              {REPORT_FILLED}
+            </p>
+          )}
           <div ref={list} className="items">
             {rows.map((row) => {
               const discount = row.original && row.pay != null && row.pay < row.original ? (1 - row.pay / row.original) * 100 : null;
@@ -272,7 +367,14 @@ export function DealEditor({
                     <div data-first className="contents">
                       <TextField label="الجهة" value={row.party} onChange={(party) => setRow(row.id, { party })} maxLength={80} placeholder="البنك أو الشركة" />
                     </div>
-                    <NumberField label="المبلغ المسجل" money value={row.original} onChange={(original) => setRow(row.id, { original })} max={10_000_000_000} />
+                    <NumberField
+                      label="المبلغ المسجل"
+                      money
+                      value={row.original}
+                      onChange={(original) => setRow(row.id, { original })}
+                      max={10_000_000_000}
+                      hint={!row.original && row.missing?.includes("amount") ? DRAFT_GAP.amount : undefined}
+                    />
                     <NumberField
                       label="بعد الخصم"
                       money
@@ -280,10 +382,17 @@ export function DealEditor({
                       onChange={(pay) => setRow(row.id, { pay })}
                       max={10_000_000_000}
                       placeholder={row.original ? plainMoney(row.original) : undefined}
-                      hint={discount != null ? `خصم ${percent(Math.round(discount * 10) / 10)}` : "فارغ يعني بلا خصم"}
+                      hint={row.estimate != null && row.pay === row.estimate ? PAYOFF_ESTIMATED : discount != null ? `خصم ${percent(Math.round(discount * 10) / 10)}` : "فارغ يعني بلا خصم"}
                     />
                     {(row.by === "out" || (row.kind !== "execution" && row.kind !== "default")) && (
-                      <NumberField label="القسط الشهري" money value={row.monthly} onChange={(monthly) => setRow(row.id, { monthly })} max={10_000_000} />
+                      <NumberField
+                        label="القسط الشهري"
+                        money
+                        value={row.monthly}
+                        onChange={(monthly) => setRow(row.id, { monthly })}
+                        max={10_000_000}
+                        hint={!row.monthly && row.missing?.includes("monthly") ? DRAFT_GAP.monthly : undefined}
+                      />
                     )}
                   </div>
                   <div className="item-foot">

@@ -1,5 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { dealTimeline, fundsFlow, stationTimeline } from "@/domain/deal";
+import { draftLabel } from "@/copy/credit";
+import { dealTimeline, fundsFlow, pendingDrafts, reportDrafts, stationTimeline } from "@/domain/deal";
+import { getClientCard, listClients } from "@/server/clients/directory";
 import { getCredit } from "@/server/credit/service";
 import type { Connection } from "@/server/db/client";
 import { getDeal } from "@/server/deals/service";
@@ -114,6 +116,40 @@ describe("demo credit records", () => {
     expect(reem.warnings).toEqual([{ code: "SUSPENSION_ASSUMED", params: { orders: 1 } }]);
     expect(reem.analysis).toMatchObject({ grade: "E", stats: { totalToClear: 200000 } });
     expect(reem.report.reportDate).toBe(riyadhDay(new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000)));
+  });
+
+  it("offers each deal what its record shows and it does not hold, and no more", async () => {
+    const { deals } = await roadView(c.db, now);
+    const lacking = async (name: string) => {
+      const deal = (await getDeal(c.db, { dealId: deals.find((d) => d.clientName === name)!.dealId, now }))!;
+      const drafts = reportDrafts(deal.credit?.report ?? null).map((draft) => ({ ...draft, label: draftLabel(draft.source) }));
+      return pendingDrafts(drafts, deal.input.items).map((draft) => [draft.label, draft.original]);
+    };
+    // The card on the record of سالم is the one thing his deal does not settle.
+    expect(await lacking("سالم")).toEqual([["مخالصة بطاقة — بنك", 6500]]);
+    // The others hold everything their records show, and a file with no record is offered nothing.
+    expect(await lacking("نورة")).toEqual([]);
+    expect(await lacking("ريم")).toEqual([]);
+    expect(await lacking("فهد")).toEqual([]);
+  });
+
+  it("gives a new deal for the client who was turned down what her record shows, with what it lacks", async () => {
+    const hind = (await listClients(c.db, { q: "هند" })).rows.find((client) => client.name === "هند")!;
+    const card = (await getClientCard(c.db, hind.id))!;
+    // Her one deal ended, so a new one can start.
+    expect(card.deals.every((deal) => deal.stage === "lost" || deal.stage === "closed")).toBe(true);
+    const record = (await getCredit(c.db, hind.id))!.record!;
+    const drafts = reportDrafts(record.report);
+    // The order and the default it enforces are one debt, and the loan with no installment says so.
+    expect(drafts.map((draft) => [draftLabel(draft.source), draft.original, draft.missing])).toEqual([
+      ["قرار تنفيذ 61877 — شركة تمويل (2026/03/02)", 188000, []],
+      ["مخالصة العقاري — بنك", 455000, []],
+      ["مخالصة بطاقة — بنك", 9200, []],
+      ["مخالصة الشخصي — شركة تقسيط", 27000, ["monthly"]],
+    ]);
+    // The mortgage's payoff is an estimate below the balance. Nothing else is discounted.
+    expect(drafts[1]!.pay).toBeLessThan(455000);
+    expect(drafts.filter((draft) => draft.pay !== draft.original)).toHaveLength(1);
   });
 
   it("leaves every figure of the deals as it was", async () => {

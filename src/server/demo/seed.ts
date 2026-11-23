@@ -396,6 +396,31 @@ const DEALS: DemoDeal[] = [
     startedDaysAgo: 26,
     path: [],
     rejected: { daysAgo: 22, reason: "الصفقة لا تُغلق: قيمة العقار لا تغطي السداد، والعميلة لا تملك دفع الفرق." },
+    // Read before the file was closed. A new deal for her starts from it: the order, the mortgage at an
+    // estimated payoff, the card, and a loan whose installment the record does not give.
+    credit: {
+      readDaysAgo: 24,
+      reading: (day) => ({
+        confidence: "high",
+        warnings: [],
+        report: {
+          reportDate: day(25),
+          reportMonthsAgo: 0,
+          score: 498,
+          facilities: [
+            { lender: "شركة تمويل", creditorType: "finance_company", product: "تمويل شخصي", status: "default", defaultAmount: 188000, defaultNow: 188000, defaultListedAt: "2025/08/21", defaultMonthsAgo: 15 },
+            { lender: "بنك", creditorType: "bank", product: "تمويل عقاري", status: "current", balance: 455000, installment: 4300, openedAt: "2018/03/04" },
+            { lender: "بنك", creditorType: "bank", product: "بطاقة ائتمانية", status: "current", limit: 15000, balance: 9200 },
+            { lender: "شركة تقسيط", creditorType: "finance_company", product: "تمويل شخصي", status: "late", balance: 27000, overdue: 2400, worstDelay: 30, lastDelayMonthsAgo: 1 },
+          ],
+          judgments: [{ kind: "enforcement", active: true, amount: 188000, remaining: 188000, creditor: null, date: "2026/03/02", state: "عدم تنفيذ", decisionNo: "61877" }],
+          serviceSuspension: true,
+          suspensionAssumed: false,
+          inquiries6m: 2,
+          inquiries12m: 3,
+        },
+      }),
+    },
   },
 ];
 

@@ -146,8 +146,31 @@ A build without a database refuses the upload: it holds invented clients only an
 
 The deal reads the client's newest record (`getDeal`) and hands the engine its three facts, so the deal's notes and its editor say the same thing as the credit page.
 
+### From the record into a deal
+
+What a record shows reaches a deal through the deal editor, where a person reviews every figure before it is saved. Nothing joins a deal unasked.
+
+- `owedFrom(report)` reads the loans and cards still running (`current` or `late`) as commitments, by the name SIMAH gives the product. A product counts when the record gives it an installment or a balance; what it does not give stays empty and is never guessed. A phone line is not a commitment.
+- `reportDrafts(report)` is everything the record says a deal has to deal with: `itemDrafts` over those commitments (court orders, unpaid defaults no order covers, loans and cards at an estimated payoff), then any other running finance with an installment, which starts as staying outside the deal with its installment counted against the new financing. Each draft names what the record did not give (`missing`: the amount, the installment).
+- `pendingDrafts(drafts, items)` is what a deal does not hold yet. An item answers for a draft of its kind when it names the draft's lender or decision number, or has about its amount (the tolerance two readings of one debt are given). The surest match is made first, so of two loans from one lender the missing one is the one suggested. A draft the record gives no name for is known, last, by the label it is added under. Each item answers for one draft.
+- `reportOffer` (`src/app/(app)/deals/report-offer.ts`) gives the editor the drafts with their labels and the report's day.
+
+In the editor (`DealEditor`, prop `fromReport`):
+
+- A new deal for a client whose record was read starts with the record's drafts as its items, under a line that says so and asks for every number to be reviewed. A payoff is marked as an estimate until a person writes the figure of the clearance letter (`PAYOFF_RATE`: 5 percent a year for a mortgage, 6 for the rest), and a missing amount or installment is said under its field.
+- A deal in progress is never changed by a record. Above its items, the editor lists what the record shows and the deal lacks, each with one press to add it, and all at once when there is more than one. An item taken out is offered again.
+- The credit page says the same thing as a next step: how many commitments the client's open deal lacks, with a link that lands on the list, or, for a client with no deal, a new deal that starts from the record. It shows for those who may change a deal.
+- The record's own lines are shown to those who hold `client.view_pii`, the permission the credit page itself asks for.
+
+The old system did this on upload (`uploadSimah`): it copied running products with an installment into the client's obligations, without review, and only when the client had none. The rebuild keeps no separate list of obligations: a deal's items carry them, and the table `obligations` is unused. Two things differ on purpose: a card or a loan with a balance and no installment is no longer left out, and it comes with its gap named.
+
+Not built yet: opening a new client's file straight from a report. A file has to exist before a report is read into it.
+
+`tests/domain/report-drafts.test.ts` covers the three functions and holds them over every record of the golden file; `tests/copy/credit.test.ts` adds every draft of every golden record under its label and expects nothing left to offer; `tests/server/demo.test.ts` keeps the demo's story (one card missing from a deal, a new deal that starts from a record).
+
 Kept as the old system has them and worth a decision before the switch:
 
+- a loan's early payoff is estimated from its balance and installment at an assumed rate, as the old system did. It can stand well below the balance SIMAH shows, and it is the deal's figure until the clearance letter replaces it
 - after a settled default the grading keeps banks closed for 12 to 24 months, and the deal shows it as a warning, while the bridge deal goes back to a bank right after settlement. Which banks take a client with a fresh settlement letter belongs with lender matching
 - `totalToClear` leaves out an open bounced cheque, and a travel ban or an open cheque alone still reads as a "clean" standing
 - a settled telecom default causes no waiting period, and a settlement with no date is read as made just now
@@ -317,7 +340,7 @@ Old module (under `legacy/lib`) and its state in the rebuild:
 - [x] `simah-parse.ts` reading the report's text: `src/domain/credit/parse.ts`, locked by `tests/golden/simah.json` (160 made-up texts)
 - [x] storing a client's credit report, the upload of the PDF, the Najiz check and the credit screen: `src/server/credit`, `/clients/[id]/credit`
 - [x] keeping the uploaded PDF with the client's documents: `keepFile` under the `simah` paper
-- [ ] importing commitments from a report, and suggesting a new deal's items from it in the editor (`itemDrafts` is ready)
+- [x] importing commitments from a report (`uploadSimah`), and suggesting a new deal's items from it in the editor: `owedFrom`, `reportDrafts`, `pendingDrafts` in `src/domain/deal/from-credit.ts`, reviewed in the deal editor before anything is saved
 - [x] `project.ts` project finance: `src/domain/project`, `src/copy/project.ts`, `src/server/projects`, locked by `tests/golden/project.json` (320 projects); the screens `/projects/new`, `/clients/[id]/project`, `/clients/[id]/project/edit`
 - [x] `advisor.ts` hidden conditions and ways to a larger amount: `src/domain/eligibility/advisor.ts`, `src/copy/advisor.ts`, locked by `tests/golden/advisor.json` (360 clients). Its alerts from a credit report were left to the credit record screen
 - [x] `whatsapp.ts`, `wa-cloud.ts` messages and Meta Cloud API: `src/domain/messages`, `src/copy/messages.ts`, `src/server/messages`, `/deals/[id]/messages`, `/api/wa/webhook` (migration `0004_messages_links`)

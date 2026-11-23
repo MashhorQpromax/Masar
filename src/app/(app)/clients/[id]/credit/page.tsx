@@ -15,15 +15,19 @@ import {
   JUDGMENT_KIND,
   parseWarningText,
 } from "@/copy/credit";
+import { notInDeal } from "@/copy/editor";
 import { counted, dayOfRecord, dayShort, ltr, money, percent, plainMoney } from "@/copy/format";
 import { can } from "@/domain/auth";
 import type { Door, Facility, FacilityStatus, FindingLevel, Grade } from "@/domain/credit";
+import { pendingDrafts } from "@/domain/deal";
 import { requireActor } from "@/server/auth/actor";
 import { getCredit } from "@/server/credit/service";
 import { getDb } from "@/server/db/client";
+import { getDeal } from "@/server/deals/service";
 import { BackIcon, CheckIcon, ChevronIcon, CloseIcon } from "@/ui/icons";
 import { Num } from "@/ui/Num";
 import { SubmitButton } from "@/ui/SubmitButton";
+import { reportOffer } from "../../../deals/report-offer";
 import { answerSuspension } from "./actions";
 import { ReportUpload } from "./ReportUpload";
 import { ReviewForm } from "./ReviewForm";
@@ -100,7 +104,8 @@ export default async function CreditPage({ params }: { params: Promise<{ id: str
   const me = await requireActor("client.view_pii");
   const clientId = Number((await params).id);
   if (!Number.isInteger(clientId) || clientId <= 0) notFound();
-  const view = await getCredit(await getDb(), clientId);
+  const db = await getDb();
+  const view = await getCredit(db, clientId);
   if (!view) notFound();
 
   const { client, dealId, record, history } = view;
@@ -142,6 +147,16 @@ export default async function CreditPage({ params }: { params: Promise<{ id: str
   const { report, analysis, warnings } = record;
   const { grade, stats, banks, financeCompanies } = analysis;
   const asking = !!report.suspensionAssumed && mayEdit;
+
+  // What the record shows that the client's deal does not hold yet, for those who may change the deal.
+  // With no deal at all, the record is where a new one starts.
+  const mayDeal = can(me.role, "deal.edit");
+  const offered = mayDeal ? reportOffer(report).drafts : [];
+  const deal = mayDeal && dealId && offered.length ? await getDeal(db, { dealId }) : null;
+  const open = deal && deal.deal.stage !== "closed" && deal.deal.stage !== "lost" ? deal : null;
+  const lacking = open ? pendingDrafts(offered, open.input.items).length : 0;
+  const starting = mayDeal && !dealId && offered.length > 0;
+  const next = !asking && (lacking > 0 || starting);
   const swing = banks.access === "open" ? 90 : banks.access === "conditional" || financeCompanies.access !== "closed" ? 45 : 0;
 
   // What a person should double check in the reading comes first, then what blocks, then what was found.
@@ -261,7 +276,22 @@ export default async function CreditPage({ params }: { params: Promise<{ id: str
           </section>
         )}
 
-        <section className="tile tile--access" data-tall={!asking || undefined}>
+        {next && (
+          <section className="tile tile--next">
+            <div>
+              <p className="label">الخطوة التالية</p>
+              <h2>{starting ? "ابدأ الصفقة من التقرير" : notInDeal(lacking)}</h2>
+              <p className="due">{starting ? "نضع ما في التقرير في صفقة جديدة، وتراجع كل رقم قبل الحفظ." : "من تقرير سمة، وليس في أرقام الصفقة بعد. راجع الأرقام وأضف ما يلزم."}</p>
+            </div>
+            <div className="actions">
+              <Link className="btn btn--navy" href={starting ? `/deals/new?client=${client.id}` : `/deals/${dealId}/edit#from-report`}>
+                {starting ? "صفقة جديدة" : "راجع أرقام الصفقة"}
+              </Link>
+            </div>
+          </section>
+        )}
+
+        <section className="tile tile--access" data-tall={!(asking || next) || undefined}>
           <p className="label">من يقبله اليوم</p>
           <ul>
             <DoorRow name="البنوك" door={banks} />

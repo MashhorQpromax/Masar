@@ -19,8 +19,9 @@ import {
   STANDING,
   UPLOAD_ERROR_CODES,
 } from "@/copy/credit";
+import { DRAFT_GAP, notInDeal, PAYOFF_ESTIMATED, REPORT_FILLED, reportDay } from "@/copy/editor";
 import { analyzeCredit, parseSimahPages, type CreditReport } from "@/domain/credit";
-import { itemDrafts, type Owed } from "@/domain/deal";
+import { itemDrafts, joinLabel, labelParts, pendingDrafts, reportDrafts, type Owed } from "@/domain/deal";
 
 const golden = JSON.parse(readFileSync(new URL("../golden/credit.json", import.meta.url), "utf8"));
 const cases: { report: CreditReport; obligations: Owed[]; expected: { items: { label: string }[] } }[] = golden.cases;
@@ -162,5 +163,47 @@ describe("labels of the items a deal starts with", () => {
     expect(draftLabel({ from: "judgment", kind: "bounced_cheque", decisionNo: null, creditor: null, date: null })).toBe("شيك مرتجع — دائن غير محدد");
     expect(draftLabel({ from: "judgment", kind: "judgment", decisionNo: "4410077123", creditor: "بنك", date: "2025/03/11" })).toBe("حكم 4410077123 — بنك (2025/03/11)");
     expect(draftLabel({ from: "obligation", kind: "auto", lender: null })).toBe("مخالصة تمويل سيارة");
+  });
+
+  it("name another running finance by what SIMAH calls it and who gave it", () => {
+    expect(draftLabel({ from: "product", lender: "شركة تقسيط", product: "تمويل منتجات/اشتر الآن" })).toBe("تمويل منتجات/اشتر الآن — شركة تقسيط");
+  });
+});
+
+describe("the report's commitments in the deal editor", () => {
+  it("are all placed once each one is added under its own label, for every record of the golden file", () => {
+    let added = 0;
+    for (const c of cases) {
+      // As the editor is given them: each draft with the label it is added under.
+      const drafts = reportDrafts(c.report).map((draft) => ({ ...draft, label: draftLabel(draft.source) }));
+      // As the editor adds a draft: its label is split into a title and a party, and joined again when the deal is read.
+      const items = drafts.map((draft) => {
+        const { title, party } = labelParts(draft.label);
+        return { kind: draft.kind, label: joinLabel(title, party), original: draft.original };
+      });
+      expect(pendingDrafts(drafts, items)).toEqual([]);
+      // And with nothing added, every one of them is still offered.
+      expect(pendingDrafts(drafts, [])).toHaveLength(drafts.length);
+      for (const draft of drafts) {
+        expect(draftLabel(draft.source)).not.toMatch(broken);
+        added++;
+      }
+    }
+    expect(added).toBeGreaterThan(400);
+  });
+
+  it("says where the suggestions come from, how many the deal lacks, and what a person still has to write", () => {
+    expect(reportDay("2026/11/20")).toBe("تقرير سمة، 20 نوفمبر 2026");
+    expect(reportDay(null)).toBe("تقرير سمة");
+    expect(notInDeal(1)).toBe("التزام واحد ليس في الصفقة");
+    expect(notInDeal(2)).toBe("التزامان ليسا في الصفقة");
+    expect(notInDeal(3)).toBe("3 التزامات ليست في الصفقة");
+    expect(notInDeal(11)).toBe("11 التزاماً ليست في الصفقة");
+    for (const said of [DRAFT_GAP.amount, DRAFT_GAP.monthly, PAYOFF_ESTIMATED, REPORT_FILLED]) {
+      expect(said).toMatch(/^[؀-ۿ]/);
+      expect(said.endsWith(".")).toBe(true);
+      expect(said).not.toMatch(/undefined|NaN|null|\[object|[A-Za-z_]{3,}|—|–/);
+    }
+    expect(DRAFT_GAP.amount).not.toBe(DRAFT_GAP.monthly);
   });
 });
