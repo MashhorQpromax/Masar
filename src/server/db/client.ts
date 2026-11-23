@@ -44,7 +44,9 @@ export async function connect(url: string): Promise<Connection> {
   const { drizzle } = await import("drizzle-orm/postgres-js");
   const { migrate } = await import("drizzle-orm/postgres-js/migrator");
   // `prepare: false` is required behind a transaction pooler such as Supabase's.
-  const client = postgres(url, { prepare: false, max: 5, idle_timeout: 20, onnotice: () => {} });
+  // A server that is not on this machine is only ever spoken to over TLS, whatever the address says.
+  const local = ["localhost", "127.0.0.1", "[::1]"].includes(new URL(url).hostname);
+  const client = postgres(url, { prepare: false, max: 5, idle_timeout: 20, ssl: local ? false : "require", onnotice: () => {} });
   const db = drizzle({ client, schema, casing: "snake_case" });
   return { db: db as unknown as Db, migrate: () => migrate(db, MIGRATIONS), close: () => client.end({ timeout: 5 }) };
 }

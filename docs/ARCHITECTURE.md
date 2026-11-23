@@ -2,7 +2,7 @@
 
 Masar runs a financing brokerage whose core business is the "settle and refinance" deal: the company pays a client's enforcement orders, defaults and mortgage payoff, holds the property as security, and recovers its capital plus a fee from the client's new bank financing. The numbers are real money, so correctness comes before everything else.
 
-This branch is a rebuild from zero. The live site stays on `main` and its database is not touched from here.
+This branch is a rebuild from zero. The live site stays on `main` and its database is not touched from here. How the old system's data comes over, and the day of the switch, are in [MIGRATION.md](MIGRATION.md).
 
 ## Layout
 
@@ -53,6 +53,8 @@ src/
     messages/  The conversation with a client, the client's link, the line to WhatsApp, the inbox.
     audit/     The reader of the audit log. Writing an event stays with the service that did the work.
     demo/      A fictional office for a build that has no database: its deals, its people and its log.
+    port/      The move from the old system's tables to this one's, its rehearsal, and what a deployment
+               does around the build. Deleted with `legacy/` once the old tables are gone.
   app/         Next.js routes. Thin: read through services, render, call server actions.
   ui/          Design system for the "الخريطة" identity: the road, tiles, dock, figures, form fields.
 db/migrations/ Versioned SQL migrations. The only way the schema changes.
@@ -232,7 +234,7 @@ The ground rule is that nothing is assumed. A figure that is not in the file or 
 
 `getAnalysis` (`src/server/analysis/service.ts`) works it out on every read from the stored file, the newest record and the catalogue as it stands. Nothing of it is stored, so it cannot fall behind them. Before a record is read there is no analysis: the page shows the upload and nothing else.
 
-Consent. `clients.consentAt` is when the client agreed to the processing of their data and their credit report. `setConsent` records it or its withdrawal, with an audit entry (`client.consent`). `addCreditReport` refuses a report for a client with no consent on file (`CONSENT_NEEDED`); the upload form carries the tick that records it in the same step. Without it the analysis still shows its figures, says `pending`, and makes recording the consent the first step. The credit page and the deal pages are not gated on consent yet: that belongs with the controls phase, and records brought over from the old system will show the gap until someone records it.
+Consent. `clients.consentAt` is when the client agreed to the processing of their data and their credit report. `setConsent` records it or its withdrawal, with an audit entry (`client.consent`). `addCreditReport` refuses a report for a client with no consent on file (`CONSENT_NEEDED`); the upload form carries the tick that records it in the same step. Without it the analysis still shows its figures, says `pending`, and makes recording the consent the first step. The credit page and the deal pages are not gated on consent yet: that belongs with the controls phase. The old system took the client's consent when a file was opened and stamped it, and that stamp comes over with the file; a file brought over without one shows the gap until someone records it.
 
 The page prints. `PrintButton` opens every folded list before printing and folds them again after; the `@media print` block in `src/ui/ui.css` keeps the desk layout on A4 (`.page { zoom: 0.66 }`) and shows the line that the analysis supports a person's decision and is not a lender's approval (`DECISION_SUPPORT`, also at the foot of the screen).
 
@@ -361,6 +363,12 @@ Worth a decision before the switch: files live in Postgres, so the database grow
 - **Words, not values.** `src/copy/audit.ts` turns an event and its details into a sentence. A detail names what changed (the role, the mobile) and never holds a private value: no phone, no identity number, nothing typed at the door. The choices of the screen live in the address, and anything else typed there reads as no choice.
 - **The demo office** has five fictional people (one of them stopped) and a log of its own work, laid over office hours in the order the work happened. A build without a database refuses every change to an account (`DEMO`).
 
+## The database underneath
+
+Tests and the demo run on PGlite, a Postgres that lives inside the process, so neither needs a server. The live site talks to a Postgres server through `postgres.js`. The two drivers hand some things back differently (a raw statement's rows, a large number, a file's bytes), so the whole suite also runs in CI against a Postgres server through the live driver: `tests/helpers/db.ts` makes a fresh database per test on the server named by `MASAR_TEST_DATABASE_URL` and drops it afterwards. A server that is not on the same machine is only ever reached over TLS.
+
+On Vercel the build is `npm run vercel-build`: `scripts/release.ts before`, `next build`, `scripts/release.ts after`. A production build refuses to go on without `MASAR_DATABASE_URL`, `MASAR_SECRET` and `MASAR_ORIGINS`, applies pending migrations before the build, and afterwards refuses to go live with no account to sign in to. `planRelease` in `src/server/port/release.ts` decides, and a preview does none of it.
+
 ## Porting checklist
 
 Old module (under `legacy/lib`) and its state in the rebuild:
@@ -396,6 +404,7 @@ Old module (under `legacy/lib`) and its state in the rebuild:
 - [x] the calculator: `src/domain/eligibility/quick.ts`, `src/copy/calculator.ts`, `/lenders/calculator`
 - [x] the knowledge screen and a lender's decision on a deal: `/lenders/knowledge`, the knowledge and decision tiles on `/deals/[id]/lenders`
 - [x] new, not a port: a client's credit and financial analysis from the SIMAH record, the file and the catalogue, with the client's consent: `src/domain/analysis`, `src/copy/analysis.ts`, `src/server/analysis`, `/clients/[id]/analysis`
-- [ ] data migration from the live database, then the domain switch (only after the owner approves)
+- [x] the tool that moves the old tables' data into this system's, its rehearsal, and the deployment steps that run them: `src/server/port`, `scripts/port-data.ts`, `scripts/release.ts`, described in [MIGRATION.md](MIGRATION.md)
+- [ ] the rehearsal on the live database, then the move and the switch (each only after the owner approves)
 
 To regenerate a golden file while `legacy/` still exists: `npm run golden:deal`, `npm run golden:credit`, `npm run golden:simah`, `npm run golden:eligibility`, `npm run golden:advisor`, `npm run golden:experience`, `npm run golden:project`. Each generator is seeded, so it writes the same file every time.

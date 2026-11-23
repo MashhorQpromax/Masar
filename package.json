@@ -9,6 +9,7 @@
   "scripts": {
     "dev": "next dev -p 3000",
     "build": "next build",
+    "vercel-build": "tsx --conditions=react-server scripts/release.ts before && next build && tsx --conditions=react-server scripts/release.ts after",
     "start": "next start -p 3000",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
@@ -17,6 +18,7 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx --conditions=react-server scripts/migrate.ts",
     "user:create": "tsx --conditions=react-server scripts/create-user.ts",
+    "data:port": "tsx --conditions=react-server scripts/port-data.ts",
     "golden:deal": "tsx legacy/tools/gen-deal-golden.ts",
     "golden:credit": "tsx legacy/tools/gen-credit-golden.ts",
     "golden:simah": "tsx legacy/tools/gen-simah-golden.ts",

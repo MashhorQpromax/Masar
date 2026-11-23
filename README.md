@@ -23,6 +23,10 @@ npm run user:create -- --name "..." --email someone@example.com --role admin
 
 The password is asked for on the terminal and never echoed.
 
+On Vercel none of this is typed: a production build applies the migrations itself and will not go live without those three variables or without an account. The old system's data, accounts included, comes over as a step of the first production deployment. The steps, the rehearsal and the way back are in [docs/MIGRATION.md](docs/MIGRATION.md).
+
+Tests run on an in-process Postgres. To run them on a Postgres server through the driver the live site uses: `MASAR_TEST_DATABASE_URL=postgres://postgres@127.0.0.1:5432/postgres npm test`.
+
 Built on Next.js 16 (App Router), React 19, Drizzle and Postgres, on Node 22.
 
 The layout of the code, the rules it follows and the porting checklist are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).

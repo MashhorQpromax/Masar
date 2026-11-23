@@ -25,6 +25,25 @@ export const AUDIT_AREAS = {
   lenders: ["lender.add", "lender.product_add", "lender.product_update", "lender.product_switch", "lender.rule_add", "lender.rule_archive", "lender.decision"],
 } as const;
 
+/**
+ * Events the old system wrote and this build has no like of. They come over with the old log so its
+ * history stays readable. The last one is written once, by the move itself.
+ */
+export const OLD_AUDIT_ACTIONS = [
+  "old.status",
+  "old.view",
+  "old.delete",
+  "old.export",
+  "old.study",
+  "old.obligation_add",
+  "old.obligation_remove",
+  "old.application_add",
+  "old.application_update",
+  "old.other",
+  "old.moved",
+] as const;
+export type OldAuditAction = (typeof OLD_AUDIT_ACTIONS)[number];
+
 export type AuditArea = keyof typeof AUDIT_AREAS;
 export type AuditAction = (typeof AUDIT_AREAS)[AuditArea][number];
 

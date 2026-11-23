@@ -1,5 +1,5 @@
 /** Wording of the audit log: what each event is called, and the detail worth reading beside it. */
-import type { AuditAction, AuditArea } from "@/domain/audit";
+import type { AuditAction, AuditArea, OldAuditAction } from "@/domain/audit";
 import { isRole } from "@/domain/auth";
 import { DECISIONS, RULE_KINDS, type Decision, type RuleKind } from "@/domain/knowledge";
 import { ROLE } from "./auth";
@@ -72,7 +72,22 @@ const AUDIT_ACTION: Record<AuditAction, string> = {
 };
 
 /** What an event is called. An event from a newer build than this wording still gets a name. */
-export const auditAction = (action: string): string => AUDIT_ACTION[action as AuditAction] ?? "حدث آخر";
+/** What the old system logged and this one has no like of. */
+const OLD_ACTION: Record<OldAuditAction, string> = {
+  "old.status": "تغيير حالة الملف",
+  "old.view": "الاطلاع على بيانات العميل",
+  "old.delete": "حذف ملف عميل",
+  "old.export": "تصدير ملف العميل",
+  "old.study": "حفظ دراسة أهلية",
+  "old.obligation_add": "إضافة التزام",
+  "old.obligation_remove": "حذف التزام",
+  "old.application_add": "طلب تمويل جديد",
+  "old.application_update": "تحديث طلب تمويل",
+  "old.other": "حدث من النظام السابق",
+  "old.moved": "نقل البيانات من النظام السابق",
+};
+
+export const auditAction = (action: string): string => AUDIT_ACTION[action as AuditAction] ?? OLD_ACTION[action as OldAuditAction] ?? "حدث آخر";
 
 /** Who did a thing when nobody was signed in: the system itself, a client, or someone at the door. */
 export const NOBODY = "بلا حساب";
