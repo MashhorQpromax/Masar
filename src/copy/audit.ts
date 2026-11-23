@@ -1,10 +1,12 @@
 /** Wording of the audit log: what each event is called, and the detail worth reading beside it. */
 import type { AuditAction, AuditArea } from "@/domain/audit";
 import { isRole } from "@/domain/auth";
+import { DECISIONS, RULE_KINDS, type Decision, type RuleKind } from "@/domain/knowledge";
 import { ROLE } from "./auth";
 import { STAGE } from "./deal";
 import { PAPER_STATUS, paperLabel } from "./documents";
 import { counted, dayFull, dayLong, days, ltr, type CountForms } from "./format";
+import { DECISION, PART, RULE_KIND } from "./knowledge";
 import { MESSAGE_KIND } from "./messages";
 
 export const AUDIT_AREA: Record<AuditArea, string> = {
@@ -57,6 +59,9 @@ const AUDIT_ACTION: Record<AuditAction, string> = {
   "link.open": "فتح رابط العميل",
   "link.close": "إغلاق رابط العميل",
   "lender.product_update": "تعديل شروط منتج",
+  "lender.rule_add": "ملاحظة عن جهة",
+  "lender.rule_archive": "حذف ملاحظة عن جهة",
+  "lender.decision": "تسجيل قرار جهة",
 };
 
 /** What an event is called. An event from a newer build than this wording still gets a name. */
@@ -104,6 +109,10 @@ const number = (value: unknown): number | null => (typeof value === "number" && 
 const strings = (value: unknown): string[] => (Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : []);
 const record = (value: unknown): Record<string, unknown> => (value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {});
 const joined = (parts: (string | null | false | undefined)[]): string => parts.filter(Boolean).join("، ");
+
+const isRuleKind = (value: unknown): value is RuleKind => (RULE_KINDS as readonly unknown[]).includes(value);
+const isDecision = (value: unknown): value is Decision => (DECISIONS as readonly unknown[]).includes(value);
+const isPart = (value: unknown): value is "mortgage" | "personal" => value === "mortgage" || value === "personal";
 
 const fields = (value: unknown): string => joined(strings(value).map((name) => FIELD[name]));
 const role = (value: unknown): string | null => (isRole(value) ? ROLE[value] : null);
@@ -182,6 +191,12 @@ export function auditDetail(action: string, details: Record<string, unknown> | n
       return (number(d.links) ?? 0) > 0 ? counted(number(d.links)!, LINKS) : "";
     case "lender.product_update":
       return joined([strings(d.changed).length > 0 && counted(strings(d.changed).length, TERMS), d.verified === true && "مؤكدة"]);
+    case "lender.rule_add":
+      return joined([isRuleKind(d.kind) && RULE_KIND[d.kind], text(d.lender) ?? "كل الجهات", text(d.title)]);
+    case "lender.rule_archive":
+      return text(d.title) ?? "";
+    case "lender.decision":
+      return joined([isDecision(d.decision) && DECISION[d.decision], text(d.lender), isPart(d.part) && PART[d.part], d.onDeal === true && "حُسبت الصفقة عليه"]);
     default:
       return "";
   }

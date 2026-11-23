@@ -3,9 +3,11 @@
 import { revalidatePath } from "next/cache";
 import { redirect, RedirectType } from "next/navigation";
 import { z } from "zod";
+import { can } from "@/domain/auth";
 import { requireActor } from "@/server/auth/actor";
 import { getDb } from "@/server/db/client";
 import { applyRoute, setSalaryBank } from "@/server/funding/service";
+import { recordDecision } from "@/server/knowledge/service";
 import { DomainError } from "@/server/shared/errors";
 
 const id = z.coerce.number().int().positive();
@@ -52,4 +54,31 @@ export async function saveSalaryBank(input: { dealId: number; clientId: number; 
     if (!(error instanceof DomainError)) throw error;
   }
   refresh(dealId);
+}
+
+export interface DecisionAnswer {
+  error?: string;
+  saved?: boolean;
+}
+
+/**
+ * Records what a lender answered for the deal's client. The service reads the client's facts and the
+ * engine's estimate itself, and checks every value. Putting the amount on the deal needs the right to
+ * change the deal.
+ */
+export async function saveDecision(dealId: number, decision: unknown): Promise<DecisionAnswer> {
+  const actor = await requireActor("app.manage");
+  const deal = id.safeParse(dealId);
+  if (!deal.success) return { error: "NOT_FOUND" };
+  const onDeal = z.object({ onDeal: z.literal(true) }).safeParse(decision).success;
+  if (onDeal && !can(actor.role, "deal.edit")) return { error: "FORBIDDEN" };
+  try {
+    await recordDecision(await getDb(), { dealId: deal.data, decision, actor });
+  } catch (error) {
+    if (error instanceof DomainError) return { error: error.code };
+    throw error;
+  }
+  refresh(deal.data);
+  revalidatePath("/lenders/knowledge");
+  return { saved: true };
 }

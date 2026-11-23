@@ -2,17 +2,24 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { STRUCTURE } from "@/copy/deal";
-import { counted, months, plainMoney } from "@/copy/format";
+import { FINANCE_TYPE } from "@/copy/eligibility";
+import { counted, dayOf, months, plainMoney } from "@/copy/format";
 import { ROUTE_STATUS, routeError, routeLenders, routeNoteText } from "@/copy/funding";
+import { acceptedText, PART } from "@/copy/knowledge";
 import { can } from "@/domain/auth";
+import { STRUCTURES, structureOf } from "@/domain/deal";
 import type { FundingRoute, RouteLeg } from "@/domain/funding";
+import { experience, knownFor, type Bearing, type Rule } from "@/domain/knowledge";
 import { requireActor } from "@/server/auth/actor";
 import { getDb } from "@/server/db/client";
 import { getFunding } from "@/server/funding/service";
+import { decisionFacts, listLenders, listRules, recentDecisions } from "@/server/knowledge/service";
+import { AnswerRow, DecisionRow, NoteRow } from "@/ui/knowledge";
 import { BackIcon } from "@/ui/icons";
 import { Num } from "@/ui/Num";
 import { SubmitButton } from "@/ui/SubmitButton";
 import { chooseRoute } from "./actions";
+import { DecisionForm, type PartStart } from "./DecisionForm";
 import { SalaryBank } from "./SalaryBank";
 
 export const dynamic = "force-dynamic";
@@ -20,6 +27,10 @@ export const metadata: Metadata = { title: "جهات التمويل · مسار"
 
 const OTHERS = { one: "طريق آخر", two: "طريقان آخران", few: "طرق أخرى", many: "طريقاً آخر" };
 const REFUSING = { one: "جهة لا تقبل الآن", two: "جهتان لا تقبلان الآن", few: "جهات لا تقبل الآن", many: "جهة لا تقبل الآن" };
+/** The office's own notes shown beside a route. The rest are a link away. */
+const NOTES_SHOWN = 3;
+const PARTS = ["mortgage", "personal"] as const;
+type Part = (typeof PARTS)[number];
 const UP = "M250 65H190C160 65 152 22 122 22H74";
 const MID = "M250 65H74";
 const DOWN = "M250 65H190C160 65 152 108 122 108H74";
@@ -71,18 +82,42 @@ function Figures({ route }: { route: FundingRoute }) {
   );
 }
 
+/** What the office knows about the lender of one part of a route, with the names to say it under. */
+interface Known extends Bearing<Rule> {
+  lender: string;
+  /** Which part or lender it is about, when the route has more than one. */
+  about: string | null;
+}
+
 export default async function LendersPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ refused?: string }> }) {
   const me = await requireActor();
   const dealId = Number((await params).id);
   if (!Number.isInteger(dealId) || dealId <= 0) notFound();
-  const view = await getFunding(await getDb(), { dealId });
+  const db = await getDb();
+  const view = await getFunding(db, { dealId });
   if (!view) notFound();
+  const rules = await listRules(db);
+  const facts = await decisionFacts(db);
+  const lenders = await listLenders(db);
+  const answered = await recentDecisions(db, { clientId: view.client.id });
+  const now = new Date();
 
   const { deal, client, routes, chosen } = view;
   const refused = (await searchParams).refused;
   const mayChoose = can(me.role, "deal.edit") && !view.ended && !view.offerRecorded;
   const mayManage = can(me.role, "lender.manage");
   const mayEditClient = can(me.role, "client.edit") && !view.ended;
+
+  const like = { sector: client.sector, salary: client.totalSalary ?? client.basicSalary };
+  const records = { mortgage: experience(facts, "mortgage", like), personal: experience(facts, "personal", like) };
+  const knownOf = (route: FundingRoute): Known[] => {
+    const both = route.mortgage != null && route.personal != null;
+    const legs = PARTS.flatMap((part) => (route[part] ? [{ part, lenderId: Number(route[part].product.lenderId) }] : []));
+    return knownFor(legs, rules, records).map((item) => {
+      const lender = route[item.part]!.product.lenderName;
+      return { ...item, lender, about: both ? (route.oneLender ? PART[item.part] : lender) : null };
+    });
+  };
 
   const best = routes[0];
   const open = routes.filter((route) => route.status !== "fail");
@@ -125,6 +160,17 @@ export default async function LendersPage({ params, searchParams }: { params: Pr
   const notes = taken ? best.conditions : best.refusals;
   const isChosen = chosen === best.key;
   const chosenRoute = routes.find((route) => route.key === chosen);
+  const known = knownOf(best);
+  const written = known.flatMap((item) => item.notes.map((rule) => ({ rule, from: best.oneLender ? "" : item.lender }))).slice(0, NOTES_SHOWN);
+
+  // A lender's answer is recorded against the part of the deal it answered for.
+  const structure = STRUCTURES[structureOf(view.input)];
+  const lead = chosenRoute ?? best;
+  const parts: Partial<Record<Part, PartStart>> = {};
+  for (const part of PARTS) {
+    if (structure[part]) parts[part] = { lenderId: lead[part] ? Number(lead[part].product.lenderId) : null, amount: view.study.financing[part] || null };
+  }
+  const mayRecord = can(me.role, "app.manage") && lenders.length > 0 && Object.keys(parts).length > 0;
 
   return (
     <>
@@ -224,6 +270,31 @@ export default async function LendersPage({ params, searchParams }: { params: Pr
           </p>
         </section>
 
+        {known.length > 0 && (
+          <section className="tile tile--wide tile--learned">
+            <div className="learned-top">
+              <p className="label">من خبرة المكتب</p>
+              <Link className="note-link" href="/lenders/knowledge">
+                كل الخبرة
+              </Link>
+            </div>
+            <div className="learned">
+              {known.some((item) => item.record) && (
+                <ol className="answers">
+                  {known.map((item) => item.record && <AnswerRow key={item.part} name={item.about ?? item.lender} e={item.record} similar />)}
+                </ol>
+              )}
+              {written.length > 0 && (
+                <ul className="know-notes">
+                  {written.map(({ rule, from }) => (
+                    <NoteRow key={rule.id} rule={rule} meta={[from, rule.author, rule.author && dayOf(rule.createdAt, now)].filter(Boolean).join(" · ")} />
+                  ))}
+                </ul>
+              )}
+            </div>
+          </section>
+        )}
+
         {(others.length > 0 || closed.length > 0) && (
           <section className="tile tile--wide">
             {others.length > 0 && (
@@ -232,6 +303,7 @@ export default async function LendersPage({ params, searchParams }: { params: Pr
                 <ol className="routes">
                   {others.map((route) => {
                     const names = routeLenders(route);
+                    const before = knownOf(route).filter((item) => item.record);
                     return (
                       <li key={route.key} className="route" data-chosen={route.key === chosen || undefined}>
                         <div className="route-who">
@@ -255,10 +327,16 @@ export default async function LendersPage({ params, searchParams }: { params: Pr
                         ) : (
                           <span className="route-go" />
                         )}
-                        {route.conditions.length > 0 && (
+                        {(route.conditions.length > 0 || before.length > 0) && (
                           <ul className="route-notes">
                             {route.conditions.map((note, index) => (
                               <li key={index}>{routeNoteText(note, route)}</li>
+                            ))}
+                            {before.map((item) => (
+                              <li key={item.part} data-learned>
+                                {item.about ? `${item.about}: ` : ""}
+                                {acceptedText(item.record!)}
+                              </li>
                             ))}
                           </ul>
                         )}
@@ -283,6 +361,27 @@ export default async function LendersPage({ params, searchParams }: { params: Pr
                       </p>
                     ))}
                 </div>
+              </details>
+            )}
+          </section>
+        )}
+
+        {(mayRecord || answered.length > 0) && (
+          <section className="tile tile--wide tile--ruling">
+            <p className="label">قرار الجهة</p>
+            {answered.length > 0 ? (
+              <ol className="rulings">
+                {answered.map((line) => (
+                  <DecisionRow key={line.id} line={line} now={now} sub={line.financeType ? FINANCE_TYPE[line.financeType] : ""} />
+                ))}
+              </ol>
+            ) : (
+              <p className="ruling-none">حين تجيب الجهة سجّل قرارها هنا. يُحسب الملف على المبلغ الذي اعتمدته، ويعرف المكتب ما تطلبه في المرة القادمة.</p>
+            )}
+            {mayRecord && (
+              <details className="ruling-new">
+                <summary>سجّل قرار جهة</summary>
+                <DecisionForm dealId={deal.id} lenders={lenders} parts={parts} mayAmend={can(me.role, "deal.edit") && !view.ended} />
               </details>
             )}
           </section>

@@ -108,6 +108,18 @@ describe("the detail beside an event", () => {
     expect(eventsCount(60)).toBe("60 حدثاً");
   });
 
+  it("says what was written down about a lender and what a lender decided", () => {
+    expect(auditDetail("lender.rule_add", { title: "تطلب فحصاً طبياً", kind: "condition", lender: "بنك الرياض" })).toBe("اشتراط، بنك الرياض، تطلب فحصاً طبياً");
+    // A note that names no lender holds for all of them.
+    expect(auditDetail("lender.rule_add", { title: "كثرة الاستعلامات تضر", kind: "tip", lender: null })).toBe("طريقة، كل الجهات، كثرة الاستعلامات تضر");
+    expect(auditDetail("lender.rule_add", { title: "ملاحظة", kind: "something" })).toBe("كل الجهات، ملاحظة");
+    expect(auditDetail("lender.rule_archive", { title: "تطلب فحصاً طبياً" })).toBe("تطلب فحصاً طبياً");
+    expect(auditDetail("lender.rule_archive", {})).toBe("");
+    expect(auditDetail("lender.decision", { lender: "بنك الرياض", part: "mortgage", decision: "approved", onDeal: true })).toBe("موافقة، بنك الرياض، العقاري، حُسبت الصفقة عليه");
+    expect(auditDetail("lender.decision", { lender: "بنك الرياض", part: "personal", decision: "rejected", onDeal: false })).toBe("رفض، بنك الرياض، الشخصي");
+    expect(auditDetail("lender.decision", { lender: "بنك الرياض", part: "boat", decision: "maybe" })).toBe("بنك الرياض");
+  });
+
   it("reads whatever the log holds without breaking or showing a code", () => {
     const strange: (Record<string, unknown> | null | undefined)[] = [
       null,

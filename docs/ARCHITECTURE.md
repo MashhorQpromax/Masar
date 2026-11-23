@@ -22,6 +22,8 @@ src/
                what a lender may ask for beyond its terms, the ways to a larger amount,
                and the profile a quick estimate is made from.
     funding/   Which lender funds the new financing of a bridge deal.
+    knowledge/ What the office learned about lenders beyond their terms: the notes people wrote down,
+               and what lenders actually answered, added up lender by lender.
     documents/ What a client's file needs today and where each paper stands.
     messages/  What may be said to a client and what a client may be told.
     audit/     The kinds of event the audit log holds, the part of the office each belongs to,
@@ -39,6 +41,7 @@ src/
     credit/    A client's credit reports: the upload, the reading, the stored record.
     lenders/   The catalogue of lenders and products, and its terms.
     funding/   The funding routes of a deal.
+    knowledge/ Notes about lenders and the decisions lenders gave: writing them down and reading them back.
     documents/ A client's papers and their files.
     messages/  The conversation with a client, the client's link, the line to WhatsApp, the inbox.
     audit/     The reader of the audit log. Writing an event stays with the service that did the work.
@@ -182,6 +185,21 @@ The calculator is `/lenders/calculator`. Anyone who works in the office may open
 - `applyRoute` writes a route's terms on a deal in progress. It works the routes out again on the server, refuses a route the lender would turn down, and never replaces a recorded offer.
 - The catalogue starts from `src/server/lenders/base.ts`. Its terms are indicative until someone confirms them on the `/lenders` page, and every screen that shows them says so.
 
+## What the office knows about lenders
+
+A lender's terms say what it publishes. `src/domain/knowledge` holds what the office learned beyond them, in two kinds:
+
+- **A note** (`Rule`) is something a person wrote down about one lender or about all of them: a condition no brochure mentions, an exception that worked, a way through, a warning. `rulesFor` gives the notes that bear on one lender for one kind of finance, its own first. `rulesByLender` groups them for the page.
+- **A decision** (`DecisionFact`) is what a lender actually answered for one client: yes, yes on other terms, or no, with the amount it approved against what the engine expected, what it asked for (15 codes, `ASKS`) and why it refused (11 codes, `REFUSALS`). `experience` adds them up lender by lender for one kind of finance: how many, how many were a yes, the same for clients like the one asked about (same sector, salary within 35 percent), the average of approved over expected, and what was asked and refused most often. It is locked to the old `lenderExperience` by `npm run golden:experience`: 80 books of made-up decisions, 1,761 in all. The old query returned lenders in whatever order the database read them, so the books are compared lender by lender, and the new order (first appearance) is tested apart.
+- `knownFor` picks what bears on one funding route: each part's lender, its record and its own notes, a note said once.
+
+`src/server/knowledge` writes and reads them. `addRule` and `archiveRule` keep a note and take it down (a note is never deleted, only switched off). `recordDecision` records an answer for a deal's client inside one transaction: it reads the client's facts, the credit standing and the engine's estimate from the file as it stands, never from what the screen sent, refuses a part the deal's structure does not have, and, when asked, puts the approved amount on the deal as the lender's offer (`amendDeal`), which a finished deal refuses. Each of the three writes an audit event in the lenders' part of the log. Decisions are stored with the client in `outcomes`; no migration was needed. The old system tied a decision to an application and moved the application's status with it; the rebuild has no applications, so a decision belongs to the deal's client and the deal's stage moves on its own. The rate and the term a lender approved have columns and are not asked for yet: a bridge deal is computed on the amount.
+
+- **`/lenders/knowledge`** ("الخبرة") is the third place under `LendersNav`. It shows what lenders answered for one kind of finance at a time (a stop for each answer, lit for a yes), the last twelve decisions, and the notes lender by lender with a form for a new one. It names no client. Writing a note needs `client.edit`; taking one down needs `lender.manage`.
+- **`/deals/[id]/lenders`** shows the same knowledge where it is used: a tile for the best route with its lenders' records and notes, one line under each other route, and a tile where the lender's answer is recorded (`DecisionForm`, `saveDecision`). Recording needs `app.manage`; putting the amount on the deal needs `deal.edit` as well, and the box starts ticked only when the answer comes from the lender the deal is on.
+- The rows are shared by both pages (`src/ui/knowledge.tsx`), and the wording is in `src/copy/knowledge.ts`.
+- The demo holds three made-up notes and eighteen made-up decisions beside the catalogue's eight starting notes. They show how the screens read and say nothing true about any lender.
+
 ## Documents
 
 `src/domain/documents` answers what a client's file needs today and where each paper stands. `src/server/documents` keeps the papers and their files, and `/deals/[id]/documents` is the screen.
@@ -265,14 +283,15 @@ Old module (under `legacy/lib`) and its state in the rebuild:
 - [x] a client's papers and their files from `data.ts` and `actions.ts`: `src/domain/documents`, `src/server/documents`, `/deals/[id]/documents`, `/files/[id]` (migration `0003_documents_files`)
 - [x] clients, their contact details and notes from `data.ts` and `actions.ts`: `src/domain/clients`, `src/server/clients` (`directory.ts`, `updateContact`, `addNote`), `/clients`, `/clients/[id]`
 - [x] the inbox and numbers the office does not know: `src/server/messages/inbox.ts`, `/inbox`, `/inbox/[phone]` (migration `0005_inbox_seen`)
-- [ ] the rest of `data.ts` and `actions.ts`: adding and removing lenders and products, lender rules
+- [x] lender rules and recorded outcomes from `data.ts` and `actions.ts` (`lenderExperience`, `lenderRules`, `recordOutcome`, `addLenderRule`, `archiveLenderRule`): `src/domain/knowledge`, `src/server/knowledge`, locked by `tests/golden/experience.json` (80 books, 1,761 decisions)
+- [ ] the rest of `data.ts` and `actions.ts`: adding and removing lenders and products
 - [x] screens on the "الخريطة" direction: the road (home), the deals list, the deal file with stage moves and the step by step calculation, the deal editor
 - [x] opening a client file and revising its facts, from `data.ts` and `actions.ts`: `src/server/clients`
 - [x] the client portal, where the client follows their file and uploads their own papers: `/s/[token]`, `src/server/messages/portal.ts`
 - [x] screens: clients, a client's file, the inbox
 - [x] managing accounts from `auth.ts` and `actions.ts`, and the audit log: `src/server/auth/users.ts`, `src/domain/audit`, `src/server/audit`, `/users`, `/audit`
 - [x] the calculator: `src/domain/eligibility/quick.ts`, `src/copy/calculator.ts`, `/lenders/calculator`
-- [ ] screens still to build: knowledge
+- [x] the knowledge screen and a lender's decision on a deal: `/lenders/knowledge`, the knowledge and decision tiles on `/deals/[id]/lenders`
 - [ ] data migration from the live database, then the domain switch (only after the owner approves)
 
-To regenerate a golden file while `legacy/` still exists: `npm run golden:deal`, `npm run golden:credit`, `npm run golden:simah`, `npm run golden:eligibility`, `npm run golden:advisor`. Each generator is seeded, so it writes the same file every time.
+To regenerate a golden file while `legacy/` still exists: `npm run golden:deal`, `npm run golden:credit`, `npm run golden:simah`, `npm run golden:eligibility`, `npm run golden:advisor`, `npm run golden:experience`. Each generator is seeded, so it writes the same file every time.

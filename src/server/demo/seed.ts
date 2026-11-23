@@ -9,7 +9,7 @@ import { tokenHash } from "../auth/secret";
 import { asc, eq, gt } from "drizzle-orm";
 import type { Role } from "@/domain/auth";
 import { DECOY_HASH } from "../auth/password";
-import { auditLog, clients, passkeys, shareLinks, users, waMessages } from "../db/schema";
+import { auditLog, clients, lenderRules, lenders, outcomes, passkeys, shareLinks, users, waMessages } from "../db/schema";
 import { getDeal, rejectDeal, saveDeal, setDealStage } from "../deals/service";
 import { addPaper, keepFile, reviewPaper } from "../documents/service";
 import { seedCatalogue } from "../lenders/service";
@@ -440,7 +440,7 @@ const LAST = 8 * 3_600_000 + 40 * 60_000;
  * the office's hours in the order they happened, and the sign-ins and account changes of an office
  * are added around them.
  */
-async function seedLog(db: Db, now: Date): Promise<void> {
+async function seedLog(db: Db, now: Date, more: (people: Record<string, number>) => Promise<(typeof auditLog.$inferInsert)[]>): Promise<void> {
   const hours = (n: number) => new Date(now.getTime() - n * 3_600_000);
 
   // What happened in the last day keeps its minute. Anything older happened at some hour of a working
@@ -485,6 +485,8 @@ async function seedLog(db: Db, now: Date): Promise<void> {
 
   const written = await db.select().from(auditLog).orderBy(asc(auditLog.createdAt), asc(auditLog.id));
   type Line = typeof auditLog.$inferInsert;
+  // What the people of the office did besides the deals, now that they have accounts.
+  const besides = (await more(id)).map((line): Line => ({ ...line, createdAt: inOfficeHours(line.createdAt!) }));
   const about = (userId: number | null) => ({ entity: userId == null ? null : "user", entityId: userId });
   const lines: Line[] = [
     ...written.map(({ id: _, ...event }): Line => {
@@ -497,12 +499,79 @@ async function seedLog(db: Db, now: Date): Promise<void> {
     { createdAt: hours(26), userId: null, action: "login_failed", ...about(null), details: { email: "admin@masar.example" }, ip: "198.51.100.23" },
     { createdAt: hours(25.9), userId: null, action: "login_failed", ...about(null), details: { email: "admin@masar.example" }, ip: "198.51.100.23" },
     ...PEOPLE.filter((person) => person.active !== false).map((person): Line => ({ createdAt: seen[person.name], userId: id[person.name]!, action: "login", ...about(id[person.name]!), details: { method: person.method } })),
+    ...besides,
   ];
   // The log is read in the order its lines were written, so it is written again in the order of time.
   // Events of one moment keep the order they came in: the sort is stable.
   lines.sort((a, b) => a.createdAt!.getTime() - b.createdAt!.getTime());
   await db.delete(auditLog);
   for (let from = 0; from < lines.length; from += 50) await db.insert(auditLog).values(lines.slice(from, from + 50));
+}
+
+/** A note someone in the made-up office wrote about a lender. None of it is a fact about that lender. */
+const NOTES: { by: string; daysAgo: number; lender: string; financeType: string; kind: "condition" | "exception" | "tip" | "warning"; title: string; body: string }[] = [
+  { by: "منى", daysAgo: 34, lender: "البنك الأهلي السعودي", financeType: "mortgage", kind: "condition", title: "يعيد التقييم إذا تجاوز عمر العقار 20 سنة", body: "يرسل مقيّماً ثانياً، ويتأخر الرد نحو أسبوع. اطلب التقييم مبكراً." },
+  { by: "خالد", daysAgo: 21, lender: "مصرف الراجحي", financeType: "personal", kind: "tip", title: "شراء المديونية أسرع من السداد ثم التقديم", body: "يحسب المديونية القائمة ضمن العرض الجديد، فلا ننتظر تحديث سمة." },
+  { by: "منى", daysAgo: 8, lender: "دار التمليك", financeType: "mortgage", kind: "warning", title: "ترفع الدفعة الأولى للقطاع الخاص", body: "طلبت 20% بدل 15% في طلبين. احسب الصفقة على 80% من قيمة العقار." },
+];
+
+type Answer = "approved" | "approved_modified" | "rejected";
+/** What a lender answered in the made-up office's past: [lender, kind, sector, salary, answer, expected, approved, asked, reason, days ago, note]. */
+const ANSWERS: [string, "mortgage" | "personal", string, number, Answer, number, number | null, string[], string | null, number, string?][] = [
+  ["البنك الأهلي السعودي", "mortgage", "gov", 16000, "approved", 990000, 990000, ["salary_transfer"], null, 71],
+  ["البنك الأهلي السعودي", "personal", "gov", 16000, "approved", 240000, 240000, ["salary_transfer"], null, 70],
+  ["مصرف الراجحي", "mortgage", "gov", 13000, "approved", 700000, 700000, ["salary_transfer"], null, 66],
+  ["مصرف الراجحي", "personal", "gov", 13000, "approved_modified", 200000, 180000, ["salary_transfer", "buyout"], null, 64],
+  ["البنك الأهلي السعودي", "mortgage", "military", 14500, "approved_modified", 820000, 760000, ["salary_transfer", "valuation"], null, 58],
+  ["البنك السعودي للاستثمار", "mortgage", "gov", 11500, "approved", 610000, 610000, [], null, 51],
+  ["مصرف الإنماء", "personal", "semi_gov", 12000, "rejected", 190000, null, [], "dbr", 47],
+  ["البنك الأهلي السعودي", "mortgage", "private_approved", 19000, "rejected", 900000, null, [], "employer", 44],
+  ["إمكان للتمويل", "personal", "private", 9000, "approved", 110000, 110000, [], null, 40],
+  ["مصرف الراجحي", "mortgage", "semi_gov", 21000, "approved_modified", 1250000, 1100000, ["valuation", "down_payment"], null, 37],
+  ["دار التمليك", "mortgage", "private", 15000, "approved_modified", 760000, 650000, ["down_payment", "extra_statements"], null, 33],
+  ["مصرف الراجحي", "mortgage", "gov", 9800, "rejected", 480000, null, [], "simah", 25, "طلب مرور 6 أشهر على المخالصة."],
+  ["البنك الأهلي السعودي", "mortgage", "gov", 12500, "approved_modified", 640000, 600000, ["medical", "salary_transfer"], null, 20],
+  ["إمكان للتمويل", "personal", "gov", 7500, "approved_modified", 95000, 80000, ["simah_letter"], null, 18],
+  ["النايفات للتمويل", "personal", "private", 6500, "approved", 70000, 70000, ["employer_letter"], null, 15],
+  ["البنك السعودي للاستثمار", "mortgage", "retired", 9000, "approved_modified", 420000, 380000, ["shorter_tenor"], null, 12],
+  ["دار التمليك", "mortgage", "private", 8500, "rejected", 400000, null, [], "income_verification", 9],
+  ["بنك الرياض", "personal", "gov", 14000, "rejected", 230000, null, [], "simah", 6, "تعثر مسدد منذ شهرين."],
+];
+
+/**
+ * What the made-up office knows about its lenders: a few notes of its own and the answers it got.
+ * Returns the lines the notes leave in the log, for the log to place among its other events.
+ */
+async function seedKnowledge(db: Db, now: Date, people: Record<string, number>): Promise<(typeof auditLog.$inferInsert)[]> {
+  const at = (daysAgo: number) => new Date(now.getTime() - daysAgo * DAY);
+  const lenderId = new Map((await db.select({ id: lenders.id, name: lenders.name }).from(lenders)).map((l) => [l.name, l.id]));
+  const lines: (typeof auditLog.$inferInsert)[] = [];
+  for (const note of NOTES) {
+    const [row] = await db
+      .insert(lenderRules)
+      .values({ lenderId: lenderId.get(note.lender)!, financeType: note.financeType, kind: note.kind, title: note.title, body: note.body, userId: people[note.by]!, createdAt: at(note.daysAgo) })
+      .returning({ id: lenderRules.id });
+    lines.push({ createdAt: at(note.daysAgo), userId: people[note.by]!, action: "lender.rule_add", entity: "rule", entityId: row!.id, details: { title: note.title, kind: note.kind, lender: note.lender } });
+  }
+  await db.insert(outcomes).values(
+    ANSWERS.map(([lender, financeType, sector, salary, decision, estimatedAmount, approvedAmount, conditions, reason, daysAgo, note]) => ({
+      lenderId: lenderId.get(lender)!,
+      financeType,
+      sector,
+      salary,
+      simah: "clean",
+      decision,
+      requestedAmount: estimatedAmount,
+      estimatedAmount,
+      approvedAmount,
+      conditions,
+      reason,
+      note: note ?? null,
+      userId: people["منى"]!,
+      createdAt: at(daysAgo),
+    })),
+  );
+  return lines;
 }
 
 /** Fills an empty database with the demo deals, dated relative to `now` so the map always looks alive. */
@@ -618,5 +687,5 @@ export async function seedDemo(db: Db, now: Date): Promise<void> {
       await db.insert(waMessages).values({ clientId: null, direction: "in", waId: `demo.${stranger.phone}.${index + 1}`, phone: stranger.phone, name: stranger.name, type: "text", body: said.body, status: "received", createdAt: at, updatedAt: at });
     }
   }
-  await seedLog(db, now);
+  await seedLog(db, now, (people) => seedKnowledge(db, now, people));
 }

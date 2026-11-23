@@ -59,8 +59,11 @@ describe("reading the audit log", () => {
       for (const line of lines) expect(AUDIT_AREAS[area] as readonly string[], area).toContain(line.action);
       expect(lines.length).toBe(all.filter((line) => (AUDIT_AREAS[area] as readonly string[]).includes(line.action)).length);
     }
-    // Nothing in the demo changed a lender's terms.
-    expect((await readAudit(c.db, { area: "lenders" })).lines).toEqual([]);
+    // Nothing in the demo changed a lender's terms: the lenders' part holds the notes people wrote down.
+    const lenders = (await readAudit(c.db, { area: "lenders" })).lines;
+    expect(lenders.map((line) => line.action)).toEqual(["lender.rule_add", "lender.rule_add", "lender.rule_add"]);
+    expect(lenders.map((line) => line.who?.name)).toEqual(["منى", "خالد", "منى"]);
+    for (const line of lenders) expect(line.subject).toBeNull();
   });
 
   it("reads only what is worth a second look", async () => {
@@ -79,7 +82,7 @@ describe("reading the audit log", () => {
     const { lines } = await readAudit(c.db, { userId: mona.id, limit: 200 });
     expect(lines.length).toBeGreaterThan(10);
     for (const line of lines) expect(line.who).toEqual({ id: mona.id, name: "منى" });
-    expect(new Set(lines.map((line) => line.action))).toEqual(new Set(["login", "doc.review", "credit.report_add"]));
+    expect(new Set(lines.map((line) => line.action))).toEqual(new Set(["login", "doc.review", "credit.report_add", "lender.rule_add"]));
     // A person with nothing to their name has an empty page, not an error.
     const faisal = people.find((person) => person.name === "فيصل")!;
     expect(await readAudit(c.db, { userId: faisal.id })).toEqual({ lines: [], next: null });

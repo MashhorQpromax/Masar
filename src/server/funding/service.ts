@@ -1,5 +1,6 @@
 import "server-only";
 import { eq } from "drizzle-orm";
+import type { Standing } from "@/domain/credit";
 import type { DealInput, DealStudy, Stage } from "@/domain/deal";
 import type { Nationality } from "@/domain/eligibility";
 import { fundingRoutes, knownRecord, recordAfterSettlement, type FundingRoute, type RecordAfter } from "@/domain/funding";
@@ -23,6 +24,8 @@ export interface FundingView {
   study: DealStudy;
   /** What a lender will read on the credit record after the settlement. */
   record: RecordAfter;
+  /** The credit record in one word, as it reads today. Null when no report was read. */
+  standing: Standing | null;
   /** Every way the catalogue can fund the deal, best first. */
   routes: FundingRoute[];
   /** The route whose terms the deal holds now. Null when it holds none of them. */
@@ -39,7 +42,8 @@ function holds(input: DealInput, route: FundingRoute): boolean {
   return (Object.keys(route.terms) as (keyof FundingRoute["terms"])[]).every((key) => (input[key] ?? null) === (route.terms[key] ?? null));
 }
 
-async function load(db: Tx, args: { dealId: number; now: Date }): Promise<FundingView | null> {
+/** The same view inside a transaction that is already open, for a change that has to read it first. */
+export async function fundingIn(db: Tx, args: { dealId: number; now: Date }): Promise<FundingView | null> {
   const view = await getDeal(db as Db, args);
   if (!view) return null;
   const { deal, client, input } = view;
@@ -58,6 +62,7 @@ async function load(db: Tx, args: { dealId: number; now: Date }): Promise<Fundin
     input,
     study: view.study,
     record,
+    standing: view.credit?.analysis.standing ?? null,
     routes,
     chosen: routes.find((route) => holds(input, route))?.key ?? null,
     offerRecorded: input.bankMortgage != null || input.bankPersonal != null,
@@ -68,7 +73,7 @@ async function load(db: Tx, args: { dealId: number; now: Date }): Promise<Fundin
 
 /** The lenders that could fund a deal, each run through the deal's own numbers. */
 export async function getFunding(db: Db, args: { dealId: number; now?: Date }): Promise<FundingView | null> {
-  return load(db, { dealId: args.dealId, now: args.now ?? new Date() });
+  return fundingIn(db, { dealId: args.dealId, now: args.now ?? new Date() });
 }
 
 /**
@@ -78,7 +83,7 @@ export async function getFunding(db: Db, args: { dealId: number; now?: Date }): 
 export async function applyRoute(db: Db, args: { dealId: number; key: string; actor: Actor; now?: Date }): Promise<{ study: DealStudy }> {
   const now = args.now ?? new Date();
   return db.transaction(async (tx) => {
-    const view = await load(tx, { dealId: args.dealId, now });
+    const view = await fundingIn(tx, { dealId: args.dealId, now });
     if (!view) throw new DomainError("NOT_FOUND", `deal ${args.dealId}`);
     if (view.ended) throw new DomainError("DEAL_ENDED", `deal ${args.dealId}`);
     // An offer is what a lender actually gave. An estimate from the catalogue never overwrites it.

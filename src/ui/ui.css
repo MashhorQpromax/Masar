@@ -5618,6 +5618,595 @@
     }
   }
 
+  /* ---------- Knowledge ---------- */
+  /* What lenders answered and what people wrote down on one side, a new note on the other. */
+  .know {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) clamp(320px, 30%, 380px);
+    align-items: start;
+    gap: 16px;
+  }
+  .know-main {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+    gap: 16px;
+    min-width: 0;
+    container-type: inline-size;
+  }
+  /* What was answered and what holds for every lender take the whole width. A lender's own notes sit two abreast. */
+  .know-main > .know-answers,
+  .know-main > .know-group[data-every],
+  .know-main > .empty {
+    grid-column: 1 / -1;
+  }
+  .know-jump {
+    display: none;
+  }
+  .know-sum {
+    font-size: 22px;
+    font-weight: 700;
+    line-height: 1.5;
+  }
+  .know-main > .tile {
+    animation: rise 0.7s var(--ease-out) backwards;
+  }
+  .know-main > .tile:nth-child(2) {
+    animation-delay: 0.08s;
+  }
+  .know-main > .tile:nth-child(n + 3) {
+    animation-delay: 0.16s;
+  }
+  .know-side {
+    position: sticky;
+    top: 20px;
+    display: grid;
+    gap: 14px;
+    padding: 22px 24px 24px;
+    max-height: calc(100dvh - 132px);
+    overflow-y: auto;
+    animation: rise 0.7s 0.12s var(--ease-out) backwards;
+  }
+  .know-answers {
+    padding: 22px 26px 12px;
+  }
+  .know-top {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px 16px;
+    min-height: 44px;
+  }
+  .know-kinds {
+    display: inline-flex;
+    gap: 4px;
+    padding: 4px;
+    border-radius: 16px;
+    background: var(--color-ground);
+  }
+  .know-kinds a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 36px;
+    padding: 0 16px;
+    border-radius: 12px;
+    font-size: 14px;
+    color: var(--color-body);
+    transition:
+      background 0.2s,
+      color 0.2s;
+  }
+  .know-kinds a[aria-current] {
+    background: var(--color-navy);
+    font-weight: 500;
+    color: #fff;
+  }
+  .know-none {
+    max-width: 52ch;
+    padding: 14px 0 18px;
+    font-size: 15px;
+    line-height: 1.9;
+    color: var(--color-body);
+  }
+  .answer {
+    display: grid;
+    grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 6px 20px;
+    padding: 16px 0;
+    animation: rise 0.6s var(--ease-out) backwards;
+  }
+  .answer + .answer {
+    border-top: 1px solid var(--color-line);
+  }
+  .answer:nth-child(2) {
+    animation-delay: 0.06s;
+  }
+  .answer:nth-child(3) {
+    animation-delay: 0.12s;
+  }
+  .answer:nth-child(n + 4) {
+    animation-delay: 0.18s;
+  }
+  .answer-who b {
+    display: block;
+    font-size: 18px;
+    font-weight: 700;
+    line-height: 1.5;
+  }
+  .answer-who small {
+    display: block;
+    font-size: 13.5px;
+    color: var(--color-body);
+  }
+  /* A stop for each answer: lit for a yes, an empty ring for a no. */
+  .answer-stops {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 7px;
+  }
+  .answer-stops i {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    border: 2.5px solid var(--color-coral);
+    animation: pop 0.5s var(--ease-spring) backwards;
+  }
+  .answer-stops i[data-yes] {
+    border-color: var(--color-sun);
+    background: var(--color-sun);
+  }
+  .answer-bar {
+    display: flex;
+    gap: 4px;
+    height: 12px;
+  }
+  .answer-bar i {
+    min-width: 6px;
+    border-radius: 999px;
+    background: var(--color-coral-soft);
+  }
+  .answer-bar i[data-yes] {
+    background: var(--color-sun);
+  }
+  .answer-ratio {
+    min-width: 11ch;
+    font-size: 13.5px;
+    font-weight: 500;
+    color: var(--color-navy);
+    text-align: left;
+    white-space: nowrap;
+  }
+  .answer-chips {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .answer-chips li {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 3px 12px;
+    border-radius: 999px;
+    background: var(--color-ground);
+    font-size: 12.5px;
+    line-height: 1.8;
+    color: var(--color-navy);
+  }
+  .answer-chips li[data-no] {
+    background: var(--color-coral-soft);
+    color: var(--color-coral-ink);
+  }
+  .answer-chips b {
+    font-weight: 700;
+  }
+  .know-latest {
+    border-top: 1px solid var(--color-line);
+  }
+  .know-latest[open] {
+    padding: 6px 0 10px;
+  }
+  .latest {
+    display: grid;
+    grid-template-columns: 76px minmax(0, 1.2fr) 112px minmax(0, 1fr);
+    align-items: center;
+    gap: 2px 14px;
+    padding: 12px 0;
+    font-size: 14px;
+    animation: rise 0.45s var(--ease-out) backwards;
+  }
+  .latest + .latest {
+    border-top: 1px solid var(--color-line);
+  }
+  .latest time {
+    font-size: 13px;
+    color: var(--color-muted);
+  }
+  .latest-who b {
+    display: block;
+    font-weight: 600;
+    line-height: 1.5;
+  }
+  .latest-who small,
+  .latest-sums small {
+    display: block;
+    font-size: 12.5px;
+    color: var(--color-muted);
+  }
+  .latest-sums {
+    text-align: left;
+  }
+  .latest-sums > .num {
+    font-size: 16px;
+    font-weight: 700;
+  }
+  .latest-said {
+    grid-column: 2 / -1;
+    font-size: 13px;
+    line-height: 1.7;
+    color: var(--color-body);
+  }
+  /* What a lender answered, in one word. */
+  .decision {
+    justify-self: start;
+    padding: 3px 12px;
+    border-radius: 999px;
+    background: var(--color-sun-soft);
+    font-size: 12.5px;
+    font-weight: 500;
+    color: var(--color-sun-ink);
+    white-space: nowrap;
+  }
+  .decision[data-decision="approved"] {
+    background: var(--color-sun);
+    color: var(--color-navy);
+  }
+  .decision[data-decision="rejected"] {
+    background: var(--color-coral-soft);
+    color: var(--color-coral-ink);
+  }
+  .know-group {
+    padding: 22px 26px 8px;
+  }
+  .know-note {
+    display: grid;
+    grid-template-columns: 76px minmax(0, 1fr) auto;
+    align-items: start;
+    gap: 4px 14px;
+    padding: 14px 0;
+    border-top: 1px solid var(--color-line);
+  }
+  /* The kind of a note. A warning is the one that must not be missed. */
+  .know-kind {
+    justify-self: start;
+    margin-top: 2px;
+    padding: 2px 11px;
+    border-radius: 999px;
+    background: var(--color-ground);
+    font-size: 12.5px;
+    font-weight: 500;
+    color: var(--color-navy);
+    white-space: nowrap;
+  }
+  .know-kind[data-kind="exception"],
+  .know-kind[data-kind="tip"] {
+    background: var(--color-sun-soft);
+    color: var(--color-sun-ink);
+  }
+  .know-kind[data-kind="warning"] {
+    background: var(--color-coral-soft);
+    color: var(--color-coral-ink);
+  }
+  .know-text b {
+    display: block;
+    font-size: 16px;
+    font-weight: 600;
+    line-height: 1.6;
+  }
+  .know-text p {
+    max-width: 68ch;
+    font-size: 14px;
+    line-height: 1.85;
+    color: var(--color-body);
+  }
+  .know-text small {
+    display: block;
+    margin-top: 2px;
+    font-size: 12.5px;
+    color: var(--color-muted);
+  }
+  .know-text small:empty {
+    display: none;
+  }
+  .know-remove {
+    display: grid;
+    justify-items: end;
+    gap: 6px;
+  }
+  .know-remove > summary {
+    display: inline-flex;
+    align-items: center;
+    min-height: 36px;
+    padding: 0 10px;
+    border-radius: 10px;
+    font-size: 13px;
+    color: var(--color-muted);
+    cursor: pointer;
+    list-style: none;
+  }
+  .know-remove > summary::-webkit-details-marker {
+    display: none;
+  }
+  .know-remove > summary:hover,
+  .know-remove[open] > summary {
+    color: var(--color-coral-ink);
+  }
+  .know-remove .btn {
+    min-height: 40px;
+    font-size: 13.5px;
+    color: var(--color-coral-ink);
+    animation: rise 0.3s var(--ease-out);
+  }
+  .know-form {
+    display: grid;
+    gap: 14px;
+  }
+  .know-form .seg {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+  }
+  .know-form .seg button {
+    padding: 0 6px;
+  }
+  .know-hint {
+    min-height: 1.8em;
+    font-size: 13px;
+    line-height: 1.8;
+    color: var(--color-muted);
+  }
+  .know-form .note-text {
+    width: 100%;
+    min-height: 96px;
+  }
+  .know-save {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px 16px;
+  }
+  /* The same knowledge on a deal, for the lenders of its best route: how they answered, then what was written down. */
+  .tile--learned {
+    padding-bottom: 12px;
+    container-type: inline-size;
+  }
+  .learned-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+  }
+  .learned-top .note-link {
+    font-size: 13.5px;
+    font-weight: 500;
+  }
+  .learned {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(420px, 100%), 1fr));
+    align-items: start;
+    gap: 0 44px;
+  }
+  .learned .know-note:first-child {
+    border-top: 0;
+  }
+  .route-notes li[data-learned]::before {
+    background: var(--color-navy);
+    box-shadow: none;
+  }
+  /* What lenders answered for this client, and the place to write the next answer down. */
+  .tile--ruling {
+    display: grid;
+    gap: 6px;
+    container-type: inline-size;
+  }
+  .ruling-none {
+    max-width: 64ch;
+    font-size: 15px;
+    line-height: 1.9;
+    color: var(--color-body);
+  }
+  .ruling-new > summary {
+    display: inline-flex;
+    align-items: center;
+    min-height: 48px;
+    margin-top: 8px;
+    padding: 0 22px;
+    border-radius: 16px;
+    background: var(--color-ground);
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--color-navy);
+    cursor: pointer;
+    list-style: none;
+    transition:
+      background 0.2s,
+      transform 0.2s var(--ease-spring);
+  }
+  .ruling-new > summary::-webkit-details-marker {
+    display: none;
+  }
+  .ruling-new > summary:hover {
+    background: #e3e7ec;
+    transform: translateY(-1px);
+  }
+  .ruling-new[open] > summary {
+    display: none;
+  }
+  .ruling-form {
+    display: grid;
+    gap: 16px;
+    max-width: 720px;
+    margin-top: 10px;
+    padding-top: 18px;
+    border-top: 1px solid var(--color-line);
+    animation: rise 0.45s var(--ease-out) backwards;
+  }
+  .rulings + .ruling-new > .ruling-form,
+  .ruling-none + .ruling-new > .ruling-form {
+    margin-top: 12px;
+  }
+  .ruling-main,
+  .ruling-more {
+    display: grid;
+    align-content: start;
+    gap: 16px;
+    min-width: 0;
+  }
+  .ruling-pair {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+    gap: 14px 18px;
+  }
+  .ruling-asks {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+  }
+  .ruling-asks legend {
+    margin-bottom: 8px;
+    padding: 0;
+  }
+  /* What the lender asked for: tap each one that applies. */
+  .ask-chip {
+    position: relative;
+    display: inline-flex;
+    cursor: pointer;
+  }
+  .ask-chip input {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer;
+  }
+  .ask-chip span {
+    display: inline-flex;
+    align-items: center;
+    min-height: 40px;
+    padding: 0 15px;
+    border: 1.5px solid transparent;
+    border-radius: 999px;
+    background: var(--color-ground);
+    font-size: 14px;
+    color: var(--color-body);
+    transition:
+      background 0.2s,
+      color 0.2s,
+      transform 0.2s var(--ease-spring);
+  }
+  .ask-chip input:checked + span {
+    background: var(--color-navy);
+    font-weight: 500;
+    color: #fff;
+    transform: scale(1.03);
+  }
+  .ask-chip input:focus-visible + span {
+    border-color: var(--color-navy);
+    outline: 3px solid var(--color-sun);
+    outline-offset: 2px;
+  }
+  .ruling-save {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px 18px;
+  }
+  .ruling-save .said {
+    flex-basis: 100%;
+  }
+  /* On a wide tile the answer is on one side and what the lender asked for on the other. */
+  @container (min-width: 1200px) {
+    .ruling-form {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      column-gap: 48px;
+      max-width: none;
+    }
+    .ruling-save {
+      grid-column: 1 / -1;
+    }
+  }
+  @container (max-width: 760px) {
+    .know-main > .know-group {
+      grid-column: 1 / -1;
+    }
+  }
+  @container (max-width: 640px) {
+    .answer {
+      grid-template-columns: minmax(0, 1fr) auto;
+    }
+    .answer-who {
+      grid-column: 1 / -1;
+    }
+    .latest {
+      grid-template-columns: minmax(0, 1fr) auto;
+    }
+    .latest time {
+      grid-column: 1 / -1;
+    }
+    .latest-sums {
+      grid-column: 1 / -1;
+      text-align: start;
+    }
+    .latest-sums small {
+      display: inline;
+      margin-inline-start: 8px;
+    }
+    .latest-said {
+      grid-column: 1 / -1;
+    }
+    .ruling-pair {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+  @media (max-width: 1000px) {
+    .know {
+      display: block;
+    }
+    .know-jump {
+      display: inline-flex;
+    }
+    .know-side {
+      position: static;
+      max-height: none;
+      margin-top: 16px;
+    }
+  }
+  @media (max-width: 560px) {
+    .know-answers,
+    .know-group {
+      padding-inline: 18px;
+    }
+    .know-side {
+      padding: 18px 18px 20px;
+    }
+    .know-note {
+      grid-template-columns: minmax(0, 1fr) auto;
+    }
+    .know-kind {
+      grid-column: 1 / -1;
+    }
+    .know-top {
+      align-items: flex-start;
+      flex-direction: column;
+    }
+  }
+
   /* ---------- Small screens ---------- */
   @media (max-width: 900px) {
     .page {

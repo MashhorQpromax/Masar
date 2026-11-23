@@ -22,7 +22,7 @@ export const AUDIT_AREAS = {
   deals: ["deal.save", "deal.stage", "deal.route"],
   papers: ["doc.upload", "doc.remove", "doc.move", "doc.review", "doc.add", "doc.drop", "doc.open"],
   messages: ["wa.send", "wa.handled", "link.open", "link.close"],
-  lenders: ["lender.product_update"],
+  lenders: ["lender.product_update", "lender.rule_add", "lender.rule_archive", "lender.decision"],
 } as const;
 
 export type AuditArea = keyof typeof AUDIT_AREAS;
