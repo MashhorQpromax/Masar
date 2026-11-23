@@ -52,7 +52,7 @@ export async function fundingIn(db: Tx, args: { dealId: number; now: Date }): Pr
     input,
     borrower: borrowerOf(client, args.now),
     who: { nationality: (client.nationality === "non_saudi" ? "non_saudi" : "saudi") satisfies Nationality, salaryBank: client.salaryBank, record },
-    products: await listProducts(db),
+    products: await listProducts(db, { now: args.now }),
     credit: view.creditFlags,
   });
   const banks = await db.select({ code: lenders.bankCode, name: lenders.name }).from(lenders).where(eq(lenders.active, true)).orderBy(lenders.id);
@@ -97,6 +97,7 @@ export async function applyRoute(db: Db, args: { dealId: number; key: string; ac
       mortgage: route.mortgage ? { lender: route.mortgage.product.lenderName, product: route.mortgage.product.name, amount: route.mortgage.amount } : null,
       personal: route.personal ? { lender: route.personal.product.lenderName, product: route.personal.product.name, amount: route.personal.amount } : null,
       verified: route.verified,
+      eligibility: route.eligibility,
     });
     return { study };
   });

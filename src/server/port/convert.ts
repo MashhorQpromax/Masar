@@ -329,6 +329,9 @@ export function convert(legacy: LegacyData, args: { now: Date }): Ported {
     ];
   });
 
+  const marked = products.filter((product) => product.verifiedAt != null).length;
+  if (marked) note("products", null, `${marked} products were marked as confirmed in the old system, with no source kept for any term; here a term counts as confirmed only with its source, so their terms come over unconfirmed and are confirmed again on the lenders page`);
+
   const lenderRules = tables.lender_rules.flatMap((row) => {
     const id = idOf(row);
     const lenderId = int(row.lender_id);

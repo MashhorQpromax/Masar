@@ -3002,6 +3002,132 @@
     margin-top: -8px;
     padding-bottom: 14px;
   }
+  /* Where a product's terms come from. A term with no source stands out; a confirmed one rests. */
+  .sources {
+    display: grid;
+    gap: 14px;
+    padding: 18px 0 20px;
+    border-top: 1px solid var(--color-line);
+    container-type: inline-size;
+  }
+  .sources-title {
+    font-size: 15px;
+    font-weight: 600;
+  }
+  .source-list {
+    display: grid;
+    gap: 10px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .source {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+    gap: 4px 12px;
+    padding: 12px 16px;
+    border-radius: 14px;
+    background: var(--color-ground);
+    animation: rise 0.4s var(--ease-out) backwards;
+  }
+  .source[data-state="expired"] {
+    background: var(--color-sun-soft);
+  }
+  .source-text {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+  }
+  .source-what {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 2px 10px;
+    font-size: 14px;
+  }
+  .source-what b {
+    font-weight: 600;
+  }
+  .source-ref {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    color: var(--color-body);
+  }
+  a.source-ref {
+    white-space: normal;
+  }
+  .source-terms {
+    font-size: 13.5px;
+    line-height: 1.8;
+    color: var(--color-body);
+  }
+  .source small {
+    font-size: 12.5px;
+    color: var(--color-muted);
+  }
+  .source[data-state="expired"] small {
+    font-weight: 500;
+    color: var(--color-sun-ink);
+  }
+  .sources-bare,
+  .sources-say {
+    font-size: 13.5px;
+    line-height: 1.8;
+    color: var(--color-body);
+  }
+  .sources-bare b {
+    margin-inline-end: 10px;
+    font-weight: 600;
+    color: var(--color-sun-ink);
+  }
+  .confirm {
+    display: grid;
+    gap: 16px;
+    padding-top: 4px;
+  }
+  .confirm-what {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: end;
+    gap: 12px 16px;
+  }
+  /* A term nobody confirmed carries a mark, so the eye finds what is left to do. */
+  .confirm .ask-chip[data-open] span::before {
+    content: "";
+    width: 6px;
+    height: 6px;
+    margin-inline-end: 8px;
+    border-radius: 50%;
+    background: var(--color-sun);
+    box-shadow: 0 0 0 1px var(--color-sun-ink);
+  }
+  .confirm .ask-chip[data-open] input:checked + span::before {
+    background: #fff;
+    box-shadow: none;
+  }
+  .chip-all {
+    display: inline-flex;
+    align-items: center;
+    min-height: 38px;
+    padding: 0 12px;
+    border-radius: 999px;
+    font-size: 13.5px;
+    font-weight: 500;
+    color: var(--color-navy);
+    text-decoration: underline;
+    text-underline-offset: 4px;
+    cursor: pointer;
+  }
+  .chip-all[aria-pressed="true"] {
+    color: var(--color-muted);
+  }
+  @container (max-width: 520px) {
+    .confirm-what {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+
   /* Adding is the rare act on this page, so its row speaks lower than the products above it. */
   .product-add {
     display: inline-flex;

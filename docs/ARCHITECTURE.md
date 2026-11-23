@@ -253,7 +253,8 @@ The catalogue is kept on `/lenders` by whoever holds `lender.manage` (the manage
 
 - `addLender` adds a bank or a finance company by its name. A name the list already holds is refused whatever its spelling (`foldText`), and the refusal names the lender as the list writes it (`LENDER_KNOWN`). A bank also becomes a bank a salary can be paid into: its code is the one its name speaks of (`bankCodeIn`, so "البنك العربي الوطني" is `anb`), or `bank_` and its number when the name speaks of none or the code is taken.
 - `addProduct` adds a product to a lender: its kind (personal, mortgage, cars, businesses: `PRODUCT_KINDS`), what it is called, who it is given to (sectors, nationalities, the youngest age) and its terms. The share of a property's value is kept for a mortgage only. From then on every deal and every estimate is matched against it.
-- `updateProductTerms` corrects the terms, and with a `scope` also the name and who the product is given to. It writes nothing when nothing changed, and a product marked confirmed takes the day as the day it was confirmed.
+- `updateProductTerms` corrects the terms, and with a `scope` also the name and who the product is given to. It writes nothing when nothing changed. A source confirmed the value that stood, so every term whose value changes goes back to unconfirmed, and the answer names those terms.
+- `confirmTerms` and `withdrawTerms` say where a term comes from, and take that back. They are the next section.
 - `setProductActive` stops a product and brings it back. Nothing in the catalogue is deleted: the old system had a box for a product in use and no deletion either, and a lender's notes and the decisions it gave stay readable. A stopped product is matched against no client. A lender is never stopped itself: with no running product it is out of every calculation and out of sight of everyone but its keeper, who still sees it with its stopped products and can add to it.
 
 `listCatalogue` reads the lenders with their products. Its plain reading is what the office works with: running products, and the lenders that have one. With `stopped: true` it is the keeper's reading: stopped products and lenders with none as well.
@@ -263,6 +264,27 @@ Input is checked at the edge (`src/server/lenders/input.ts`): a name is trimmed 
 The old system did all of this in one action (`saveProduct`), which also created a lender typed beside a new product. Three things differ on purpose. A lender is added on its own and a twin is refused, where the old form made a second lender of the same name. Nothing is worked out again for open clients after a change, because the rebuild matches on read and stores no answer. And the free note a product had is not asked for: what the office learns about a lender is a note on the knowledge page.
 
 Not built, and the old system did not have them either: renaming a lender, moving a product to another kind or lender, and merging two lenders entered twice under different names.
+
+## The strict reading
+
+A lender's term is a claim about a lender. Until someone checks it against a source it is not known, whichever way it points, and no result given to a client rests on it. This is the first phase of the advanced roadmap, and it sits on top of the engines above without changing a number they produce.
+
+**Where a term comes from** (`src/domain/eligibility/terms.ts`). A product has twelve terms (`TERMS`): the eight that decide whether the lender takes the client (`CONDITION_TERMS`: salary, sector, nationality, age, service, salary transfer, late payments, what it does after a paid default) and the four that decide how much and at what cost (amount, tenor, share of the property's value, margin). `TERM_FIELDS` says which stored fields each term speaks for. A source is a paper the lender issued, a page of its site, or what one of its employees said (`SOURCE_KINDS`); the first two are written, the last is verbal (`strengthOf`). What the office saw a lender decide in earlier files is experience: it ranks lenders and confirms nothing, so it is not a kind of source. A confirmation is good for three months (`TERM_VALIDITY_MONTHS`) from the day the source was checked, counted in Riyadh days. `termStanding` answers confirmed, expired or unconfirmed for a term as of a day.
+
+**Keeping it** (`masar.term_sources`, one row per product and term). `confirmTerms` writes the source beside every term it speaks for; confirming a term again replaces what confirmed it, and the audit log keeps both. It refuses a source that names nothing, a site with no address, a day ahead, a day so old that the confirmation would be born expired (`sourceProblem`, answered as `SOURCE_REFUSED` with the reason), a term the kind of product does not have, and confirming what a lender does after a paid default while nobody wrote it down (`TERM_VALUE_MISSING`). Only `lender.confirm` may confirm or withdraw, and only the manager holds it. A product's `verified` is worked out: every one of its terms can be relied on today. The old `verified_at` column is kept and read by nothing: the old system's mark came with no source, so the move reports how many products carried it and brings every term over unconfirmed.
+
+**Reading an answer** (`src/domain/eligibility/strict.ts`). The engines still answer each condition with pass, warn or fail from the stored values. `findingOf` asks of every answer whether it can be relied on, by the rule of its code (`CHECK_RULES`, and `ROUTE_RULES` for a route): who sets the condition (the regulator, the market, this lender, or nobody when it is a fact about the client), which term it rests on, and whether a warn is something the client has to do. An answer on a term that is unconfirmed or expired is unknown and keeps which way the stored value leans. A fact the file lacks is unknown and never counts as met. A regulatory or a market condition needs no lender to confirm it. `eligibilityOf` gives one of four results:
+
+- `eligible`: every condition that could be checked is met, on confirmed terms. The lender still decides.
+- `conditional`: the client has something clear to do first.
+- `not_eligible`: a confirmed condition stands in the way. No calculation overrides it.
+- `needs_verification`: a fact is missing or a term is unconfirmed, so no reliable answer exists.
+
+A route carries the same reading (`eligibility`, `doubts`, `blockers`, `strength`, `blockedAsWritten`), and among routes that close, one with a reliable answer is listed before one without (`eligibilityRank`). Two lenders that both want the salary refuse for certain only when both their salary terms are confirmed.
+
+**Seeing it.** `/lenders` shows under each product its sources, each with the terms it speaks for and the day it stops being good, the terms nobody confirmed, and for the manager the form that confirms them. The demonstration never shows a real lender's term as confirmed: `src/server/demo/lenders.ts` adds two lenders named as examples, with made-up terms and sources that say so, and every result of the strict reading is seen through them.
+
+`tests/domain/strict.examples.test.ts` holds the worked examples, `tests/server/lenders.test.ts` the keeping of sources, `tests/server/funding.test.ts` one deal's route through all four results, and `tests/server/demo.test.ts` what the demonstration shows.
 
 ## What the office knows about lenders
 

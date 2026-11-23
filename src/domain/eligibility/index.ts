@@ -1,4 +1,6 @@
 export * from "./types";
+export * from "./terms";
+export * from "./strict";
 export * from "./capacity";
 export * from "./match";
 export * from "./study";

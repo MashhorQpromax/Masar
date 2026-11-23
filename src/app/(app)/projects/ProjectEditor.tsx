@@ -1,11 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useId, useMemo, useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { ltr, millions, percent, plainMillions, plainMoney } from "@/copy/format";
 import { alertTitle, BORROWER_TYPE, criticalGaps, DEED, PROJECT_TYPE, PROJECT_VERDICT, projectError, PURPOSE } from "@/copy/project";
 import { projectStudy, type ProjectFacts } from "@/domain/project";
-import { Check, NumberField, TextField } from "@/ui/fields";
+import { Check, DayField, NumberField, TextField } from "@/ui/fields";
 import { saveProjectForm } from "./actions";
 
 const AMOUNT_MAX = 100_000_000_000;
@@ -21,21 +21,6 @@ function Choice<T extends string>({ label, value, onChange, options }: { label: 
             {options[key]}
           </button>
         ))}
-      </div>
-    </div>
-  );
-}
-
-/** A day picked from a calendar. Empty is `null`. */
-function DayField({ label, value, onChange, max }: { label: string; value: string | null; onChange: (value: string | null) => void; max: string }) {
-  const id = useId();
-  return (
-    <div className="field">
-      <label className="field-label" htmlFor={id}>
-        {label}
-      </label>
-      <div className="field-box">
-        <input id={id} type="date" className="field-input num" dir="ltr" max={max} value={value ?? ""} onChange={(event) => onChange(event.target.value || null)} />
       </div>
     </div>
   );

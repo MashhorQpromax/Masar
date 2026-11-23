@@ -75,7 +75,7 @@ export async function getAnalysis(db: Db, args: { clientId: number; now?: Date }
           readingWarnings: record.warnings.filter((warning) => warning.code !== "SUSPENSION_ASSUMED").length,
           ageMonths: record.report.reportDate ? reportAgeMonths(record.report.reportDate, riyadhDay(now)) : null,
         },
-        products: await listProducts(db),
+        products: await listProducts(db, { now }),
       })
     : null;
   return { client, deal: deal ? { id: deal.id, open: !ENDED.includes(deal.stage) } : null, record, file, salaryBank: bank?.name ?? null, analysis };

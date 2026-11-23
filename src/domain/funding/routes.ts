@@ -9,7 +9,29 @@
  * Everything in this module is pure: no database, no clock, no text in any language.
  */
 import { dealStudy, splitItems, STRUCTURES, structureOf, type Borrower, type CreditFlags, type DealInput, type DealStudy } from "../deal";
-import { capacity, matchProduct, SECTORS, type Check, type CheckStatus, type Nationality, type Product, type Profile, type Sector } from "../eligibility";
+import {
+  capacity,
+  CHECK_RULES,
+  eligibilityOf,
+  eligibilityRank,
+  findingOf,
+  leansBlocked,
+  matchProduct,
+  SECTORS,
+  UNCONFIRMED,
+  weakestStrength,
+  type Check,
+  type CheckStatus,
+  type Eligibility,
+  type Finding,
+  type Nationality,
+  type Product,
+  type Profile,
+  type Rule,
+  type Sector,
+  type SourceStrength,
+  type TermStanding,
+} from "../eligibility";
 import { CREDIT_RULES, type CreditAnalysis, type CreditReport } from "../credit";
 import { aprOf, installmentFor } from "../finance/amortization";
 import { SAMA } from "../finance/sama";
@@ -85,6 +107,16 @@ export type RouteCheck =
   | { key: "simah"; status: "fail"; code: "SETTLED_WAIT"; params: { months: number } }
   | { key: "transfer"; status: "fail"; code: "TWO_SALARY_TRANSFERS"; params: Record<string, never> };
 
+/** How each condition of a route is read strictly. The person's conditions are read as the eligibility engine reads them. */
+export const ROUTE_RULES = {
+  ...CHECK_RULES,
+  RECORD_OPEN: { basis: "market" },
+  SETTLED_ACCEPTED: { basis: "lender", term: "settled" },
+  SETTLED_UNCONFIRMED: { basis: "lender", term: "settled", notKnown: true },
+  SETTLED_WAIT: { basis: "lender", term: "settled" },
+  TWO_SALARY_TRANSFERS: { basis: "lender", term: "transfer" },
+} as const satisfies Record<RouteCheck["code"], Rule>;
+
 /** One part of a route: a product, what it would lend in this deal, and its conditions. */
 export interface RouteLeg {
   product: Product;
@@ -94,6 +126,14 @@ export interface RouteLeg {
   /** The product's ceiling is what holds the amount. */
   atCeiling: boolean;
   checks: RouteCheck[];
+  /** The same conditions, each with how far its answer can be relied on. */
+  findings: Finding<RouteCheck>[];
+}
+
+/** A condition read strictly, with the lender that sets it. */
+export interface RouteFinding {
+  lender: string;
+  finding: Finding<RouteCheck>;
 }
 
 /** The fields of a deal that a route decides. Applying a route writes exactly these. */
@@ -138,6 +178,16 @@ export interface FundingRoute {
   closes: boolean;
   /** Every product's terms were confirmed with its lender. */
   verified: boolean;
+  /** The route read strictly: a result that says whether its answers can be relied on. */
+  eligibility: Eligibility;
+  /** A term nobody confirmed would, as written, refuse the client. */
+  blockedAsWritten: boolean;
+  /** What has no reliable answer yet, each lender's term and each missing fact once. */
+  doubts: RouteFinding[];
+  /** Confirmed conditions that refuse the client. No calculation overrides them. */
+  blockers: RouteFinding[];
+  /** The weakest source the reliable answers rest on. */
+  strength: SourceStrength | null;
 }
 
 /** A flat rate as the reducing rate that gives the same installment. */
@@ -193,6 +243,14 @@ export function recordChecks(product: Product, record: RecordAfter): RouteCheck[
   return checks;
 }
 
+const strictly = (product: Product, checks: RouteCheck[]): Finding<RouteCheck>[] => checks.map((check) => findingOf(check, ROUTE_RULES[check.code], product.terms));
+
+/** Of two standings, the one that can be relied on less. */
+function weaker(a: TermStanding, b: TermStanding): TermStanding {
+  const order = (s: TermStanding) => (s.state === "unconfirmed" ? 0 : s.state === "expired" ? 1 : s.strength === "verbal" ? 2 : 3);
+  return order(a) <= order(b) ? a : b;
+}
+
 const worst = (checks: { status: CheckStatus }[]): CheckStatus =>
   checks.some((c) => c.status === "fail") ? "fail" : checks.some((c) => c.status === "warn") ? "warn" : "pass";
 
@@ -203,6 +261,8 @@ interface Args {
   products: Product[];
   credit?: CreditFlags | null;
 }
+
+const leg = (product: Product, checks: RouteCheck[]) => ({ checks, findings: strictly(product, checks) });
 
 function route(args: Args, mortgageProduct: Product | null, personalProduct: Product | null): FundingRoute {
   const { input, borrower, who } = args;
@@ -242,7 +302,7 @@ function route(args: Args, mortgageProduct: Product | null, personalProduct: Pro
         installment: Math.round(Math.min(f.mortgagePre, installmentFor(f.mortgage, f.mortgageMonths, terms.mortgageApr ?? 0, "reducing"))),
         months: f.mortgageMonths,
         atCeiling: f.mortgageCeiling != null,
-        checks: [...personChecks(mortgageProduct, borrower, who, mortgageProduct.maxTenor), ...recordChecks(mortgageProduct, who.record)],
+        ...leg(mortgageProduct, [...personChecks(mortgageProduct, borrower, who, mortgageProduct.maxTenor), ...recordChecks(mortgageProduct, who.record)]),
       }
     : null;
   const personal: RouteLeg | null = personalProduct
@@ -252,7 +312,7 @@ function route(args: Args, mortgageProduct: Product | null, personalProduct: Pro
         installment: Math.round(installmentFor(f.personal, f.personalMonths, terms.personalFlat ?? 0, "flat")),
         months: f.personalMonths,
         atCeiling: f.personalCeiling != null,
-        checks: [...personChecks(personalProduct, borrower, who, personalMonths), ...recordChecks(personalProduct, who.record)],
+        ...leg(personalProduct, [...personChecks(personalProduct, borrower, who, personalMonths), ...recordChecks(personalProduct, who.record)]),
       }
     : null;
 
@@ -271,10 +331,33 @@ function route(args: Args, mortgageProduct: Product | null, personalProduct: Pro
       notes.push({ lender: leg.product.lenderName, check });
     }
   }
+  const findings: RouteFinding[] = [mortgage, personal].flatMap((part) => (part ? part.findings.map((finding) => ({ lender: part.product.lenderName, finding })) : []));
   // A salary goes to one lender only.
   if (mortgage && personal && !oneLender && mortgage.product.requiresSalaryTransfer && personal.product.requiresSalaryTransfer) {
-    notes.push({ lender: personal.product.lenderName, check: { key: "transfer", status: "fail", code: "TWO_SALARY_TRANSFERS", params: {} } });
+    const check: RouteCheck = { key: "transfer", status: "fail", code: "TWO_SALARY_TRANSFERS", params: {} };
+    notes.push({ lender: personal.product.lenderName, check });
+    // It refuses for certain only when both lenders' salary terms are confirmed.
+    const both = weaker(mortgage.product.terms?.transfer ?? UNCONFIRMED, personal.product.terms?.transfer ?? UNCONFIRMED);
+    findings.push({ lender: personal.product.lenderName, finding: findingOf(check, ROUTE_RULES.TWO_SALARY_TRANSFERS, { transfer: both }) });
   }
+  const read = findings.map((f) => f.finding);
+  // One lender's unconfirmed term is said once, and a fact the file lacks is said once for every lender.
+  const said = new Set<string>();
+  const doubts = findings.filter(({ lender, finding }) => {
+    if (finding.outcome !== "unknown") return false;
+    const id = finding.doubt === "FACT_MISSING" ? finding.check.code : `${lender}:${finding.term}`;
+    if (said.has(id)) return false;
+    said.add(id);
+    return true;
+  });
+  const stops = new Set<string>();
+  const blockers = findings.filter(({ lender, finding }) => {
+    if (finding.outcome !== "blocked") return false;
+    const id = finding.basis === "lender" ? `${lender}:${finding.check.code}` : finding.check.code;
+    if (stops.has(id)) return false;
+    stops.add(id);
+    return true;
+  });
 
   return {
     key: [mortgageProduct ? `m${mortgageProduct.id}` : "", personalProduct ? `p${personalProduct.id}` : ""].filter(Boolean).join("-"),
@@ -288,6 +371,11 @@ function route(args: Args, mortgageProduct: Product | null, personalProduct: Pro
     study,
     closes: study.verdict === "go" || study.verdict === "tight",
     verified: [mortgageProduct, personalProduct].every((p) => !p || !!p.verified),
+    eligibility: eligibilityOf(read),
+    blockedAsWritten: leansBlocked(read),
+    doubts,
+    blockers,
+    strength: weakestStrength(read),
   };
 }
 
@@ -295,13 +383,16 @@ const monthly = (r: FundingRoute) => (r.mortgage?.installment ?? 0) + (r.persona
 
 /**
  * A route a lender would take ranks above one it would refuse, a deal that closes above one that does
- * not, then by what the client keeps. Equal routes are told apart by how little they ask of the client.
+ * not, an answer that can be relied on above one that cannot, then by what the client keeps. Equal
+ * routes are told apart by how little they ask of the client.
  */
 function better(a: FundingRoute, b: FundingRoute): number {
   const open = (r: FundingRoute) => (r.status === "fail" ? 0 : 1);
+  const reliable = (r: FundingRoute) => eligibilityRank(r.eligibility, r.blockedAsWritten);
   return (
     open(b) - open(a) ||
     Number(b.closes) - Number(a.closes) ||
+    reliable(b) - reliable(a) ||
     (open(a) ? 0 : a.refusals.length - b.refusals.length) ||
     b.study.clientNet - a.study.clientNet ||
     Number(b.oneLender) - Number(a.oneLender) ||

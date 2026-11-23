@@ -1,4 +1,4 @@
-import { boolean, index, integer, jsonb, text } from "drizzle-orm/pg-core";
+import { boolean, date, index, integer, jsonb, text, uniqueIndex } from "drizzle-orm/pg-core";
 import { at, createdAt, id, masar, money, percent } from "./_shared";
 import { users } from "./identity";
 
@@ -42,7 +42,10 @@ export const products = masar.table(
     settledDefaultWaitMonths: integer(),
     maxLtv: percent(),
     notes: text(),
-    /** When the criteria were last confirmed with the lender. Null means indicative only. */
+    /**
+     * When the whole product was marked confirmed, before each term kept its own source. Nothing reads
+     * it as a confirmation any more: `term_sources` says what can be relied on.
+     */
     verifiedAt: at(),
     active: boolean().notNull().default(true),
   },
@@ -61,3 +64,26 @@ export const lenderRules = masar.table("lender_rules", {
   active: boolean().notNull().default(true),
   createdAt: createdAt(),
 });
+
+/**
+ * What confirmed a term of a product, and when the office checked it. One row per product and term:
+ * confirming again replaces it, and the audit log keeps what stood before. A term with no row here
+ * is unconfirmed, whatever its value says.
+ */
+export const termSources = masar.table(
+  "term_sources",
+  {
+    id: id(),
+    productId: integer()
+      .notNull()
+      .references(() => products.id, { onDelete: "cascade" }),
+    term: text().notNull(),
+    kind: text().notNull(),
+    reference: text().notNull(),
+    /** The day the office checked the source, as a day in Riyadh. */
+    confirmedOn: date({ mode: "string" }).notNull(),
+    userId: integer().references(() => users.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex("term_sources_product_term_idx").on(t.productId, t.term)],
+);

@@ -34,7 +34,6 @@ const fresh = (bank: boolean): { terms: ProductTerms; scope: ProductScope } => (
     requiresSalaryTransfer: bank,
     acceptsLateSimah: false,
     settledDefaultWaitMonths: null,
-    verified: false,
   },
   scope: { name: PRODUCT_NAME.personal, sectors: SALARIED, nationalities: ["saudi"], minAge: 21 },
 });
@@ -175,7 +174,6 @@ export function ProductForm(props: Existing | Fresh) {
         )}
       </div>
       <div className="terms-save">
-        <Check label="أكّدنا هذه الشروط مع الجهة" checked={terms.verified} onChange={(verified) => set({ verified })} />
         <button type="submit" className="btn btn--navy" disabled={busy || !complete} aria-busy={busy}>
           {adding ? "أضف المنتج" : "احفظ"}
         </button>
@@ -188,7 +186,7 @@ export function ProductForm(props: Existing | Fresh) {
           !busy && (
             <p role="status" className="said">
               <CheckIcon size={16} />
-              {adding ? "أُضيف المنتج" : "حُفظ المنتج"}
+              {adding ? "أُضيف المنتج" : answer.dropped ? "حُفظ المنتج. ما تغيّر من شروطه يحتاج تأكيداً من جديد." : "حُفظ المنتج"}
             </p>
           )
         )}

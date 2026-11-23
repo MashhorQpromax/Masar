@@ -22,7 +22,7 @@ export const AUDIT_AREAS = {
   deals: ["deal.save", "deal.stage", "deal.route"],
   papers: ["doc.upload", "doc.remove", "doc.move", "doc.review", "doc.add", "doc.drop", "doc.open"],
   messages: ["wa.send", "wa.handled", "link.open", "link.close"],
-  lenders: ["lender.add", "lender.product_add", "lender.product_update", "lender.product_switch", "lender.rule_add", "lender.rule_archive", "lender.decision"],
+  lenders: ["lender.add", "lender.product_add", "lender.product_update", "lender.product_switch", "lender.terms_confirm", "lender.terms_withdraw", "lender.rule_add", "lender.rule_archive", "lender.decision"],
 } as const;
 
 /**

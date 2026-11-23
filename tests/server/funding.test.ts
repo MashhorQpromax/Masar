@@ -1,12 +1,13 @@
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { termsOf as termsOfKind, type Product } from "@/domain/eligibility";
 import type { Connection } from "@/server/db/client";
 import { auditLog, clients, products } from "@/server/db/schema";
 import { getDeal, setDealStage } from "@/server/deals/service";
 import { roadView } from "@/server/deals/views";
 import { seedDemo } from "@/server/demo/seed";
 import { applyRoute, getFunding, setSalaryBank } from "@/server/funding/service";
-import { listCatalogue, listProducts, seedCatalogue, updateProductTerms } from "@/server/lenders/service";
+import { confirmTerms, listCatalogue, listProducts, seedCatalogue, updateProductTerms, withdrawTerms } from "@/server/lenders/service";
 import { SYSTEM } from "@/server/shared/actor";
 import { testDb } from "../helpers/db";
 
@@ -55,7 +56,6 @@ describe("a lender's terms", () => {
     requiresSalaryTransfer: p.requiresSalaryTransfer,
     acceptsLateSimah: p.acceptsLateSimah,
     settledDefaultWaitMonths: p.settledDefaultWaitMonths ?? null,
-    verified: !!p.verified,
   });
 
   it("lists the catalogue lender by lender", async () => {
@@ -65,33 +65,31 @@ describe("a lender's terms", () => {
     expect(catalogue[0]!.products.map((p) => p.financeType)).toEqual(["personal", "mortgage", "auto"]);
   });
 
-  it("records a correction, who confirmed it and when", async () => {
+  it("records a correction and names what changed", async () => {
     const product = (await listProducts(c.db)).find((p) => p.lenderName === "دار التمليك")!;
     const id = Number(product.id);
-    await updateProductTerms(c.db, { productId: id, terms: { ...termsOf(product), rate: 6.1, settledDefaultWaitMonths: 6, verified: true }, actor: SYSTEM, now });
+    const corrected = { ...termsOf(product), rate: 6.1, settledDefaultWaitMonths: 6 };
+    expect(await updateProductTerms(c.db, { productId: id, terms: corrected, actor: SYSTEM })).toEqual({ unconfirmed: [] });
     const [row] = await c.db.select().from(products).where(eq(products.id, id));
-    expect(row).toMatchObject({ rate: 6.1, settledDefaultWaitMonths: 6, verifiedAt: now });
-    const [entry] = await c.db.select().from(auditLog).where(eq(auditLog.action, "lender.product_update"));
-    expect(entry).toMatchObject({ entity: "product", entityId: id, details: { changed: ["rate", "settledDefaultWaitMonths"], verified: true } });
+    expect(row).toMatchObject({ rate: 6.1, settledDefaultWaitMonths: 6, verifiedAt: null });
+    const entries = () => c.db.select().from(auditLog).where(eq(auditLog.action, "lender.product_update"));
+    expect(await entries()).toMatchObject([{ entity: "product", entityId: id, details: { changed: ["rate", "settledDefaultWaitMonths"], unconfirmed: [] } }]);
 
-    // Saving the same terms again changes nothing. Changing a confirmed term confirms it as of that day.
-    const later = new Date(now.getTime() + 86400000);
-    await updateProductTerms(c.db, { productId: id, terms: { ...termsOf(product), rate: 6.1, settledDefaultWaitMonths: 6, verified: true }, actor: SYSTEM, now: later });
-    expect((await c.db.select().from(products).where(eq(products.id, id)))[0]!.verifiedAt).toEqual(now);
-    await updateProductTerms(c.db, { productId: id, terms: { ...termsOf(product), rate: 6.2, settledDefaultWaitMonths: 6, verified: true }, actor: SYSTEM, now: later });
-    expect((await c.db.select().from(products).where(eq(products.id, id)))[0]!.verifiedAt).toEqual(later);
+    // Saving the same terms again changes nothing and writes nothing.
+    await updateProductTerms(c.db, { productId: id, terms: corrected, actor: SYSTEM });
+    expect(await entries()).toHaveLength(1);
 
-    // Back to what the catalogue started with, unconfirmed.
-    await updateProductTerms(c.db, { productId: id, terms: termsOf(product), actor: SYSTEM, now: later });
-    expect((await c.db.select().from(products).where(eq(products.id, id)))[0]).toMatchObject({ rate: 6.4, settledDefaultWaitMonths: null, verifiedAt: null });
+    // Back to what the catalogue started with.
+    await updateProductTerms(c.db, { productId: id, terms: termsOf(product), actor: SYSTEM });
+    expect((await c.db.select().from(products).where(eq(products.id, id)))[0]).toMatchObject({ rate: 6.4, settledDefaultWaitMonths: null });
   });
 
   it("keeps the share of the property's value to mortgages, and refuses terms out of range", async () => {
     const personal = (await listProducts(c.db)).find((p) => p.financeType === "personal")!;
-    await updateProductTerms(c.db, { productId: Number(personal.id), terms: { ...termsOf(personal), maxLtv: 80 }, actor: SYSTEM, now });
+    await updateProductTerms(c.db, { productId: Number(personal.id), terms: { ...termsOf(personal), maxLtv: 80 }, actor: SYSTEM });
     expect((await c.db.select().from(products).where(eq(products.id, Number(personal.id))))[0]!.maxLtv).toBeNull();
-    await expect(updateProductTerms(c.db, { productId: Number(personal.id), terms: { ...termsOf(personal), rate: 45 }, actor: SYSTEM, now })).rejects.toMatchObject({ code: "INVALID_INPUT" });
-    await expect(updateProductTerms(c.db, { productId: 999999, terms: termsOf(personal), actor: SYSTEM, now })).rejects.toMatchObject({ code: "NOT_FOUND" });
+    await expect(updateProductTerms(c.db, { productId: Number(personal.id), terms: { ...termsOf(personal), rate: 45 }, actor: SYSTEM })).rejects.toMatchObject({ code: "INVALID_INPUT" });
+    await expect(updateProductTerms(c.db, { productId: 999999, terms: termsOf(personal), actor: SYSTEM })).rejects.toMatchObject({ code: "NOT_FOUND" });
   });
 });
 
@@ -189,6 +187,78 @@ describe("the lenders of a deal", () => {
     }
     expect((await funding("نورة")).ended).toBe(true);
     await expect(applyRoute(c.db, { dealId: ids["نورة"]!, key: view.routes[0]!.key, actor: SYSTEM, now })).rejects.toMatchObject({ code: "DEAL_ENDED" });
+  });
+
+  it("reads every route strictly: no reliable answer until its lenders' terms are confirmed with a source", async () => {
+    const valuesOf = (p: Product) => ({
+      rate: p.rate,
+      rateType: p.rateType,
+      maxAmount: p.maxAmount,
+      maxTenor: p.maxTenor,
+      maxAgeAtMaturity: p.maxAgeAtMaturity,
+      minSalary: p.minSalary,
+      minServiceMonths: p.minServiceMonths,
+      maxLtv: p.maxLtv ?? null,
+      requiresSalaryTransfer: p.requiresSalaryTransfer,
+      acceptsLateSimah: p.acceptsLateSimah,
+      settledDefaultWaitMonths: p.settledDefaultWaitMonths ?? null,
+    });
+    const paper = { kind: "lender_document", reference: "خطاب شروط التمويل، نوفمبر 2026" };
+    const rajhi = (view: Awaited<ReturnType<typeof funding>>) => view.routes.find((r) => r.mortgage?.product.lenderName === "مصرف الراجحي" && r.personal?.product.lenderName === "مصرف الراجحي")!;
+
+    // Nobody confirmed a term: every route needs checking, whatever its numbers say.
+    const before = await funding("سالم");
+    expect(before.routes.map((r) => r.eligibility)).toEqual(["needs_verification", "needs_verification", "needs_verification", "needs_verification"]);
+    const open = rajhi(before);
+    expect(open.blockers).toEqual([]);
+    expect(open.strength).toBeNull();
+    expect(open.doubts.map((d) => [d.finding.term, d.finding.doubt])).toEqual([
+      ["salary", "TERM_UNCONFIRMED"],
+      ["sector", "TERM_UNCONFIRMED"],
+      ["nationality", "TERM_UNCONFIRMED"],
+      ["age", "TERM_UNCONFIRMED"],
+      ["service", "TERM_UNCONFIRMED"],
+      ["transfer", "TERM_UNCONFIRMED"],
+      ["settled", "TERM_NOT_KNOWN"],
+    ]);
+
+    // The office asks the bank: it takes a client the day a default is paid, and gives its terms in writing.
+    const both = [open.mortgage!.product, open.personal!.product];
+    for (const product of both) {
+      await updateProductTerms(c.db, { productId: Number(product.id), terms: { ...valuesOf(product), settledDefaultWaitMonths: 0 }, actor: SYSTEM });
+      await confirmTerms(c.db, { productId: Number(product.id), input: { ...paper, terms: termsOfKind(product.financeType) }, actor: SYSTEM, now });
+    }
+    const confirmed = await funding("سالم");
+    expect(rajhi(confirmed)).toMatchObject({ eligibility: "eligible", verified: true, strength: "written", doubts: [], blockers: [] });
+    // A reliable answer is listed before the ones that still need checking.
+    expect(confirmed.routes[0]!.key).toBe(open.key);
+    expect(confirmed.routes.slice(1).every((r) => r.eligibility === "needs_verification")).toBe(true);
+
+    // What an employee said is a source too, and the answer says it rests on a word.
+    await confirmTerms(c.db, { productId: Number(both[1]!.id), input: { kind: "lender_staff", reference: "موظف خدمة العملاء في الفرع الرئيسي", terms: ["service"] }, actor: SYSTEM, now });
+    expect(rajhi(await funding("سالم"))).toMatchObject({ eligibility: "eligible", strength: "verbal" });
+
+    // Three months and a day later nobody asked again: the answer is no longer one.
+    const stale = rajhi((await getFunding(c.db, { dealId: ids["سالم"]!, now: new Date("2027-02-23T09:00:00Z") }))!);
+    expect(stale.eligibility).toBe("needs_verification");
+    expect(new Set(stale.doubts.map((d) => d.finding.doubt))).toEqual(new Set(["TERM_EXPIRED"]));
+
+    // The bank now says, in writing, that it waits a year after a paid default. That is a confirmed refusal.
+    await updateProductTerms(c.db, { productId: Number(both[0]!.id), terms: { ...valuesOf(both[0]!), settledDefaultWaitMonths: 12 }, actor: SYSTEM });
+    expect(rajhi(await funding("سالم")).eligibility).toBe("needs_verification");
+    await confirmTerms(c.db, { productId: Number(both[0]!.id), input: { ...paper, terms: ["settled"] }, actor: SYSTEM, now });
+    const refused = await funding("سالم");
+    expect(rajhi(refused).eligibility).toBe("not_eligible");
+    expect(rajhi(refused).blockers.map((b) => [b.lender, b.finding.check.code, b.finding.basis])).toEqual([["مصرف الراجحي", "SETTLED_WAIT", "lender"]]);
+    expect(refused.routes.at(-1)!.key).toBe(open.key);
+    await expect(applyRoute(c.db, { dealId: ids["سالم"]!, key: open.key, actor: SYSTEM, now })).rejects.toMatchObject({ code: "ROUTE_REFUSED" });
+
+    // Back to a catalogue nobody confirmed.
+    for (const product of both) {
+      await withdrawTerms(c.db, { productId: Number(product.id), terms: termsOfKind(product.financeType), actor: SYSTEM });
+      await updateProductTerms(c.db, { productId: Number(product.id), terms: valuesOf(product), actor: SYSTEM });
+    }
+    expect((await listProducts(c.db)).every((p) => !p.verified && p.settledDefaultWaitMonths == null)).toBe(true);
   });
 
   it("answers nothing for a deal that does not exist", async () => {

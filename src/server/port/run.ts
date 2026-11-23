@@ -80,6 +80,7 @@ const TARGET_TABLES: PgTable[] = [
   t.passkeys,
   t.lenders,
   t.products,
+  t.termSources,
   t.lenderRules,
   t.clients,
   t.obligations,
@@ -213,6 +214,8 @@ async function write(tx: Tx, ported: Ported, query: LegacyQuery, marks: Record<s
     [t.passkeys, ported.passkeys.length],
     [t.lenders, ported.lenders.length],
     [t.products, ported.products.length],
+    // The old system kept no source for any term, so every term comes over unconfirmed.
+    [t.termSources, 0],
     [t.lenderRules, ported.lenderRules.length],
     [t.clients, ported.clients.length],
     [t.obligations, ported.obligations.length],

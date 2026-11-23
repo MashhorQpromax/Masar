@@ -112,7 +112,10 @@ describe("the detail beside an event", () => {
     expect(auditDetail("wa.handled", { messages: 3 })).toBe("3 رسائل");
     expect(auditDetail("link.open", { days: 14 })).toBe("صالح 14 يوماً");
     expect(auditDetail("link.close", { links: 2 })).toBe("رابطان");
-    expect(auditDetail("lender.product_update", { changed: ["maxDbr", "minSalary"], verified: true })).toBe("شرطان، مؤكدة");
+    expect(auditDetail("lender.product_update", { changed: ["rate", "minSalary"], unconfirmed: [] })).toBe("شرطان");
+    expect(auditDetail("lender.product_update", { changed: ["rate", "minSalary", "name"], unconfirmed: ["salary", "rate"] })).toBe("3 شروط، سقط تأكيد شرطان");
+    // What an older build wrote beside the event confirms nothing.
+    expect(auditDetail("lender.product_update", { changed: ["rate"], verified: true })).toBe("شرط واحد");
     expect(eventsCount(1)).toBe("حدث واحد");
     expect(eventsCount(2)).toBe("حدثان");
     expect(eventsCount(7)).toBe("7 أحداث");
@@ -139,8 +142,16 @@ describe("the detail beside an event", () => {
     expect(auditDetail("lender.add", { name: "بنك الخليج", type: "bank" })).toBe("بنك، بنك الخليج");
     expect(auditDetail("lender.add", { name: "شركة اليسر", type: "finance_company" })).toBe("شركة تمويل، شركة اليسر");
     expect(auditDetail("lender.add", { name: "بنك الخليج", type: "something" })).toBe("بنك الخليج");
-    expect(auditDetail("lender.product_add", { lender: "بنك الخليج", financeType: "mortgage", verified: true })).toBe(`بنك الخليج، ${FINANCE_TYPE.mortgage}، مؤكدة`);
-    expect(auditDetail("lender.product_add", { lender: "بنك الخليج", financeType: "personal", verified: false })).toBe(`بنك الخليج، ${FINANCE_TYPE.personal}`);
+    expect(auditDetail("lender.product_add", { lender: "بنك الخليج", financeType: "mortgage" })).toBe(`بنك الخليج، ${FINANCE_TYPE.mortgage}`);
+    expect(auditDetail("lender.product_add", { lender: "بنك الخليج", financeType: "personal", verified: true })).toBe(`بنك الخليج، ${FINANCE_TYPE.personal}`);
+    expect(auditAction("lender.terms_confirm")).toBe("تأكيد شروط منتج");
+    expect(auditAction("lender.terms_withdraw")).toBe("سحب تأكيد شرط");
+    expect(strip(auditDetail("lender.terms_confirm", { lender: "بنك الخليج", product: "التمويل الشخصي", terms: ["salary", "age", "rate"], kind: "lender_document", reference: "تعرفة الأفراد", confirmedOn: "2026-11-20", validUntil: "2027-02-20" }))).toBe(
+      "بنك الخليج، التمويل الشخصي، 3 شروط، مستند من الجهة، حتى 20 فبراير 2027",
+    );
+    expect(auditDetail("lender.terms_confirm", { lender: "بنك الخليج", terms: ["rate"], kind: "hearsay" })).toBe("بنك الخليج، شرط واحد");
+    expect(auditDetail("lender.terms_confirm", {})).toBe("");
+    expect(auditDetail("lender.terms_withdraw", { lender: "بنك الخليج", product: "التمويل الشخصي", terms: ["rate", "amount"] })).toBe("بنك الخليج، التمويل الشخصي، شرطان");
     expect(auditDetail("lender.product_add", { lender: "بنك الخليج", financeType: "boat" })).toBe("بنك الخليج");
     expect(auditDetail("lender.product_switch", { active: false, lender: "بنك الخليج" })).toBe("أُوقف، بنك الخليج");
     expect(auditDetail("lender.product_switch", { active: true, lender: "بنك الخليج" })).toBe("عاد يعمل، بنك الخليج");

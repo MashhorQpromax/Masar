@@ -6,7 +6,10 @@ import { getCredit } from "@/server/credit/service";
 import type { Connection } from "@/server/db/client";
 import { getDeal } from "@/server/deals/service";
 import { roadView } from "@/server/deals/views";
+import { DEMO_BANK, DEMO_COMPANY, DEMO_PAPER, DEMO_WORD, seedDemoLenders } from "@/server/demo/lenders";
 import { seedDemo } from "@/server/demo/seed";
+import { getFunding } from "@/server/funding/service";
+import { listCatalogue } from "@/server/lenders/service";
 import { riyadhDay } from "@/server/shared/clock";
 import { testDb } from "../helpers/db";
 
@@ -159,5 +162,58 @@ describe("demo credit records", () => {
       const view = (await getDeal(c.db, { dealId: d.dealId, now }))!;
       expect([view.study.capital, view.study.fee, view.study.clientNet, view.study.verdict]).toEqual([d.capital, d.fee, d.clientNet, d.verdict]);
     }
+  });
+});
+
+// Last in this file: it adds to the catalogue the deals above were read against.
+describe("the two example lenders of the demonstration", () => {
+  it("adds them once, confirmed by sources that say they are made up", async () => {
+    const before = await listCatalogue(c.db, { now });
+    await seedDemoLenders(c.db, now);
+    await seedDemoLenders(c.db, now);
+    const after = await listCatalogue(c.db, { now });
+    const added = after.filter((lender) => !before.some((known) => known.id === lender.id));
+    expect(added.map((lender) => [lender.name, lender.type, lender.products.map((product) => product.financeType)])).toEqual([
+      [DEMO_BANK, "bank", ["personal", "mortgage"]],
+      [DEMO_COMPANY, "finance_company", ["personal", "mortgage"]],
+    ]);
+    const references = added.flatMap((lender) => lender.products).flatMap((product) => Object.values(product.terms!).flatMap((standing) => (standing.state === "unconfirmed" ? [] : [standing.source.reference])));
+    expect(new Set(references)).toEqual(new Set([DEMO_PAPER, DEMO_WORD]));
+    // One confirmation is shown as having run out, so its product is no longer confirmed as a whole.
+    const mortgage = added[0]!.products[1]!;
+    expect(mortgage.terms!.rate).toMatchObject({ state: "expired" });
+    expect(mortgage.verified).toBe(false);
+    expect(added[0]!.products[0]!.verified).toBe(true);
+    expect(added[1]!.products[0]!.terms!.salary).toMatchObject({ state: "confirmed", strength: "verbal" });
+  });
+
+  it("never shows a real lender's term as confirmed", async () => {
+    const real = (await listCatalogue(c.db, { stopped: true, now })).filter((lender) => lender.name !== DEMO_BANK && lender.name !== DEMO_COMPANY);
+    expect(real).toHaveLength(10);
+    for (const product of real.flatMap((lender) => lender.products)) {
+      expect(Object.values(product.terms!).every((standing) => standing.state === "unconfirmed"), `${product.lenderName} ${product.name}`).toBe(true);
+    }
+  });
+
+  it("lets every result of the strict reading be seen on the invented deals", async () => {
+    const { deals } = await roadView(c.db, now);
+    const seen = new Map<string, Set<string>>();
+    for (const deal of deals) {
+      const view = (await getFunding(c.db, { dealId: deal.dealId, now }))!;
+      seen.set(deal.clientName, new Set(view.routes.map((route) => route.eligibility)));
+      // A route through a real lender alone is never more than a question to ask.
+      for (const route of view.routes) {
+        const lendersOf = [route.mortgage, route.personal].flatMap((leg) => (leg ? [leg.product.lenderName] : []));
+        if (!lendersOf.some((name) => name === DEMO_BANK || name === DEMO_COMPANY)) expect(route.eligibility, `${deal.clientName} ${route.key}`).toBe("needs_verification");
+      }
+    }
+    expect(new Set([...seen.values()].flatMap((results) => [...results]))).toEqual(new Set(["eligible", "conditional", "not_eligible", "needs_verification"]));
+    // A personal deal with a clean record: one lender takes her as she is, one wants the salary moved.
+    expect(seen.get("نورة")).toEqual(new Set(["eligible", "conditional", "needs_verification"]));
+    // She paid late last month: a lender confirmed not to take late payments refuses, and no calculation overrides it.
+    expect(seen.get("ريم")).toEqual(new Set(["not_eligible", "needs_verification"]));
+    // No credit record was read for him: even confirmed terms cannot answer for a fact that is missing.
+    expect([...seen.get("فهد")!]).not.toContain("eligible");
+    expect([...seen.get("فهد")!]).not.toContain("conditional");
   });
 });

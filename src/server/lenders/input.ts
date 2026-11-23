@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { PRODUCT_KINDS, SECTORS, type Nationality, type Sector } from "@/domain/eligibility";
+import { PRODUCT_KINDS, REFERENCE_MAX, REFERENCE_MIN, SECTORS, SOURCE_KINDS, TERMS, type Nationality, type Sector } from "@/domain/eligibility";
 
 /** The terms of a product that a person may correct, with the limits the deal engine accepts. */
 export const productTermsSchema = z.object({
@@ -16,8 +16,6 @@ export const productTermsSchema = z.object({
   acceptsLateSimah: z.boolean(),
   /** Months the lender waits after a default was paid. 0 takes the client at once. Null: nobody has confirmed it. */
   settledDefaultWaitMonths: z.number().int().min(0).max(120).nullable(),
-  /** Someone confirmed these terms with the lender. */
-  verified: z.boolean(),
 });
 
 export type ProductTerms = z.infer<typeof productTermsSchema>;
@@ -57,3 +55,21 @@ export const newLenderSchema = z.object({
     .pipe(z.string().min(2).max(80)),
   type: z.enum(["bank", "finance_company"]),
 });
+
+/** What confirms some of a product's terms: which terms, the kind of source, and what names it. */
+export const termSourceSchema = z.object({
+  terms: z.array(z.enum(TERMS)).min(1).refine(each),
+  kind: z.enum(SOURCE_KINDS),
+  reference: z
+    .string()
+    .max(REFERENCE_MAX * 4)
+    .transform((value) => value.replace(/\s+/g, " ").trim())
+    .pipe(z.string().min(REFERENCE_MIN).max(REFERENCE_MAX)),
+  /** The day the source was checked. Left out, it is today. */
+  confirmedOn: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .optional(),
+});
+
+export type TermSourceInput = z.infer<typeof termSourceSchema>;

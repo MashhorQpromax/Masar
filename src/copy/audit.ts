@@ -5,10 +5,10 @@ import { DECISIONS, RULE_KINDS, type Decision, type RuleKind } from "@/domain/kn
 import { ROLE } from "./auth";
 import { STAGE } from "./deal";
 import { PAPER_STATUS, paperLabel } from "./documents";
-import { counted, dayFull, dayLong, days, ltr, type CountForms } from "./format";
+import { counted, dayFull, dayLong, dayOfIso, days, ltr, type CountForms } from "./format";
 import { FINANCE_TYPE } from "./eligibility";
 import { DECISION, PART, RULE_KIND } from "./knowledge";
-import { LENDER_TYPE } from "./lenders";
+import { LENDER_TYPE, SOURCE_KIND } from "./lenders";
 import { MESSAGE_KIND } from "./messages";
 
 export const AUDIT_AREA: Record<AuditArea, string> = {
@@ -66,6 +66,8 @@ const AUDIT_ACTION: Record<AuditAction, string> = {
   "lender.product_add": "إضافة منتج",
   "lender.product_update": "تعديل منتج",
   "lender.product_switch": "إيقاف منتج أو إعادته",
+  "lender.terms_confirm": "تأكيد شروط منتج",
+  "lender.terms_withdraw": "سحب تأكيد شرط",
   "lender.rule_add": "ملاحظة عن جهة",
   "lender.rule_archive": "حذف ملاحظة عن جهة",
   "lender.decision": "تسجيل قرار جهة",
@@ -219,11 +221,18 @@ export function auditDetail(action: string, details: Record<string, unknown> | n
     case "lender.add":
       return joined([(d.type === "bank" || d.type === "finance_company") && LENDER_TYPE[d.type], text(d.name)]);
     case "lender.product_add":
-      return joined([text(d.lender), typeof d.financeType === "string" && d.financeType in FINANCE_TYPE && FINANCE_TYPE[d.financeType as keyof typeof FINANCE_TYPE], d.verified === true && "مؤكدة"]);
+      return joined([text(d.lender), typeof d.financeType === "string" && d.financeType in FINANCE_TYPE && FINANCE_TYPE[d.financeType as keyof typeof FINANCE_TYPE]]);
     case "lender.product_switch":
       return joined([d.active === false ? "أُوقف" : d.active === true ? "عاد يعمل" : null, text(d.lender)]);
     case "lender.product_update":
-      return joined([strings(d.changed).length > 0 && counted(strings(d.changed).length, TERMS), d.verified === true && "مؤكدة"]);
+      return joined([strings(d.changed).length > 0 && counted(strings(d.changed).length, TERMS), strings(d.unconfirmed).length > 0 && `سقط تأكيد ${counted(strings(d.unconfirmed).length, TERMS)}`]);
+    case "lender.terms_confirm": {
+      const kind = text(d.kind);
+      const until = text(d.validUntil);
+      return joined([text(d.lender), text(d.product), strings(d.terms).length > 0 && counted(strings(d.terms).length, TERMS), kind && kind in SOURCE_KIND ? SOURCE_KIND[kind as keyof typeof SOURCE_KIND] : null, until && `حتى ${dayOfIso(until)}`]);
+    }
+    case "lender.terms_withdraw":
+      return joined([text(d.lender), text(d.product), strings(d.terms).length > 0 && counted(strings(d.terms).length, TERMS)]);
     case "lender.rule_add":
       return joined([isRuleKind(d.kind) && RULE_KIND[d.kind], text(d.lender) ?? "كل الجهات", text(d.title)]);
     case "lender.rule_archive":

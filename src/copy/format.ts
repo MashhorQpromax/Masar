@@ -58,6 +58,13 @@ export const timeText = (at: Date): string => ltr(clock.format(at));
 
 const fullDay = new Intl.DateTimeFormat("ar-SA-u-ca-gregory-nu-latn", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
 
+/** A day kept as an ISO date, read out: "23 فبراير 2027". Returned as it came when it is not one. */
+export function dayOfIso(text: string): string {
+  const parts = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text);
+  if (!parts) return ltr(text);
+  return fullDay.format(new Date(Date.UTC(Number(parts[1]), Number(parts[2]) - 1, Number(parts[3]), 12)));
+}
+
 /** A day written as yyyy/mm/dd, the way SIMAH prints it, read out: "20 نوفمبر 2026". Returned as it came when it is not one. */
 export function dayOfRecord(text: string): string {
   const parts = /^(\d{4})\/(\d{2})\/(\d{2})$/.exec(text);

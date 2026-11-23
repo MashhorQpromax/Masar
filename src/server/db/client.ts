@@ -85,7 +85,10 @@ async function open(): Promise<Connection> {
   const connection = await connect("pglite:");
   await connection.migrate();
   const { seedDemo } = await import("../demo/seed");
-  await seedDemo(connection.db, new Date());
+  const { seedDemoLenders } = await import("../demo/lenders");
+  const now = new Date();
+  await seedDemo(connection.db, now);
+  await seedDemoLenders(connection.db, now);
   return connection;
 }
 

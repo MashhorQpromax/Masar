@@ -10,6 +10,7 @@
  */
 import type { RateType } from "../finance/amortization";
 import type { Sector } from "../shared/sector";
+import type { Term, TermStanding } from "./terms";
 
 export { SECTORS, type Sector } from "../shared/sector";
 
@@ -90,8 +91,10 @@ export interface Product {
    * with the clearance letter. Null or absent means nobody has confirmed it with the lender.
    */
   settledDefaultWaitMonths?: number | null;
-  /** The terms were confirmed with the lender. Otherwise they are indicative. */
+  /** Every term of the product can be relied on today. Otherwise its numbers are indicative. */
   verified?: boolean;
+  /** How far each term can be relied on today. A term left out is unconfirmed. */
+  terms?: Partial<Record<Term, TermStanding>>;
 }
 
 /** The rule that limits the monthly installment. */

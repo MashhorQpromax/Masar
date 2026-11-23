@@ -126,7 +126,7 @@ export function TextField({
   /** The name the value is sent under when the field sits in a form. */
   name?: string;
   /** What is typed: words, or something written left to right with its own keyboard. */
-  typed?: "text" | "tel" | "digits" | "email";
+  typed?: "text" | "tel" | "digits" | "email" | "url";
 }) {
   const id = useId();
   return (
@@ -136,7 +136,7 @@ export function TextField({
         name={name}
         className={typed === "text" ? "field-input" : "field-input num"}
         dir={typed === "text" ? undefined : "ltr"}
-        inputMode={typed === "tel" ? "tel" : typed === "digits" ? "numeric" : typed === "email" ? "email" : undefined}
+        inputMode={typed === "tel" ? "tel" : typed === "digits" ? "numeric" : typed === "email" ? "email" : typed === "url" ? "url" : undefined}
         autoComplete="off"
         placeholder={placeholder}
         maxLength={maxLength}
@@ -145,6 +145,21 @@ export function TextField({
         onChange={(event) => onChange(event.target.value)}
       />
     </Field>
+  );
+}
+
+/** A day picked from a calendar, kept as an ISO date. Empty is `null`. */
+export function DayField({ label, value, onChange, max }: { label: string; value: string | null; onChange: (value: string | null) => void; max?: string }) {
+  const id = useId();
+  return (
+    <div className="field">
+      <label className="field-label" htmlFor={id}>
+        {label}
+      </label>
+      <div className="field-box">
+        <input id={id} type="date" className="field-input num" dir="ltr" max={max} value={value ?? ""} onChange={(event) => onChange(event.target.value || null)} />
+      </div>
+    </div>
   );
 }
 

@@ -17,6 +17,8 @@ const PERMISSIONS = {
   "doc.verify": ["admin", "analyst"],
   "app.manage": ["admin", "analyst", "officer"],
   "lender.manage": ["admin", "analyst"],
+  /** Saying that a lender's term was checked against its source. The result of every study rests on it. */
+  "lender.confirm": ["admin"],
   "user.manage": ["admin"],
   "audit.view": ["admin"],
 } as const satisfies Record<string, readonly Role[]>;

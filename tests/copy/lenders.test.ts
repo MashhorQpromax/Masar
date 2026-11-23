@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { afterDefaultText, LENDER_ERROR_CODES, LENDER_TYPE, lenderError, NATIONALITY_CHOICE, PRODUCT_NAME, RATE_TYPE } from "@/copy/lenders";
-import { PRODUCT_KINDS } from "@/domain/eligibility";
+import { afterDefaultText, confirmedText, LENDER_ERROR_CODES, LENDER_TYPE, lenderError, NATIONALITY_CHOICE, PRODUCT_NAME, RATE_TYPE, SOURCE_KIND, SOURCE_PROBLEMS, SOURCE_REFERENCE, standingText, TERM_NAME, VALIDITY_SAY } from "@/copy/lenders";
+import { PRODUCT_KINDS, SOURCE_KINDS, sourceProblem, TERMS, termStanding, type TermSource } from "@/domain/eligibility";
 
 const broken = /undefined|NaN|null|\[object|[A-Za-z_]{3,}|—|–/;
 const strip = (text: string) => text.replace(/[⁦⁩]/g, "");
@@ -27,7 +27,7 @@ describe("the wording of the lender catalogue", () => {
   });
 
   it("says in one sentence why a change to the catalogue was not kept", () => {
-    expect(LENDER_ERROR_CODES).toEqual(["INVALID_INPUT", "NOT_FOUND", "LENDER_KNOWN", "FORBIDDEN"]);
+    expect(LENDER_ERROR_CODES).toEqual(["INVALID_INPUT", "NOT_FOUND", "LENDER_KNOWN", "FORBIDDEN", "SOURCE_REFUSED", "TERM_VALUE_MISSING"]);
     const unknown = lenderError("SOMETHING_NEW");
     expect(unknown).toBe("تعذر الحفظ. حاول مرة أخرى.");
     for (const code of LENDER_ERROR_CODES) {
@@ -46,5 +46,55 @@ describe("the wording of the lender catalogue", () => {
     expect(lenderError("LENDER_KNOWN", { name: "" })).toBe(lenderError("LENDER_KNOWN"));
     // Params a code does not use change nothing.
     expect(lenderError("NOT_FOUND", { name: "بنك الرياض" })).toBe(lenderError("NOT_FOUND"));
+  });
+
+  it("names every term and every kind of source, each in words of its own", () => {
+    for (const words of [TERMS.map((term) => TERM_NAME[term]), SOURCE_KINDS.map((kind) => SOURCE_KIND[kind]), SOURCE_KINDS.map((kind) => SOURCE_REFERENCE[kind])]) {
+      for (const word of words) {
+        expect(word).toMatch(/^[؀-ۿ]/);
+        expect(word).not.toMatch(broken);
+        expect(word.endsWith(".")).toBe(false);
+      }
+      expect(new Set(words).size).toBe(words.length);
+    }
+    expect(VALIDITY_SAY).toBe("التأكيد يصلح 3 أشهر، ثم تُسأل الجهة من جديد.");
+  });
+
+  it("says how far a term can be relied on, with the day it stops", () => {
+    const source: TermSource = { kind: "lender_document", reference: "تعرفة الأفراد", confirmedOn: "2026-11-20" };
+    expect(standingText(undefined)).toBe("غير مؤكد");
+    expect(standingText(termStanding(null, "2026-11-22"))).toBe("غير مؤكد");
+    expect(strip(standingText(termStanding(source, "2026-11-22")))).toBe("مؤكد حتى 20 فبراير 2027");
+    expect(strip(standingText(termStanding(source, "2027-02-21")))).toBe("انتهى تأكيده في 20 فبراير 2027");
+  });
+
+  it("says how much of a product is confirmed in a word or a count", () => {
+    expect(confirmedText(0, 11)).toBe("استرشادية");
+    expect(confirmedText(11, 11)).toBe("مؤكدة");
+    expect(strip(confirmedText(5, 11))).toBe("مؤكد 5 من 11");
+    expect(confirmedText(5, 11)).not.toMatch(broken);
+  });
+
+  it("says why a source cannot confirm a term, one sentence for each reason the engine gives", () => {
+    const today = "2026-11-22";
+    const refused: TermSource[] = [
+      { kind: "lender_staff", reference: "أحمد", confirmedOn: today },
+      { kind: "lender_website", reference: "موقع البنك الرسمي", confirmedOn: today },
+      { kind: "lender_document", reference: "تعرفة الأفراد", confirmedOn: "2026-02-30" },
+      { kind: "lender_document", reference: "تعرفة الأفراد", confirmedOn: "2026-11-23" },
+      { kind: "lender_document", reference: "تعرفة الأفراد", confirmedOn: "2026-08-21" },
+    ];
+    // Every reason the engine can give is among the ones that have words.
+    expect(refused.map((source) => sourceProblem(source, today))).toEqual(SOURCE_PROBLEMS);
+    const said = SOURCE_PROBLEMS.map((problem) => lenderError("SOURCE_REFUSED", { problem }));
+    for (const [index, sentence] of said.entries()) {
+      expect(sentence, SOURCE_PROBLEMS[index]).toMatch(/^[؀-ۿ]/);
+      expect(sentence.endsWith("."), SOURCE_PROBLEMS[index]).toBe(true);
+      expect(strip(sentence), SOURCE_PROBLEMS[index]).not.toMatch(broken);
+    }
+    expect(new Set(said).size).toBe(said.length);
+    // A reason from a newer build still reads.
+    expect(lenderError("SOURCE_REFUSED", { problem: "SOMETHING_NEW" })).toBe("هذا المصدر لا يكفي لتأكيد الشرط.");
+    expect(lenderError("SOURCE_REFUSED")).toBe("هذا المصدر لا يكفي لتأكيد الشرط.");
   });
 });

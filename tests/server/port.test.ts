@@ -210,6 +210,7 @@ describe("a dry run", () => {
     expect(said).toContain("deals 4: the deal stands at clearance and its road ends at settlement");
     expect(said).toContain('documents 21: the old file held paper "id" twice');
     expect(said).toContain("1 papers that were only asked for and never arrived are not carried over");
+    expect(said).toContain("products : 1 products were marked as confirmed in the old system, with no source kept for any term");
     expect(said).toContain("1 client links are open and will stop opening at the switch (files C-011)");
     expect(said).toContain("1 events of the old log have a name this system does not know");
     expect(said).toContain("lenders the office has that this build's starting list does not: شركة تمويل مختلقة");
@@ -453,6 +454,14 @@ describe("the move", () => {
     expect(products[0]).toMatchObject({ id: 5, lenderId: 3, sectors: ["gov", "military"], nationalities: ["saudi"], rate: 4.2, rateType: "reducing", maxLtv: 90, requiresSalaryTransfer: true, settledDefaultWaitMonths: null, active: true });
     expect(products[0]!.verifiedAt?.toISOString()).toBe("2026-10-01T00:00:00.000Z");
     expect(products[1]).toMatchObject({ id: 6, lenderId: 9, requiresSalaryTransfer: false, acceptsLateSimah: true, active: false, verifiedAt: null });
+    // The old system's mark came with no source, so it confirms nothing here: every term is asked again.
+    expect(await c.db.select().from(t.termSources)).toEqual([]);
+    const { listCatalogue } = await import("@/server/lenders/service");
+    const read = (await listCatalogue(c.db, { stopped: true, now })).flatMap((lender) => lender.products);
+    expect(read.map((product) => [product.id, product.verified, Object.values(product.terms!).every((standing) => standing.state === "unconfirmed")])).toEqual([
+      ["5", false, true],
+      ["6", false, true],
+    ]);
     const rules = await c.db.select().from(t.lenderRules).orderBy(t.lenderRules.id);
     expect(rules.map((rule) => [rule.lenderId, rule.kind, rule.title, rule.userId])).toEqual([
       [9, "tip", "تقبل بخطاب تسوية", 1],

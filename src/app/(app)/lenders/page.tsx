@@ -1,16 +1,17 @@
 import type { Metadata } from "next";
 import { FINANCE_TYPE } from "@/copy/eligibility";
-import { counted, months, percent } from "@/copy/format";
-import { afterDefaultText, LENDER_TYPE, LENDERS, PRODUCTS, RATE_TYPE } from "@/copy/lenders";
+import { counted, dayOfIso, months, percent } from "@/copy/format";
+import { afterDefaultText, confirmedText, LENDER_TYPE, LENDERS, PRODUCTS, RATE_TYPE, SOURCE_KIND, TERM_NAME, VALIDITY_SAY } from "@/copy/lenders";
 import { can } from "@/domain/auth";
-import type { Product } from "@/domain/eligibility";
+import { dayOf, openTerms, sourceGroups, termsOf, type Product, type TermSource } from "@/domain/eligibility";
 import { requireActor } from "@/server/auth/actor";
 import { getDb } from "@/server/db/client";
 import { listCatalogue } from "@/server/lenders/service";
 import { ChevronIcon, PlusIcon } from "@/ui/icons";
 import { Num } from "@/ui/Num";
 import { SubmitButton } from "@/ui/SubmitButton";
-import { switchProduct } from "./actions";
+import { switchProduct, withdrawProductTerms } from "./actions";
+import { ConfirmForm } from "./ConfirmForm";
 import { LenderForm } from "./LenderForm";
 import { LendersNav } from "./LendersNav";
 import { ProductForm } from "./ProductForm";
@@ -18,7 +19,7 @@ import { ProductForm } from "./ProductForm";
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "الجهات · مسار" };
 
-const termsOf = (p: Product) => ({
+const valuesOf = (p: Product) => ({
   rate: p.rate,
   rateType: p.rateType,
   maxAmount: p.maxAmount,
@@ -30,12 +31,13 @@ const termsOf = (p: Product) => ({
   requiresSalaryTransfer: p.requiresSalaryTransfer,
   acceptsLateSimah: p.acceptsLateSimah,
   settledDefaultWaitMonths: p.settledDefaultWaitMonths ?? null,
-  verified: !!p.verified,
 });
 
 const scopeOf = (p: Product) => ({ name: p.name, sectors: p.sectors, nationalities: p.nationalities, minAge: p.minAge });
 
 function Summary({ product }: { product: Product }) {
+  const terms = termsOf(product.financeType);
+  const open = openTerms(product.financeType, product.terms);
   return (
     <>
       <span className="product-name">
@@ -53,15 +55,80 @@ function Summary({ product }: { product: Product }) {
         <span data-open={product.settledDefaultWaitMonths == null || undefined}>{afterDefaultText(product.settledDefaultWaitMonths)}</span>
       </span>
       <span className="route-state" data-status={product.verified ? "pass" : "warn"}>
-        {product.verified ? "مؤكدة" : "استرشادية"}
+        {confirmedText(terms.length - open.length, terms.length)}
       </span>
     </>
+  );
+}
+
+/** What names a source. A page of the lender's site opens; anything else is read as written. */
+function Reference({ source }: { source: TermSource }) {
+  if (source.kind === "lender_website" && /^https?:\/\//i.test(source.reference) && URL.canParse(source.reference)) {
+    return (
+      <a className="source-ref note-link" href={source.reference} target="_blank" rel="noreferrer noopener" dir="ltr">
+        {new URL(source.reference).host}
+      </a>
+    );
+  }
+  return <span className="source-ref">{source.reference}</span>;
+}
+
+/**
+ * Where a product's terms come from: each source with the terms it speaks for and the day it stops
+ * being good, the terms nobody confirmed, and the form that confirms them for whoever may.
+ */
+function Sources({ product, mayConfirm, today }: { product: Product; mayConfirm: boolean; today: string }) {
+  const terms = termsOf(product.financeType);
+  const open = openTerms(product.financeType, product.terms);
+  const groups = sourceGroups(product.financeType, product.terms);
+  const bare = terms.filter((term) => (product.terms?.[term]?.state ?? "unconfirmed") === "unconfirmed");
+  return (
+    <section className="sources">
+      <h3 className="sources-title">مصادر الشروط</h3>
+      {groups.length > 0 && (
+        <ul className="source-list">
+          {groups.map((group) => (
+            <li key={group.terms[0]} className="source" data-state={group.state}>
+              <div className="source-text">
+                <span className="source-what">
+                  <b>{SOURCE_KIND[group.source.kind]}</b>
+                  <Reference source={group.source} />
+                </span>
+                <span className="source-terms">{group.terms.map((term) => TERM_NAME[term]).join("، ")}</span>
+                <small>{group.state === "confirmed" ? `يصلح حتى ${dayOfIso(group.validUntil)}` : `انتهى في ${dayOfIso(group.validUntil)}. اسأل الجهة من جديد.`}</small>
+              </div>
+              {mayConfirm && (
+                <details className="know-remove">
+                  <summary aria-label={`اسحب تأكيد: ${group.terms.map((term) => TERM_NAME[term]).join("، ")}`}>اسحب</summary>
+                  <form action={withdrawProductTerms}>
+                    <input type="hidden" name="productId" value={product.id} />
+                    {group.terms.map((term) => (
+                      <input key={term} type="hidden" name="term" value={term} />
+                    ))}
+                    <SubmitButton className="btn btn--soft">نعم، اسحب التأكيد</SubmitButton>
+                  </form>
+                </details>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+      {bare.length > 0 && (
+        <p className="sources-bare">
+          <b>بلا مصدر</b>
+          {bare.map((term) => TERM_NAME[term]).join("، ")}
+        </p>
+      )}
+      {mayConfirm ? <ConfirmForm productId={Number(product.id)} terms={terms} open={open} today={today} /> : open.length > 0 && <p className="sources-say">يؤكدها المدير، كل شرط بمصدره.</p>}
+    </section>
   );
 }
 
 export default async function LendersPage() {
   const me = await requireActor();
   const mayManage = can(me.role, "lender.manage");
+  const mayConfirm = can(me.role, "lender.confirm");
+  const today = dayOf(new Date());
   // Whoever keeps the catalogue also sees what was stopped, and a lender that has no product yet.
   const catalogue = await listCatalogue(await getDb(), { stopped: mayManage });
   const all = catalogue.flatMap((lender) => lender.products).filter((p) => p.active);
@@ -92,7 +159,7 @@ export default async function LendersPage() {
           {confirmed < all.length && (
             <section className="tile tile--wide tile--notes">
               <p className="note" data-level="warn">
-                الشروط غير المؤكدة مأخوذة من مصادر عامة. صحّح ما تعرفه من تعاملك مع كل جهة، وعلّم عليه أنه مؤكد.
+                الشرط غير المؤكد مأخوذ من مصادر عامة، ولا تُبنى عليه نتيجة لعميل. يُؤكَّد كل شرط بمصدره من الجهة نفسها: مستند منها، أو صفحة من موقعها، أو إفادة موظف فيها. {VALIDITY_SAY}
               </p>
             </section>
           )}
@@ -126,7 +193,8 @@ export default async function LendersPage() {
                       <Summary product={product} />
                       <ChevronIcon />
                     </summary>
-                    <ProductForm productId={Number(product.id)} kind={product.financeType} initial={termsOf(product)} scope={scopeOf(product)} />
+                    <ProductForm productId={Number(product.id)} kind={product.financeType} initial={valuesOf(product)} scope={scopeOf(product)} />
+                    <Sources product={product} mayConfirm={mayConfirm} today={today} />
                     <details className="know-remove product-stop">
                       <summary aria-label={`أوقف: ${product.name}`}>أوقف هذا المنتج</summary>
                       <form action={switchProduct}>
