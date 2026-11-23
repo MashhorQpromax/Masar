@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { ledgerText } from "@/copy/deal";
-import { ROUTE_ERROR_CODES, ROUTE_STATUS, routeCheckText, routeError, routeLenders, routeNoteText } from "@/copy/funding";
+import { BASIS, ELIGIBILITY, ELIGIBILITY_SAY, ROUTE_ERROR_CODES, ROUTE_STATUS, routeCheckText, routeDoubtCount, routeDoubtLines, routeError, routeFindingText, routeLeanLines, routeLenders, routeNoteText } from "@/copy/funding";
 import { defaultDealInput, type Borrower, type DealInput } from "@/domain/deal";
-import type { Product } from "@/domain/eligibility";
+import { TERMS, termStanding, type Product, type Term } from "@/domain/eligibility";
 import { fundingRoutes, type FundingRoute, type RecordAfter } from "@/domain/funding";
 
 const broken = /undefined|NaN|null|\[object|[A-Za-z_]{3,}|—|–/;
@@ -37,6 +37,11 @@ const product = (id: string, lender: string, parts: Partial<Product>): Product =
 const home = (id: string, lender: string, parts: Partial<Product> = {}) =>
   product(id, lender, { financeType: "mortgage", maxAgeAtMaturity: 70, maxTenor: 300, maxAmount: 5_000_000, rate: 5, rateType: "reducing", maxLtv: 90, ...parts });
 
+/** Every term confirmed in writing three weeks ago, except the ones left open and the ones read too long ago. */
+const TODAY = "2026-11-23";
+const terms = (open: Term[] = [], expired: Term[] = []): Product["terms"] =>
+  Object.fromEntries(TERMS.filter((term) => !open.includes(term)).map((term) => [term, termStanding({ kind: "lender_document", reference: "نشرة المنتج", confirmedOn: expired.includes(term) ? "2026-07-01" : "2026-11-01" }, TODAY)]));
+
 const deal: DealInput = {
   ...defaultDealInput(),
   items: [{ id: "a", kind: "execution", label: "قرار تنفيذ", original: 100000, pay: 100000, by: "company" }],
@@ -58,6 +63,9 @@ const catalogues: Product[][] = [
   [product("1", "a", {}), home("2", "a"), product("3", "b", { settledDefaultWaitMonths: 12, acceptsLateSimah: true }), home("4", "b", { settledDefaultWaitMonths: null })],
   [product("1", "a", { settledDefaultWaitMonths: null }), home("2", "b", { settledDefaultWaitMonths: 12 })],
   [product("1", "a", { nationalities: ["non_saudi"], maxAmount: 50000 }), home("2", "a", { maxAmount: 200000, sectors: ["gov", "retired", "private"] })],
+  // The same lenders with their terms confirmed: all of them, then some left open or read too long ago.
+  [product("1", "a", { terms: terms() }), home("2", "a", { terms: terms() }), product("3", "b", { terms: terms(), settledDefaultWaitMonths: 12, acceptsLateSimah: true }), home("4", "b", { terms: terms(), settledDefaultWaitMonths: null })],
+  [product("1", "a", { terms: terms(["salary", "late"], ["transfer"]) }), home("2", "b", { terms: terms(["settled"], ["sector", "age"]), sectors: ["gov", "retired"] })],
 ];
 
 const every: FundingRoute[] = [];
@@ -114,6 +122,100 @@ describe("funding wording", () => {
     expect(lines.map((l) => `${l.section}.${l.key}`)).toEqual(["personal.ceiling", "personal.principal", "mortgage.ceiling", "mortgage.mortgage"]);
     expect(lines.map((l) => strip(ledgerText(l).label))).toEqual(["سقف جهة a للشخصي", "أصل التمويل: سقف الجهة", "سقف جهة a للعقاري", "العقاري: سقف الجهة"]);
     for (const line of lines) expect(strip(`${ledgerText(line).label} ${ledgerText(line).how ?? ""}`)).not.toMatch(/undefined|NaN|null|\[object/);
+  });
+
+  it("names the four results and who sets a condition", () => {
+    expect(ELIGIBILITY).toEqual({ eligible: "مؤهل مبدئياً", conditional: "مؤهل بشروط", not_eligible: "غير مؤهل", needs_verification: "بحاجة إلى تحقق" });
+    for (const text of [...Object.values(ELIGIBILITY_SAY), ...Object.values(BASIS)]) expect(text).not.toMatch(broken);
+    // Final approval is the lender's: the best result still says so.
+    expect(ELIGIBILITY_SAY.eligible).toContain("الموافقة النهائية للجهة");
+  });
+
+  it("says in whole sentences what stands between a route and a reliable answer", () => {
+    const results = new Set<string>();
+    const doubts = new Set<string>();
+    for (const route of every) {
+      results.add(route.eligibility);
+      for (const doubt of route.doubts) doubts.add(doubt.finding.doubt!);
+      const lines = routeDoubtLines(route);
+      for (const line of [...lines, ...routeDoubtCount(route), ...routeLeanLines(route)]) {
+        expect(strip(line), line).not.toMatch(broken);
+        expect(line.endsWith("."), line).toBe(true);
+      }
+      // A result that asks for a check names what to check, and a result that needs none names nothing.
+      if (route.eligibility === "needs_verification") expect(lines.length, route.key).toBeGreaterThan(0);
+      if (route.eligibility === "eligible" || route.eligibility === "conditional") expect([...lines, ...routeLeanLines(route)], route.key).toEqual([]);
+      if (route.eligibility === "not_eligible") expect(route.blockers.length, route.key).toBeGreaterThan(0);
+      expect(routeDoubtCount(route).length > 0).toBe(lines.length > 0);
+      // A refusal is said once: as a confirmed blocker, or as what the record leans to.
+      const certain = route.blockers.map((blocker) => routeNoteText({ lender: blocker.lender, check: blocker.finding.check }, route));
+      for (const lean of routeLeanLines(route)) expect(certain.map((text) => `إن صحّ المسجل عندنا: ${text}`)).not.toContain(lean);
+    }
+    expect([...results].sort()).toEqual(["conditional", "eligible", "needs_verification", "not_eligible"]);
+    expect([...doubts].sort()).toEqual(["FACT_MISSING", "TERM_EXPIRED", "TERM_NOT_KNOWN", "TERM_UNCONFIRMED"]);
+  });
+
+  it("names the open terms of each lender once, and counts them where there is room for one line", () => {
+    const gov = people[0]!;
+    const clean = records[0]!;
+    const one = (products: Product[], record = clean, borrower = gov, salaryBank: string | null = "a") =>
+      fundingRoutes({ input: deal, borrower, who: { nationality: "saudi", salaryBank, record }, products })[0]!;
+
+    const open = one([product("1", "a", { terms: terms(["salary", "service"]) }), home("2", "a", { terms: terms(["salary"]) })]);
+    expect(routeDoubtLines(open)).toEqual(["لم يؤكَّد: أدنى راتب، مدة الخدمة."]);
+    expect(routeDoubtCount(open)).toEqual(["شرطان لم يؤكَّدا."]);
+
+    const two = one([product("1", "a", { terms: undefined, requiresSalaryTransfer: false }), home("2", "b", { terms: terms([], ["sector"]) })], clean, gov, "b");
+    expect(routeDoubtLines(two)).toEqual(["جهة b: انتهى تأكيده: لمن يُعطى.", "جهة a: لم يؤكَّد: أدنى راتب، لمن يُعطى، الجنسية، حدود العمر، مدة الخدمة."]);
+    expect(strip(routeDoubtCount(two)[0]!)).toBe("6 شروط لم تؤكَّد.");
+
+    const paid = one([product("1", "a", { terms: terms() }), home("2", "a", { terms: terms(), settledDefaultWaitMonths: null })], { ...clean, settledMonthsAgo: 0 });
+    expect(routeDoubtLines(paid)).toEqual(["لم نؤكد معها متى تقبل عميلاً سدّد تعثره."]);
+    expect(routeDoubtCount(paid)).toEqual(["شرط واحد لم يؤكَّد."]);
+
+    // What the file lacks comes first, in its own words, and is never counted as a lender's term.
+    const empty = one([product("1", "a", { terms: terms(["transfer"]) }), home("2", "a", { terms: terms() })], { ...clean, known: false }, people[3]!);
+    expect(routeDoubtLines(empty)).toEqual(["الراتب غير مدخل.", "سنة الميلاد غير مدخلة.", "مدة الخدمة غير مدخلة.", "لم يُقرأ تقرير سمة بعد.", "لم يؤكَّد: تحويل الراتب."]);
+    expect(routeDoubtCount(empty)).toEqual(["الراتب غير مدخل.", "سنة الميلاد غير مدخلة.", "مدة الخدمة غير مدخلة.", "لم يُقرأ تقرير سمة بعد.", "شرط واحد لم يؤكَّد."]);
+  });
+
+  it("says a refusal on an unconfirmed term as what the record leans to, and a confirmed one as a blocker only", () => {
+    const late = { ...records[0]!, delays: true };
+    const routes = (products: Product[]) => fundingRoutes({ input: deal, borrower: people[0]!, who: { nationality: "saudi", salaryBank: "a", record: late }, products });
+
+    const [unsure] = routes([product("1", "a", { terms: terms(["late"]) }), home("2", "a", { terms: terms(["late"]) })]);
+    expect(unsure!.eligibility).toBe("needs_verification");
+    expect(routeLeanLines(unsure!)).toEqual(["إن صحّ المسجل عندنا: في السجل تأخر سداد حديث، وهي لا تقبله."]);
+    expect(routeDoubtLines(unsure!)).toEqual(["لم يؤكَّد: تأخر السداد."]);
+
+    const [sure] = routes([product("1", "a", { terms: terms() }), home("2", "a", { terms: terms() })]);
+    expect(sure!.eligibility).toBe("not_eligible");
+    expect(routeLeanLines(sure!)).toEqual([]);
+    expect(sure!.blockers.map((blocker) => routeCheckText(blocker.finding.check))).toEqual(["في السجل تأخر سداد حديث، وهي لا تقبله."]);
+  });
+
+  it("puts a lender's name on its own policy only, and only when the route has two lenders", () => {
+    const clean = records[0]!;
+    const routes = (products: Product[], record = clean) => fundingRoutes({ input: deal, borrower: people[0]!, who: { nationality: "saudi", salaryBank: "a", record }, products });
+
+    const [two] = routes([product("1", "a", { terms: terms() }), home("2", "b", { terms: terms() })]);
+    expect(two!.oneLender).toBe(false);
+    // The salary goes to one lender: this is about both, so it is said of neither.
+    expect(two!.blockers.map((blocker) => routeFindingText(blocker, two!))).toEqual(["الجهتان تشترطان تحويل الراتب، ولا يُحوَّل إلا إلى واحدة."]);
+    expect(two!.actions.map((action) => routeFindingText(action, two!))).toEqual(["جهة b: تشترط تحويل الراتب إليها."]);
+    expect(two!.actions.map((action) => routeFindingText(action, { oneLender: true }))).toEqual(["تشترط تحويل الراتب إليها."]);
+
+    // An unpaid default stops every lender, whoever the two are.
+    const [open] = routes([product("1", "a", { terms: terms(), requiresSalaryTransfer: false }), home("2", "b", { terms: terms() })], { ...clean, open: true });
+    expect(open!.blockers.map((blocker) => [blocker.finding.basis, routeFindingText(blocker, open!)])).toEqual([["market", "يبقى في السجل تعثر أو قرار تنفيذ لا تسدده الصفقة."]]);
+
+    for (const route of every) {
+      for (const found of [...route.blockers, ...route.actions, ...route.remarks]) {
+        const text = routeFindingText(found, route);
+        expect(strip(text), found.finding.check.code).not.toMatch(broken);
+        expect(text.endsWith("."), found.finding.check.code).toBe(true);
+      }
+    }
   });
 
   it("has a sentence for every refusal to apply a route", () => {

@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import { STRUCTURE } from "@/copy/deal";
 import { FINANCE_TYPE } from "@/copy/eligibility";
 import { counted, dayOf, months, plainMoney } from "@/copy/format";
-import { ROUTE_STATUS, routeError, routeLenders, routeNoteText } from "@/copy/funding";
+import { BASIS, ELIGIBILITY, ELIGIBILITY_SAY, routeDoubtCount, routeDoubtLines, routeError, routeFindingText, routeLeanLines, routeLenders } from "@/copy/funding";
 import { acceptedText, PART } from "@/copy/knowledge";
 import { can } from "@/domain/auth";
 import { STRUCTURES, structureOf } from "@/domain/deal";
@@ -82,6 +82,12 @@ function Figures({ route }: { route: FundingRoute }) {
   );
 }
 
+/** A result that can be acted on: the lender's terms behind it are confirmed. */
+const reliable = (route: FundingRoute): boolean => route.eligibility === "eligible" || route.eligibility === "conditional";
+
+/** What the client keeps is an estimate while a term that sets an amount is not confirmed. */
+const estimated = (route: FundingRoute): boolean => reliable(route) && !route.verified;
+
 /** What the office knows about the lender of one part of a route, with the names to say it under. */
 interface Known extends Bearing<Rule> {
   lender: string;
@@ -105,7 +111,6 @@ export default async function LendersPage({ params, searchParams }: { params: Pr
   const { deal, client, routes, chosen } = view;
   const refused = (await searchParams).refused;
   const mayChoose = can(me.role, "deal.edit") && !view.ended && !view.offerRecorded;
-  const mayManage = can(me.role, "lender.manage");
   const mayEditClient = can(me.role, "client.edit") && !view.ended;
 
   const like = { sector: client.sector, salary: client.totalSalary ?? client.basicSalary };
@@ -157,7 +162,8 @@ export default async function LendersPage({ params, searchParams }: { params: Pr
   const taken = best.status !== "fail";
   const { main, also } = routeLenders(best);
   const net = best.study.clientNet;
-  const notes = taken ? best.conditions : best.refusals;
+  const doubtLines = routeDoubtLines(best);
+  const leanLines = routeLeanLines(best);
   const isChosen = chosen === best.key;
   const chosenRoute = routes.find((route) => route.key === chosen);
   const known = knownOf(best);
@@ -188,6 +194,9 @@ export default async function LendersPage({ params, searchParams }: { params: Pr
             <p className="label">{taken ? (isChosen ? "جهة الصفقة" : "أفضل طريق") : "أقرب جهة"}</p>
             <h2 className="verdict-say verdict-say--name">{main}</h2>
             {also && <p className="verdict-also">{also}</p>}
+            <p className="verdict-result" data-result={best.eligibility}>
+              {ELIGIBILITY[best.eligibility]}
+            </p>
             <p className="verdict-keep">
               <span>{net >= 0 ? "يبقى للعميل" : "عجز"}</span> <b className="num">{plainMoney(Math.abs(net))}</b> <span>ريال</span>
             </p>
@@ -216,7 +225,7 @@ export default async function LendersPage({ params, searchParams }: { params: Pr
             <div>
               <p className="label">الحالة</p>
               <h2>لا جهة تقبل الآن</h2>
-              <p className="due">عالج ما يمنع أقرب جهة، أو صحّح شروطها إن كانت تقبل فعلاً.</p>
+              <p className="due">{best.eligibility === "not_eligible" ? "المانع مؤكد من الجهة. يُعالج أولاً، ولا يُتجاوز بحساب." : "المانع مسجل عندنا ولم يؤكَّد. اسأل الجهة قبل أن تصرف العميل."}</p>
             </div>
           </section>
         ) : isChosen ? (
@@ -236,37 +245,61 @@ export default async function LendersPage({ params, searchParams }: { params: Pr
           <section className="tile tile--next">
             <div>
               <p className="label">الخطوة التالية</p>
-              <h2>اعتمدها للصفقة</h2>
+              <h2>احسب الصفقة عليها</h2>
               <p className="due">
                 {chosenRoute ? `الصفقة الآن على ${routeLenders(chosenRoute).main}.` : "تُحسب الصفقة على هامشها ومدتها وسقفها."}
+                {!reliable(best) && " الحساب تقديري حتى تؤكَّد شروطها."}
               </p>
             </div>
             {mayChoose && (
               <form className="actions" action={chooseRoute}>
                 <input type="hidden" name="dealId" value={deal.id} />
                 <input type="hidden" name="key" value={best.key} />
-                <SubmitButton className="btn btn--navy">اعتمد هذه الجهة</SubmitButton>
+                <SubmitButton className="btn btn--navy">احسب عليها</SubmitButton>
               </form>
             )}
           </section>
         )}
 
         <section className="tile tile--notes tile--five">
-          <p className="label">{taken ? (notes.length ? "ما تطلبه" : "لا شروط على العميل") : "لماذا لا تقبل"}</p>
-          {notes.map((note, index) => (
-            <p key={index} className="note" data-level={taken ? "warn" : "block"}>
-              {routeNoteText(note, best)}
+          <div className="strict" data-result={best.eligibility}>
+            <p className="label">النتيجة</p>
+            <h2>{ELIGIBILITY[best.eligibility]}</h2>
+            <p>{ELIGIBILITY_SAY[best.eligibility]}</p>
+          </div>
+          {best.blockers.map((blocker, index) => (
+            <p key={`b${index}`} className="note" data-level="block">
+              <span>
+                {routeFindingText(blocker, best)} <small className="note-basis">{BASIS[blocker.finding.basis]}</small>
+              </span>
             </p>
           ))}
-          <p className="note" data-level={best.verified ? "good" : undefined}>
-            <span>
-              {best.verified ? "شروطها مؤكدة مع الجهة." : "شروطها استرشادية، ولم تؤكَّد مع الجهة بعد."}{" "}
-              {mayManage && (
-                <Link className="note-link" href="/lenders">
-                  صحّح الشروط
-                </Link>
-              )}
-            </span>
+          {leanLines.map((line, index) => (
+            <p key={`l${index}`} className="note" data-level="ask">
+              {line}
+            </p>
+          ))}
+          {doubtLines.map((line, index) => (
+            <p key={`d${index}`} className="note" data-level="ask">
+              {line}
+            </p>
+          ))}
+          {best.actions.map((action, index) => (
+            <p key={`a${index}`} className="note" data-level="warn">
+              {routeFindingText(action, best)}
+            </p>
+          ))}
+          {best.remarks.map((remark, index) => (
+            <p key={`r${index}`} className="note">
+              {routeFindingText(remark, best)}
+            </p>
+          ))}
+          {reliable(best) && best.strength === "verbal" && <p className="note">تستند النتيجة إلى إفادة موظف في الجهة، لا إلى مستند منها.</p>}
+          {estimated(best) && <p className="note">المبلغ والهامش والمدة استرشادية حتى تؤكَّد.</p>}
+          <p className="note-own">
+            <Link className="note-link" href="/lenders">
+              مصادر شروط الجهات
+            </Link>
           </p>
         </section>
 
@@ -304,13 +337,14 @@ export default async function LendersPage({ params, searchParams }: { params: Pr
                   {others.map((route) => {
                     const names = routeLenders(route);
                     const before = knownOf(route).filter((item) => item.record);
+                    const said = [...routeDoubtCount(route), ...[...route.actions, ...route.remarks].map((finding) => routeFindingText(finding, route)), ...(estimated(route) ? ["المبلغ والهامش استرشاديان."] : [])];
                     return (
                       <li key={route.key} className="route" data-chosen={route.key === chosen || undefined}>
                         <div className="route-who">
                           <b>{names.main}</b>
                           {names.also && <small>{names.also}</small>}
-                          <span className="route-state" data-status={route.status}>
-                            {route.key === chosen ? "جهة الصفقة" : ROUTE_STATUS[route.status]}
+                          <span className="route-state" data-result={route.eligibility}>
+                            {route.key === chosen ? `جهة الصفقة · ${ELIGIBILITY[route.eligibility]}` : ELIGIBILITY[route.eligibility]}
                           </span>
                         </div>
                         <Figures route={route} />
@@ -322,15 +356,15 @@ export default async function LendersPage({ params, searchParams }: { params: Pr
                           <form className="route-go" action={chooseRoute}>
                             <input type="hidden" name="dealId" value={deal.id} />
                             <input type="hidden" name="key" value={route.key} />
-                            <SubmitButton className="btn btn--soft">اعتمد</SubmitButton>
+                            <SubmitButton className="btn btn--soft">احسب عليها</SubmitButton>
                           </form>
                         ) : (
                           <span className="route-go" />
                         )}
-                        {(route.conditions.length > 0 || before.length > 0) && (
+                        {(said.length > 0 || before.length > 0) && (
                           <ul className="route-notes">
-                            {route.conditions.map((note, index) => (
-                              <li key={index}>{routeNoteText(note, route)}</li>
+                            {said.map((line, index) => (
+                              <li key={index}>{line}</li>
                             ))}
                             {before.map((item) => (
                               <li key={item.part} data-learned>
@@ -353,10 +387,11 @@ export default async function LendersPage({ params, searchParams }: { params: Pr
                   {closed
                     .filter((route) => route !== best)
                     .map((route) => (
-                      <p key={route.key} className="note" data-level="block">
+                      <p key={route.key} className="note" data-level={route.eligibility === "not_eligible" ? "block" : "ask"}>
                         <span>
                           <b>{routeLenders(route).main}</b>
-                          {routeLenders(route).also ? ` ${routeLenders(route).also}` : ""}: {route.refusals.map((note) => routeNoteText(note, { oneLender: true })).join(" ")}
+                          {routeLenders(route).also ? ` ${routeLenders(route).also}` : ""} · {ELIGIBILITY[route.eligibility]}:{" "}
+                          {[...route.blockers.map((blocker) => routeFindingText(blocker, route)), ...routeLeanLines(route)].join(" ")}
                         </span>
                       </p>
                     ))}

@@ -2803,6 +2803,75 @@
     background: var(--color-sun-soft);
     color: var(--color-sun-ink);
   }
+  /* The four results of the strict reading. Only a reliable yes is said in the page's strong colour. */
+  .route-state[data-result="needs_verification"] {
+    background: var(--color-sun-soft);
+    color: var(--color-sun-ink);
+  }
+  .route-state[data-result="not_eligible"] {
+    background: var(--color-coral-soft);
+    color: var(--color-coral-ink);
+  }
+  .route-state[data-result="eligible"],
+  .route-state[data-result="conditional"] {
+    background: var(--color-navy);
+    color: #fff;
+  }
+  .verdict-result {
+    display: inline-block;
+    margin-top: 10px;
+    padding: 4px 14px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.12);
+    font-size: 13.5px;
+    font-weight: 500;
+    color: #fff;
+  }
+  .verdict-result[data-result="needs_verification"] {
+    background: var(--color-sun);
+    color: var(--color-navy);
+  }
+  .verdict-result[data-result="not_eligible"] {
+    background: #ff8168;
+    color: var(--color-navy);
+  }
+  .strict {
+    display: grid;
+    gap: 4px;
+    padding-bottom: 14px;
+    border-bottom: 1px solid var(--color-line);
+  }
+  .strict h2 {
+    font-size: 26px;
+    font-weight: 700;
+    line-height: 1.35;
+  }
+  .strict[data-result="needs_verification"] h2 {
+    color: var(--color-sun-ink);
+  }
+  .strict[data-result="not_eligible"] h2 {
+    color: var(--color-coral-ink);
+  }
+  .strict > p:last-child {
+    font-size: 14.5px;
+    line-height: 1.7;
+    color: var(--color-body);
+  }
+  .note[data-level="ask"]::before {
+    background: transparent;
+    box-shadow: inset 0 0 0 2px var(--color-sun-ink);
+  }
+  .note-basis {
+    display: inline-block;
+    margin-inline-start: 6px;
+    padding: 1px 10px;
+    border-radius: 999px;
+    background: var(--color-ground);
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--color-body);
+    white-space: nowrap;
+  }
   .route[data-chosen] .route-state {
     background: var(--color-navy);
     color: #fff;

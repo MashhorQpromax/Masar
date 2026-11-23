@@ -186,6 +186,10 @@ export interface FundingRoute {
   doubts: RouteFinding[];
   /** Confirmed conditions that refuse the client. No calculation overrides them. */
   blockers: RouteFinding[];
+  /** What the client has to do first, on terms that can be relied on. */
+  actions: RouteFinding[];
+  /** Reliable answers that are met and still worth saying, such as late payments a lender is confirmed to take. */
+  remarks: RouteFinding[];
   /** The weakest source the reliable answers rest on. */
   strength: SourceStrength | null;
 }
@@ -350,14 +354,21 @@ function route(args: Args, mortgageProduct: Product | null, personalProduct: Pro
     said.add(id);
     return true;
   });
-  const stops = new Set<string>();
-  const blockers = findings.filter(({ lender, finding }) => {
-    if (finding.outcome !== "blocked") return false;
-    const id = finding.basis === "lender" ? `${lender}:${finding.check.code}` : finding.check.code;
-    if (stops.has(id)) return false;
-    stops.add(id);
-    return true;
-  });
+  // One lender's condition is said once, and one that holds for every lender is said once for all.
+  const once = (keep: (finding: Finding<RouteCheck>) => boolean): RouteFinding[] => {
+    const told = new Set<string>();
+    return findings.filter(({ lender, finding }) => {
+      if (!keep(finding)) return false;
+      const id = finding.basis === "lender" ? `${lender}:${finding.check.code}` : finding.check.code;
+      if (told.has(id)) return false;
+      told.add(id);
+      return true;
+    });
+  };
+  const blockers = once((finding) => finding.outcome === "blocked");
+  const actions = once((finding) => finding.outcome === "action");
+  // A term cut short by the age limit is already in the leg's months and amount.
+  const remarks = once((finding) => finding.outcome === "met" && finding.check.status === "warn" && finding.check.code !== "TENOR_SHORTENED");
 
   return {
     key: [mortgageProduct ? `m${mortgageProduct.id}` : "", personalProduct ? `p${personalProduct.id}` : ""].filter(Boolean).join("-"),
@@ -375,6 +386,8 @@ function route(args: Args, mortgageProduct: Product | null, personalProduct: Pro
     blockedAsWritten: leansBlocked(read),
     doubts,
     blockers,
+    actions,
+    remarks,
     strength: weakestStrength(read),
   };
 }

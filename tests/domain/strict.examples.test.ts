@@ -282,6 +282,33 @@ describe("a route read strictly", () => {
     expect(unsure.blockedAsWritten).toBe(true);
   });
 
+  it("says once what the client has to do first, and only on a term that can be relied on", () => {
+    const elsewhere = who({ salaryBank: "x" });
+    const [sure] = routes([mortgage("1", "a"), personal("2", "a")], elsewhere);
+    expect(sure!.eligibility).toBe("conditional");
+    expect(sure!.actions.map((a) => [a.lender, a.finding.check.code])).toEqual([["جهة a", "SALARY_TRANSFER"]]);
+    expect(sure!.doubts).toEqual([]);
+
+    // Nobody confirmed that this lender wants the salary: it is something to ask, not something to tell the client.
+    const [unsure] = routes([mortgage("1", "a", { terms: confirmed(["transfer"]) }), personal("2", "a", { terms: confirmed(["transfer"]) })], elsewhere);
+    expect(unsure!.eligibility).toBe("needs_verification");
+    expect(unsure!.actions).toEqual([]);
+    expect(unsure!.doubts.map((d) => [d.finding.term, d.finding.doubt])).toEqual([["transfer", "TERM_UNCONFIRMED"]]);
+  });
+
+  it("remarks on what a lender is confirmed to take, and not on a term cut short by age", () => {
+    const takes = { acceptsLateSimah: true };
+    const [late] = routes([mortgage("1", "a", takes), personal("2", "a", takes)], who({ record: { ...clean, delays: true } }));
+    expect(late!.eligibility).toBe("eligible");
+    expect(late!.remarks.map((r) => [r.lender, r.finding.check.code, r.finding.outcome])).toEqual([["جهة a", "RECORD_LATE", "met"]]);
+    expect(late!.actions).toEqual([]);
+
+    const old = fundingRoutes({ input: deal, borrower: { ...borrower, age: 62 }, who: who(), products: [mortgage("1", "a"), personal("2", "a")] })[0]!;
+    expect(old.personal!.months).toBe(36);
+    expect(old.eligibility).toBe("eligible");
+    expect(old.remarks).toEqual([]);
+  });
+
   it("lists a route that can be relied on above one that cannot, though the other leaves the client more", () => {
     const list = routes([mortgage("1", "a", { maxAmount: 650_000 }), mortgage("3", "c", { terms: undefined }), personal("2", "a"), personal("4", "c", { terms: undefined })]);
     const [first, second] = list;
