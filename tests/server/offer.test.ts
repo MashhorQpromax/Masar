@@ -1,13 +1,14 @@
-import { desc } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { defaultDealInput, type DealInput } from "@/domain/deal";
 import type { Connection } from "@/server/db/client";
-import { auditLog, clients, users, waMessages } from "@/server/db/schema";
+import { auditLog, clients, feeApprovals, users, waMessages } from "@/server/db/schema";
 import { approveFeePlan, standingApproval } from "@/server/deals/plan";
 import { amendDeal, getDeal, rejectDeal, saveDeal } from "@/server/deals/service";
 import { DEMO_LINK_SECRET, openLink } from "@/server/messages/links";
 import { portalView } from "@/server/messages/portal";
 import { getMessages, noteSent, offerOf } from "@/server/messages/service";
+import { setFeePolicy } from "@/server/settings/fees";
 import type { Actor } from "@/server/shared/actor";
 import { testDb } from "../helpers/db";
 
@@ -153,6 +154,36 @@ describe("the client's final offer", () => {
     expect(view.gate).toEqual({ allowed: ["internal"], reason: "REJECTED" });
     expect(await portalView(c.db, { token: deal.token, now })).toBeNull();
     expect(await offerOf(c.db, (await getDeal(c.db, { dealId: deal.dealId, now }))!, now)).toBeNull();
+  });
+
+  it("says the terms the fee is owed on as they were approved, in the message and on the client's page", async () => {
+    const policy = { settlePct: 10, financePct: 10, financeBase: "total", min: 10, max: 35 } as const;
+    const deal = await newDeal();
+    const first = await approveFeePlan(c.db, { dealId: deal.dealId, actor, now });
+    expect((await messages(deal.dealId)).offer!.fee.terms).toEqual({ due: "disbursement", collection: "deducted" });
+
+    // The office changes its terms: the offer stays open, on the terms the manager approved.
+    await setFeePolicy(c.db, { input: { ...policy, due: "approval", collection: "transfer" }, actor, now });
+    const kept = await messages(deal.dealId);
+    expect(kept.gate.allowed).toContain("offer");
+    expect(kept.offer!.fee.terms).toEqual({ due: "disbursement", collection: "deducted" });
+    expect((await portalView(c.db, { token: deal.token, now }))!.offer!.fee.terms).toEqual({ due: "disbursement", collection: "deducted" });
+
+    // A new approval, after a number moved, is on the terms of its own day.
+    await c.db.transaction((tx) => amendDeal(tx, { dealId: deal.dealId, terms: { bankPersonal: 190000 }, actor, now }));
+    await approveFeePlan(c.db, { dealId: deal.dealId, actor, now });
+    expect((await messages(deal.dealId)).offer!.fee.terms).toEqual({ due: "approval", collection: "transfer" });
+    expect((await portalView(c.db, { token: deal.token, now }))!.offer!.fee.terms).toEqual({ due: "approval", collection: "transfer" });
+
+    // A copy approved before the terms were kept still opens the offer, and says no terms.
+    const old = await newDeal();
+    const approval = await approveFeePlan(c.db, { dealId: old.dealId, actor, now });
+    const { terms: _terms, ...before } = approval.plan;
+    await c.db.update(feeApprovals).set({ plan: before }).where(eq(feeApprovals.id, approval.id));
+    const view = await messages(old.dealId);
+    expect(view.offer!.fee).toMatchObject({ total: first.plan.amounts.total, terms: null });
+    expect((await portalView(c.db, { token: old.token, now }))!.offer!.fee.terms).toBeNull();
+    await setFeePolicy(c.db, { input: { ...policy, due: "disbursement", collection: "deducted" }, actor, now });
   });
 
   it("does not exist for a deal that does not close: there is no plan to approve", async () => {

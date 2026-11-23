@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { paperLabel } from "@/copy/documents";
 import { dayShort, ltr, percent, plainMoney } from "@/copy/format";
-import { about, CLIENT_NOW, CLIENT_STEP, ESTIMATE_NOTE, feeItemWhat, firstName, hasEstimate, OFFER, OFFER_COST } from "@/copy/messages";
+import { about, CLIENT_NOW, CLIENT_STEP, ESTIMATE_NOTE, feeItemWhat, firstName, hasEstimate, OFFER, OFFER_COST, offerTerms } from "@/copy/messages";
 import { dataMode, getDb } from "@/server/db/client";
 import { portalView, type PortalPaper } from "@/server/messages/portal";
 import { Certain } from "@/ui/Certain";
@@ -91,7 +91,7 @@ export default async function ClientPage({ params }: { params: Promise<{ token: 
               <span>ريال</span>
               <Certain value={view.offer.certainty} />
             </p>
-            <div className="offer">
+            <div className="portal-offer">
               <h2>{OFFER.financing}</h2>
               <ul>
                 {view.offer.financing.map((part) => (
@@ -128,7 +128,7 @@ export default async function ClientPage({ params }: { params: Promise<{ token: 
               )}
               <h2>{OFFER.fee}</h2>
               {view.offer.fee.items.length === 0 ? (
-                <p className="offer-none">{OFFER.noFee}.</p>
+                <p className="portal-offer-note">{OFFER.noFee}.</p>
               ) : (
                 <ul>
                   {view.offer.fee.items.map((item) => (
@@ -146,7 +146,7 @@ export default async function ClientPage({ params }: { params: Promise<{ token: 
                     </li>
                   ))}
                   {view.offer.fee.items.length > 1 && (
-                    <li className="offer-sum">
+                    <li className="portal-offer-sum">
                       <span>
                         {OFFER.feeTotal} {view.offer.fee.certainty === "estimated" && <Certain value="estimated" />}
                       </span>
@@ -155,6 +155,7 @@ export default async function ClientPage({ params }: { params: Promise<{ token: 
                   )}
                 </ul>
               )}
+              {view.offer.fee.terms && view.offer.fee.items.length > 0 && <p className="portal-offer-note">{offerTerms(view.offer.fee.terms)}</p>}
               {view.offer.deduction != null && (
                 <>
                   <h2>{OFFER.monthly}</h2>

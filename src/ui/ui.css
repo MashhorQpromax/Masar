@@ -4523,20 +4523,29 @@
     align-self: center;
   }
   /* The final offer: a sum the client can check line by line, what comes in and what goes out of it. */
-  .offer {
+  .portal-offer {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
     margin-top: 14px;
-    border-top: 1.5px solid rgba(15, 42, 67, 0.14);
+    background: var(--color-sun-soft);
+    border-radius: 20px;
+    padding: 14px 16px 8px;
+    color: var(--color-navy);
   }
-  .offer h2 {
+  .portal-offer h2 {
     margin-top: 14px;
     font-size: 13px;
     font-weight: 500;
     color: rgba(15, 42, 67, 0.78);
   }
-  .offer ul {
+  .portal-offer h2:first-child {
+    margin-top: 2px;
+  }
+  .portal-offer ul {
     margin-top: 4px;
   }
-  .offer li {
+  .portal-offer li {
     display: flex;
     align-items: baseline;
     justify-content: space-between;
@@ -4545,28 +4554,30 @@
     font-size: 15px;
     line-height: 1.6;
   }
-  .offer li + li {
+  .portal-offer li + li {
     border-top: 1px solid rgba(15, 42, 67, 0.1);
   }
-  .offer li > span {
+  .portal-offer li > span {
     min-width: 0;
   }
-  .offer li > b {
+  .portal-offer li > b {
     flex: none;
     font-size: 16px;
     font-weight: 600;
   }
-  .offer small {
+  .portal-offer small {
     display: block;
     font-size: 12.5px;
     color: rgba(15, 42, 67, 0.78);
   }
-  .offer .offer-sum {
+  .portal-offer-sum {
     font-weight: 600;
   }
-  .offer-none {
+  .portal-offer-note {
     margin-top: 4px;
-    font-size: 15px;
+    font-size: 13.5px;
+    line-height: 1.7;
+    color: rgba(15, 42, 67, 0.86);
   }
   .portal-papers {
     animation-delay: 0.16s;

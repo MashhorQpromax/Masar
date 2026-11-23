@@ -9,7 +9,7 @@
  *
  * Pure: the print is made by the server; this module only compares.
  */
-import { feeChanges, type FeePart } from "./fee";
+import { feeChanges, type FeePart, type FeeTerms } from "./fee";
 import type { DealInput, DealStudy, Fee, Verdict } from "./types";
 
 /** The plan as approved: the fee, what it comes to and on what, and where the money goes. */
@@ -30,6 +30,12 @@ export interface FeePlan {
    * kept has none.
    */
   lenders?: string | null;
+  /**
+   * When the fee falls due and how it is collected, as the office's policy said on the day of the
+   * approval. They are part of what was approved: a later policy does not change them. A copy made
+   * before they were kept has none.
+   */
+  terms?: FeeTerms;
 }
 
 export function feePlan(input: DealInput, study: DealStudy): FeePlan {

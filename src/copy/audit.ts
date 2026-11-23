@@ -1,13 +1,13 @@
 /** Wording of the audit log: what each event is called, and the detail worth reading beside it. */
 import type { AuditAction, AuditArea, OldAuditAction } from "@/domain/audit";
 import { isRole } from "@/domain/auth";
-import type { Fee, FeePolicy, FinanceBase } from "@/domain/deal";
+import { DEFAULT_TERMS, readTerms, type Fee, type FeePolicy, type FinanceBase } from "@/domain/deal";
 import { DECISIONS, RULE_KINDS, type Decision, type RuleKind } from "@/domain/knowledge";
 import { ANALYSIS_VERDICT } from "./analysis";
 import { openText } from "./approval";
 import { ROLE } from "./auth";
 import { STAGE } from "./deal";
-import { feeText, policyText } from "./fees";
+import { feeText, policyText, termsText } from "./fees";
 import type { PaperFact } from "@/domain/eligibility";
 import { factValue, PAPER_STATUS, paperLabel, sourcePaper, statedLine } from "./documents";
 import { counted, dayFull, dayLong, dayOfIso, days, ltr, money, type CountForms } from "./format";
@@ -190,7 +190,8 @@ function keptPolicy(value: unknown): FeePolicy | null {
   const fee = keptFee(value);
   const min = number(kept.min);
   const max = number(kept.max);
-  return fee && min != null && max != null ? { settlePct: fee.settlePct, financePct: fee.financePct, financeBase: fee.financeBase, min, max } : null;
+  // A policy logged before the terms were part of it is told with the office's own model.
+  return fee && min != null && max != null ? { settlePct: fee.settlePct, financePct: fee.financePct, financeBase: fee.financeBase, min, max, ...(readTerms(value) ?? DEFAULT_TERMS) } : null;
 }
 
 const isContactKind = (value: unknown): value is ContactKind => (CONTACT_KINDS as readonly unknown[]).includes(value);
@@ -286,7 +287,8 @@ export function auditDetail(action: string, details: Record<string, unknown> | n
       const fee = keptFee(d.fee);
       const amount = number(d.amount);
       const net = number(d.clientNet);
-      return joined([amount != null && `أتعاب ${money(amount)}`, net != null && `يبقى للعميل ${money(net)}`, fee && feeText(fee)]);
+      const terms = readTerms(d.terms);
+      return joined([amount != null && `أتعاب ${money(amount)}`, net != null && `يبقى للعميل ${money(net)}`, fee && feeText(fee), terms && termsText(terms)]);
     }
     case "deal.report": {
       const count = number(d.opportunities);

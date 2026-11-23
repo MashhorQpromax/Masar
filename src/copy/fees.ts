@@ -1,5 +1,5 @@
 /** Wording of the office's fee policy and of a deal's fee: what it is, and why a change was refused. */
-import { FEE_REASON_MIN, type Fee, type FeePart, type FeePlan, type FeePolicy, type PlanFigure, type PlanRefusal, type PolicyProblem } from "@/domain/deal";
+import { FEE_REASON_MIN, type Fee, type FeeCollection, type FeeDue, type FeePart, type FeePlan, type FeePolicy, type FeeTerms, type PlanFigure, type PlanRefusal, type PolicyProblem } from "@/domain/deal";
 import { FINANCE_BASE } from "./editor";
 import { dayFull, ltr, money, percent } from "./format";
 
@@ -13,8 +13,24 @@ export function feeText(fee: Pick<Fee, "settlePct" | "financePct" | "financeBase
 /** The range a deal's percents stay in. */
 export const rangeText = (policy: Pick<FeePolicy, "min" | "max">): string => `الحدود من ${percent(policy.min)} إلى ${percent(policy.max)}`;
 
+/** When the fee falls due, as the settings offer it. */
+export const FEE_DUE: Record<FeeDue, string> = {
+  disbursement: "عند صرف التمويل",
+  approval: "عند موافقة الجهة",
+  agreement: "عند توقيع الاتفاق",
+};
+
+/** How the fee is collected, as the settings offer it. */
+export const FEE_COLLECTION: Record<FeeCollection, string> = {
+  deducted: "خصماً من التمويل",
+  transfer: "بتحويل من العميل",
+};
+
+/** The terms a fee is owed on, in one clause: "تُستحق عند صرف التمويل وتُخصم منه". */
+export const termsText = (terms: FeeTerms): string => `تُستحق ${FEE_DUE[terms.due]} ${terms.collection === "deducted" ? "وتُخصم منه" : "ويسددها العميل بتحويل"}`;
+
 /** The policy in one sentence, as the settings page and the editor tell it. */
-export const policyText = (policy: FeePolicy): string => `تبدأ كل صفقة جديدة بـ ${feeText({ ...policy, settleIncludesPayoff: false, fixed: 0 })}. ${rangeText(policy)}.`;
+export const policyText = (policy: FeePolicy): string => `تبدأ كل صفقة جديدة بـ ${feeText({ ...policy, settleIncludesPayoff: false, fixed: 0 })}. ${rangeText(policy)}. ${termsText(policy)}.`;
 
 /** Asked beside the fee once it differs from what the deal had, or from the policy. */
 export const FEE_REASON_ASK = "سبب تعديل الأتعاب";
@@ -26,6 +42,7 @@ export const FEE_LOCKED = "تعديل الأتعاب لمن يملك صلاحي�
 const POLICY_PROBLEM: Record<PolicyProblem, string> = {
   RANGE: "الحد الأدنى أعلى من الأعلى، أو أحدهما خارج صفر إلى مئة.",
   START_OUTSIDE: "النسبة التي تبدأ بها الصفقات خارج الحدين.",
+  TERMS: "الخصم من التمويل يكون عند صرفه. اجعل الاستحقاق عند الصرف، أو اختر التحويل.",
 };
 
 /** What to tell the manager when the policy was not kept. */

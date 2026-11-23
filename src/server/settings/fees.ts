@@ -1,7 +1,7 @@
 import "server-only";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
-import { DEFAULT_POLICY, policyProblem, type FeePolicy } from "@/domain/deal";
+import { DEFAULT_POLICY, DEFAULT_TERMS, FEE_COLLECTIONS, FEE_DUES, policyProblem, type FeePolicy } from "@/domain/deal";
 import type { Db, Tx } from "../db/client";
 import { officeSettings } from "../db/schema";
 import type { Actor } from "../shared/actor";
@@ -17,6 +17,9 @@ const policySchema = z.object({
   financeBase: z.enum(["total", "personal", "mortgage", "net"]),
   min: pct,
   max: pct,
+  // A policy kept before the terms were part of it reads with the office's own model.
+  due: z.enum(FEE_DUES).default(DEFAULT_TERMS.due),
+  collection: z.enum(FEE_COLLECTIONS).default(DEFAULT_TERMS.collection),
 });
 
 /**

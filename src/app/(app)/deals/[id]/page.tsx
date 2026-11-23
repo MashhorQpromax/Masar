@@ -17,7 +17,7 @@ import {
 import { GRADE } from "@/copy/credit";
 import { missingText } from "@/copy/documents";
 import { differenceText } from "@/copy/editor";
-import { feeText, planLine, planState } from "@/copy/fees";
+import { feeText, planLine, planState, termsText } from "@/copy/fees";
 import { deductionText, lineSource, NET_DEFICIT, NET_PART, NET_TOTAL, netWhy } from "@/copy/net";
 import { counted, days, dayShort, dueIn, ltr, money, percent, plainMoney } from "@/copy/format";
 import {
@@ -26,6 +26,8 @@ import {
   dealTimeline,
   fundsFlow,
   NET_INCOME,
+  policyTerms,
+  readTerms,
   recordDifferences,
   stagesFor,
   stationTimeline,
@@ -39,6 +41,7 @@ import { getDb } from "@/server/db/client";
 import { borrowerOf } from "@/server/deals/mapping";
 import { planApprovalsOf, planOf } from "@/server/deals/plan";
 import { getDeal } from "@/server/deals/service";
+import { feePolicy } from "@/server/settings/fees";
 import { fundingOf } from "@/server/funding/service";
 import { papersOf } from "@/server/documents/service";
 import { Certain } from "@/ui/Certain";
@@ -94,6 +97,8 @@ export default async function DealPage({ params }: { params: Promise<{ id: strin
   const current = planOf(input, study, funding.routes.find((route) => route.key === funding.chosen) ?? null);
   const planLog = await planApprovalsOf(db, { dealId: deal.id, now: current });
   const planSaid = planState({ latest: planLog[0] ?? null, closing: closes, may: mayApprovePlan });
+  // The terms the fee is owed on: the ones kept with a standing approval, else the policy's, which an approval now would keep.
+  const feeTerms = planSaid.state === "stands" ? readTerms(planLog[0]?.plan.terms) : policyTerms(await feePolicy(db));
 
   const plan: Stage[] = stagesFor(deal.structure)
     .map((s) => s.stage)
@@ -441,7 +446,10 @@ export default async function DealPage({ params }: { params: Promise<{ id: strin
             <p className="label">اعتماد خطة الأتعاب</p>
             <h2>{planSaid.title}</h2>
             <p className="due">{planSaid.text}</p>
-            <small className="an-why">{feeText(input.fee)}</small>
+            <small className="an-why">
+              {feeText(input.fee)}
+              {feeTerms ? `. ${termsText(feeTerms)}.` : ""}
+            </small>
           </div>
           {mayApprovePlan && !ended && closes && planSaid.state !== "stands" && <ApprovePlan key={current.print} dealId={deal.id} />}
           {/* An approved plan is what the client's final offer is written from. */}

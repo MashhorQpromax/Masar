@@ -64,8 +64,23 @@ describe("the client's final offer", () => {
     const offer = offerOf({ ...input, fee: { settlePct: 0, settleIncludesPayoff: false, financePct: 10, financeBase: "personal", fixed: 0 } })!;
     expect(offer.fee.items).toEqual([{ kind: "finance", pct: 10, base: 200000, on: "personal", amount: 20000 }]);
     const free = offerOf({ ...input, fee: { settlePct: 0, settleIncludesPayoff: false, financePct: 0, financeBase: "total", fixed: 0 } })!;
-    expect(free.fee).toEqual({ items: [], total: 0, certainty: "confirmed" });
+    expect(free.fee).toEqual({ items: [], total: 0, certainty: "confirmed", terms: null });
     expect(offerTotal(free)).toBe(free.keeps);
+  });
+
+  it("says when the fee falls due and how it is collected, as the approved copy kept them and no other way", () => {
+    const study = dealStudy(input, borrower);
+    const plan = feePlan(input, study);
+    // The plan as it is counted carries no terms: they are the office's policy on the day of the approval.
+    expect(clientOffer({ input, study }, plan)!.fee.terms).toBeNull();
+    expect(clientOffer({ input, study }, { ...plan, terms: { due: "disbursement", collection: "deducted" } })!.fee.terms).toEqual({ due: "disbursement", collection: "deducted" });
+    expect(clientOffer({ input, study }, { ...plan, terms: { due: "agreement", collection: "transfer" } })!.fee.terms).toEqual({ due: "agreement", collection: "transfer" });
+    // Terms that cannot be read, or that cannot hold, are not told to a client. The offer itself still stands.
+    for (const terms of [{ due: "someday", collection: "deducted" }, { due: "approval", collection: "deducted" }, { due: "disbursement" }, "soon"]) {
+      const offer = clientOffer({ input, study }, { ...plan, terms: terms as never })!;
+      expect(offer.fee.terms, JSON.stringify(terms)).toBeNull();
+      expect(offer.fee.total).toBe(141000);
+    }
   });
 
   it("marks what is counted and not written: a financing with no offer makes the fee on it, and the sum, an estimate", () => {

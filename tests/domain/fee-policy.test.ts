@@ -1,18 +1,40 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_POLICY, FEE_REASON_MIN, feeChanges, feeRefusal, policyFee, policyProblem, type Fee, type FeePolicy } from "@/domain/deal";
+import { DEFAULT_POLICY, DEFAULT_TERMS, FEE_REASON_MIN, feeChanges, feeRefusal, policyFee, policyProblem, policyTerms, readTerms, termsHold, type Fee, type FeePolicy } from "@/domain/deal";
 
 /**
  * The office's fee policy and a deal's fee. A new deal starts from the policy; a saved deal keeps its
  * own fee. Setting a fee otherwise needs the right, a percent inside the range, and a written reason.
  */
-const policy: FeePolicy = { settlePct: 12, financePct: 10, financeBase: "total", min: 10, max: 30 };
+const policy: FeePolicy = { settlePct: 12, financePct: 10, financeBase: "total", min: 10, max: 30, due: "disbursement", collection: "deducted" };
 const start = policyFee(policy);
 const reason = "تعثر لدى شركة تمويل والجهد أكبر";
 
 describe("the fee policy", () => {
   it("starts from ten percent on each part, inside ten to thirty-five, until the manager sets it", () => {
-    expect(DEFAULT_POLICY).toEqual({ settlePct: 10, financePct: 10, financeBase: "total", min: 10, max: 35 });
+    expect(DEFAULT_POLICY).toEqual({ settlePct: 10, financePct: 10, financeBase: "total", min: 10, max: 35, due: "disbursement", collection: "deducted" });
     expect(policyProblem(DEFAULT_POLICY)).toBeNull();
+  });
+
+  it("owes the fee as the office's model has it until the manager says otherwise: out of the financing as it is paid out", () => {
+    expect(DEFAULT_TERMS).toEqual({ due: "disbursement", collection: "deducted" });
+    expect(policyTerms(DEFAULT_POLICY)).toEqual(DEFAULT_TERMS);
+    expect(policyTerms({ ...policy, due: "agreement", collection: "transfer" })).toEqual({ due: "agreement", collection: "transfer" });
+  });
+
+  it("does not take a fee out of a financing that is not paid out yet", () => {
+    expect(termsHold({ due: "disbursement", collection: "deducted" })).toBe(true);
+    for (const due of ["disbursement", "approval", "agreement"] as const) expect(termsHold({ due, collection: "transfer" })).toBe(true);
+    for (const due of ["approval", "agreement"] as const) {
+      expect(termsHold({ due, collection: "deducted" })).toBe(false);
+      expect(policyProblem({ ...policy, due, collection: "deducted" })).toBe("TERMS");
+      expect(policyProblem({ ...policy, due, collection: "transfer" })).toBeNull();
+    }
+  });
+
+  it("reads kept terms only when they are terms that hold", () => {
+    expect(readTerms({ due: "approval", collection: "transfer", extra: 1 })).toEqual({ due: "approval", collection: "transfer" });
+    expect(readTerms({ ...policy })).toEqual(DEFAULT_TERMS);
+    for (const kept of [undefined, null, "disbursement", {}, { due: "disbursement" }, { due: "later", collection: "transfer" }, { due: "agreement", collection: "deducted" }, { due: "disbursement", collection: "cash" }]) expect(readTerms(kept), JSON.stringify(kept)).toBeNull();
   });
 
   it("gives a new deal its percents and base, with nothing extra", () => {

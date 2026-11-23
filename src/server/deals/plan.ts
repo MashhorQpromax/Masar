@@ -1,6 +1,6 @@
 import "server-only";
 import { desc, eq } from "drizzle-orm";
-import { feePlan, planMoves, planRefusal, type DealInput, type DealStudy, type FeePlan, type PlanFigure } from "@/domain/deal";
+import { feePlan, planMoves, planRefusal, policyTerms, type DealInput, type DealStudy, type FeePlan, type PlanFigure } from "@/domain/deal";
 import type { FeePart } from "@/domain/deal";
 import { dayOf } from "@/domain/eligibility";
 import type { FundingRoute } from "@/domain/funding";
@@ -13,6 +13,7 @@ import { DomainError } from "../shared/errors";
 import { printOf } from "../shared/print";
 import { fundingOf } from "../funding/service";
 import { lenderReplies } from "../knowledge/service";
+import { feePolicy } from "../settings/fees";
 import { borrowerOf } from "./mapping";
 import { getDeal, type DealView } from "./service";
 
@@ -96,18 +97,21 @@ export async function approveFeePlan(db: Db, args: { dealId: number; actor: Acto
 
     const [person] = args.actor.name || args.actor.userId == null ? [] : await tx.select({ name: users.name }).from(users).where(eq(users.id, args.actor.userId));
     const approver = args.actor.name ?? person?.name ?? null;
+    // The terms the fee is owed on are the policy's on this day, and are kept with what was approved.
+    const plan: FeePlan = { ...current.plan, terms: policyTerms(await feePolicy(tx)) };
     const [row] = await tx
       .insert(feeApprovals)
-      .values({ dealId: view.deal.id, userId: args.actor.userId, approver, print: current.print, plan: { ...current.plan }, createdAt: now })
+      .values({ dealId: view.deal.id, userId: args.actor.userId, approver, print: current.print, plan: { ...plan }, createdAt: now })
       .returning();
     await audit(tx, args.actor, "deal.fee_approve", "deal", view.deal.id, {
       clientId: view.client.id,
       fee: { ...current.plan.fee },
       amount: current.plan.amounts.total,
       clientNet: current.plan.clientNet,
+      terms: { ...plan.terms },
       route: route?.key ?? null,
       class: card?.class ?? null,
     });
-    return { id: row!.id, at: row!.createdAt, by: approver, plan: current.plan, stands: true, moves: { figures: [], fee: [], lenders: false } };
+    return { id: row!.id, at: row!.createdAt, by: approver, plan, stands: true, moves: { figures: [], fee: [], lenders: false } };
   });
 }

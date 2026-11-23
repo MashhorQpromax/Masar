@@ -7,7 +7,7 @@
  * company earns. The final offer adds `ClientOffer`: the office's fee in detail, as the owner decided
  * a client sees it, and still no capital and no return.
  */
-import { splitLabel, STATIONS, type DealInput, type DealStudy, type LenderKind, type Stage, type StationKey, type StationState } from "@/domain/deal";
+import { splitLabel, STATIONS, type DealInput, type DealStudy, type FeeTerms, type LenderKind, type Stage, type StationKey, type StationState } from "@/domain/deal";
 import type { ClientFacts, ClientOffer, GateReason, MessageKind, OfferCost, OfferFeeItem } from "@/domain/messages";
 import { LINK_DAYS } from "@/domain/messages";
 import { STRUCTURE } from "./deal";
@@ -209,6 +209,14 @@ export const OFFER = {
   written: "كل مبلغ فيه من عرض الجهة المكتوب وخطابات الدائنين.",
 } as const;
 
+/** When the fee falls due and how it is paid, as the client reads it. */
+const OFFER_DUE: Record<FeeTerms["due"], string> = {
+  disbursement: "عند صرف تمويلك",
+  approval: "عند موافقة الجهة على تمويلك",
+  agreement: "عند توقيع الاتفاق",
+};
+export const offerTerms = (terms: FeeTerms): string => `تُستحق أتعابنا ${OFFER_DUE[terms.due]}، ${terms.collection === "deducted" ? "وتُخصم منه مباشرة" : "وتسددها بتحويل بنكي"}.`;
+
 /** One item of the fee in words, without its amounts: the percent goes before it and the base after. */
 export function feeItemWhat(item: OfferFeeItem): string {
   if (item.kind === "fixed") return OFFER.fixed;
@@ -249,6 +257,7 @@ export function offerText(facts: Pick<ClientFacts, "financing">, offer: ClientOf
     const fee = offer.fee.items.map((item) => `- ${feeItemLine(item)}`);
     if (offer.fee.items.length > 1) fee.push(`${OFFER.feeTotal}: *${plainMoney(offer.fee.total)}* ريال${mark(offer.fee.certainty)}`);
     else fee[0] += mark(offer.fee.certainty);
+    if (offer.fee.terms) fee.push(offerTerms(offer.fee.terms));
     out.push(`*${OFFER.fee}*\n${fee.join("\n")}`);
   }
 

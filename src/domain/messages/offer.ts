@@ -1,4 +1,4 @@
-import { clientNet, feeChanges, linesTotal, normalizeFee, type Certainty, type DealInput, type DealStudy, type DealSummary, type FeePlan, type FinanceBase } from "../deal";
+import { clientNet, feeChanges, linesTotal, normalizeFee, readTerms, type Certainty, type DealInput, type DealStudy, type DealSummary, type FeePlan, type FeeTerms, type FinanceBase } from "../deal";
 
 /** One cost paid out of the financing, as the study names it. */
 export type OfferCost = DealSummary["costs"][number];
@@ -27,7 +27,8 @@ export interface ClientOffer {
   /** What the deal pays for the client out of it: obligations settled and financing paid off. Null when it pays none. */
   obligations: { amount: number; certainty: Certainty } | null;
   costs: OfferCost[];
-  fee: { items: OfferFeeItem[]; total: number; certainty: Certainty };
+  /** `terms`: when the fee falls due and how it is collected, as approved. Null on a plan approved before they were kept. */
+  fee: { items: OfferFeeItem[]; total: number; certainty: Certainty; terms: FeeTerms | null };
   /** Cash the client keeps at the end. */
   keeps: number;
   /**
@@ -78,7 +79,7 @@ export function clientOffer(deal: { input: DealInput; study: DealStudy }, approv
     totalFinancing: financing.reduce((total, part) => total + part.amount, 0),
     obligations: obligations && obligations.amount > 0 ? { amount: obligations.amount, certainty: obligations.certainty } : null,
     costs,
-    fee: { items, total: amounts.total, certainty: line("fee")?.certainty ?? "confirmed" },
+    fee: { items, total: amounts.total, certainty: line("fee")?.certainty ?? "confirmed", terms: readTerms(approved.terms) },
     keeps: study.clientNet,
     deduction: net.deduction.after,
     certainty: net.certainty,

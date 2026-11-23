@@ -109,6 +109,32 @@ describe("approving a deal's fee plan", () => {
     expect((await standing(dealId)).map((a) => a.stands)).toEqual([true]);
   });
 
+  it("keeps the terms the fee is owed on as the policy had them that day, whatever the policy says later", async () => {
+    const policy = { settlePct: 10, financePct: 10, financeBase: "total", min: 10, max: 35 } as const;
+    await setFeePolicy(c.db, { input: { ...policy, due: "agreement", collection: "transfer" }, actor, now });
+    const { dealId } = await saveDeal(c.db, { clientId: (await newClient()).id, input, actor, now });
+    const first = await approveFeePlan(c.db, { dealId, actor, now });
+    expect(first.plan.terms).toEqual({ due: "agreement", collection: "transfer" });
+    const [row] = await c.db.select().from(feeApprovals).where(eq(feeApprovals.id, first.id));
+    expect(row!.plan.terms).toEqual({ due: "agreement", collection: "transfer" });
+    const logged = await c.db.select().from(auditLog).where(eq(auditLog.action, "deal.fee_approve"));
+    expect(logged.at(-1)).toMatchObject({ entityId: dealId, details: { terms: { due: "agreement", collection: "transfer" } } });
+
+    // The office changes its terms. What was approved stands, on the terms it was approved on.
+    await setFeePolicy(c.db, { input: { ...policy, due: "disbursement", collection: "deducted" }, actor, now });
+    const [kept] = await standing(dealId);
+    expect(kept).toMatchObject({ stands: true, plan: { terms: { due: "agreement", collection: "transfer" } } });
+    expect(await refusal(() => approveFeePlan(c.db, { dealId, actor, now }))).toBe("STANDS");
+
+    // A number moves, and the new approval is on the terms of its own day, beside the old copy.
+    await c.db.transaction((tx) => amendDeal(tx, { dealId, terms: { bankPersonal: 190000 }, actor, now }));
+    await approveFeePlan(c.db, { dealId, actor, now });
+    expect((await standing(dealId)).map((a) => [a.stands, a.plan.terms])).toEqual([
+      [true, { due: "disbursement", collection: "deducted" }],
+      [false, { due: "agreement", collection: "transfer" }],
+    ]);
+  });
+
   it("falls when the fee itself is set otherwise", async () => {
     const { dealId } = await saveDeal(c.db, { clientId: (await newClient()).id, input, actor, now });
     await approveFeePlan(c.db, { dealId, actor, now });

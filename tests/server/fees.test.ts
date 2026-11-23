@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { DEFAULT_POLICY, defaultDealInput, type DealInput } from "@/domain/deal";
 import type { Connection } from "@/server/db/client";
-import { auditLog, clients, deals, users } from "@/server/db/schema";
+import { auditLog, clients, deals, officeSettings, users } from "@/server/db/schema";
 import { reviseDeal, saveDeal, startDeal } from "@/server/deals/service";
 import { feePolicy, setFeePolicy } from "@/server/settings/fees";
 import type { Actor } from "@/server/shared/actor";
@@ -69,10 +69,23 @@ describe("the office's fee policy", () => {
     expect(await refusal(() => setFeePolicy(c.db, { input: { ...DEFAULT_POLICY, min: 40 }, actor, now }))).toBe("RANGE");
     expect(await refusal(() => setFeePolicy(c.db, { input: { ...DEFAULT_POLICY, settlePct: 8 }, actor, now }))).toBe("START_OUTSIDE");
     expect(await refusal(() => setFeePolicy(c.db, { input: { ...DEFAULT_POLICY, financeBase: "everything" }, actor, now }))).toBe("INVALID_INPUT");
+    // A fee cannot be taken out of a financing that is not paid out yet.
+    expect(await refusal(() => setFeePolicy(c.db, { input: { ...DEFAULT_POLICY, due: "agreement" }, actor, now }))).toBe("TERMS");
+    expect(await refusal(() => setFeePolicy(c.db, { input: { ...DEFAULT_POLICY, collection: "cash" }, actor, now }))).toBe("INVALID_INPUT");
+    // A policy sent without terms is kept with the office's own model.
     await setFeePolicy(c.db, { input: { settlePct: 12, financePct: 11, financeBase: "total", min: 10, max: 30 }, actor, now });
-    expect(await feePolicy(c.db)).toEqual({ settlePct: 12, financePct: 11, financeBase: "total", min: 10, max: 30 });
+    expect(await feePolicy(c.db)).toEqual({ settlePct: 12, financePct: 11, financeBase: "total", min: 10, max: 30, due: "disbursement", collection: "deducted" });
     const [logged] = await c.db.select().from(auditLog).where(eq(auditLog.action, "settings.fees"));
     expect(logged).toMatchObject({ userId: actor.userId, details: { before: DEFAULT_POLICY, after: { settlePct: 12, max: 30 } } });
+  });
+
+  it("keeps when the fee falls due and how it is collected, and reads a policy kept before them with the office's model", async () => {
+    await setFeePolicy(c.db, { input: { settlePct: 12, financePct: 11, financeBase: "total", min: 10, max: 30, due: "approval", collection: "transfer" }, actor, now });
+    expect(await feePolicy(c.db)).toMatchObject({ due: "approval", collection: "transfer" });
+    const logged = await c.db.select().from(auditLog).where(eq(auditLog.action, "settings.fees"));
+    expect(logged.at(-1)).toMatchObject({ details: { before: { due: "disbursement", collection: "deducted" }, after: { due: "approval", collection: "transfer" } } });
+    await c.db.update(officeSettings).set({ value: { settlePct: 12, financePct: 11, financeBase: "total", min: 10, max: 30 } });
+    expect(await feePolicy(c.db)).toMatchObject({ settlePct: 12, due: "disbursement", collection: "deducted" });
   });
 });
 

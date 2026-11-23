@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { auditDetail } from "@/copy/audit";
 import { FEE_REFUSALS, saveError } from "@/copy/editor";
-import { feeText, movesText, planError, planLine, planState, PLAN_REFUSALS, policyError, policyText, POLICY_PROBLEMS, rangeText } from "@/copy/fees";
-import { DEFAULT_POLICY, policyFee } from "@/domain/deal";
+import { FEE_COLLECTION, FEE_DUE, feeText, movesText, planError, planLine, planState, PLAN_REFUSALS, policyError, policyText, POLICY_PROBLEMS, rangeText, termsText } from "@/copy/fees";
+import { offerTerms } from "@/copy/messages";
+import { DEFAULT_POLICY, FEE_COLLECTIONS, FEE_DUES, policyFee } from "@/domain/deal";
 
 const plain = (text: string) => text.replace(/[⁦⁩]/g, "");
 const wordy = /undefined|NaN|null|\[object|[A-Za-z_]{3,}|—|–/;
@@ -16,7 +17,19 @@ describe("the wording of fees", () => {
 
   it("tells the policy as the settings page shows it", () => {
     expect(plain(rangeText(DEFAULT_POLICY))).toBe("الحدود من 10% إلى 35%");
-    expect(plain(policyText(DEFAULT_POLICY))).toBe("تبدأ كل صفقة جديدة بـ 10% على السداد و10% على كامل التمويل. الحدود من 10% إلى 35%.");
+    expect(plain(policyText(DEFAULT_POLICY))).toBe("تبدأ كل صفقة جديدة بـ 10% على السداد و10% على كامل التمويل. الحدود من 10% إلى 35%. تُستحق عند صرف التمويل وتُخصم منه.");
+  });
+
+  it("tells when a fee falls due and how it is collected, to the office and to the client", () => {
+    expect(termsText({ due: "disbursement", collection: "deducted" })).toBe("تُستحق عند صرف التمويل وتُخصم منه");
+    expect(termsText({ due: "disbursement", collection: "transfer" })).toBe("تُستحق عند صرف التمويل ويسددها العميل بتحويل");
+    expect(termsText({ due: "approval", collection: "transfer" })).toBe("تُستحق عند موافقة الجهة ويسددها العميل بتحويل");
+    expect(termsText({ due: "agreement", collection: "transfer" })).toBe("تُستحق عند توقيع الاتفاق ويسددها العميل بتحويل");
+    expect(offerTerms({ due: "disbursement", collection: "deducted" })).toBe("تُستحق أتعابنا عند صرف تمويلك، وتُخصم منه مباشرة.");
+    expect(offerTerms({ due: "approval", collection: "transfer" })).toBe("تُستحق أتعابنا عند موافقة الجهة على تمويلك، وتسددها بتحويل بنكي.");
+    expect(offerTerms({ due: "agreement", collection: "transfer" })).toBe("تُستحق أتعابنا عند توقيع الاتفاق، وتسددها بتحويل بنكي.");
+    for (const due of FEE_DUES) expect(FEE_DUE[due]).not.toMatch(wordy);
+    for (const collection of FEE_COLLECTIONS) expect(FEE_COLLECTION[collection]).not.toMatch(wordy);
   });
 
   it("words every refusal, of a policy and of a deal's fee, with no code in it", () => {
@@ -40,6 +53,11 @@ describe("the wording of fees", () => {
     const policy = auditDetail("settings.fees", { before: DEFAULT_POLICY, after: { ...DEFAULT_POLICY, max: 30 } });
     expect(plain(policy)).toContain("صارت: تبدأ كل صفقة جديدة بـ 10% على السداد و10% على كامل التمويل. الحدود من 10% إلى 30%.");
     expect(policy).not.toMatch(wordy);
+    // A change of the terms alone is told, and a policy logged before the terms reads with the office's own model.
+    const terms = auditDetail("settings.fees", { before: DEFAULT_POLICY, after: { ...DEFAULT_POLICY, due: "agreement", collection: "transfer" } });
+    expect(plain(terms)).toContain("تُستحق عند توقيع الاتفاق ويسددها العميل بتحويل.");
+    const { due: _due, collection: _collection, ...old } = DEFAULT_POLICY;
+    expect(plain(auditDetail("settings.fees", { before: old, after: { ...old, max: 30 } }))).toContain("الحدود من 10% إلى 30%. تُستحق عند صرف التمويل وتُخصم منه.");
   });
 
   it("tells a fee plan that stands with who, when and what it comes to, and one that fell with what moved", () => {
@@ -66,5 +84,10 @@ describe("the wording of fees", () => {
     expect(planError("FORBIDDEN")).toBe("اعتماد الأتعاب لمدير النظام وحده.");
     const detail = auditDetail("deal.fee_approve", { fee: policyFee(DEFAULT_POLICY), amount: 106000, clientNet: 222000 });
     expect(plain(detail)).toBe("أتعاب 106,000، يبقى للعميل 222,000، 10% على السداد و10% على كامل التمويل");
+    // An approval logs the terms it kept, and one logged before them is told without.
+    const withTerms = auditDetail("deal.fee_approve", { fee: policyFee(DEFAULT_POLICY), amount: 106000, clientNet: 222000, terms: { due: "agreement", collection: "transfer" } });
+    expect(plain(withTerms)).toBe("أتعاب 106,000، يبقى للعميل 222,000، 10% على السداد و10% على كامل التمويل، تُستحق عند توقيع الاتفاق ويسددها العميل بتحويل");
+    expect(withTerms).not.toMatch(wordy);
+    expect(plain(auditDetail("deal.fee_approve", { fee: policyFee(DEFAULT_POLICY), amount: 106000, clientNet: 222000, terms: { due: "approval", collection: "deducted" } }))).toBe(plain(detail));
   });
 });

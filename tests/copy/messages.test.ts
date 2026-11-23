@@ -19,6 +19,7 @@ import {
   OFFER_BASE,
   OFFER_COST,
   OFFER_WAITS,
+  offerTerms,
   offerText,
   OFFICE_NAME,
   papersText,
@@ -144,6 +145,11 @@ describe("the messages for the client", () => {
     expect(text).toContain(`- 12.5% على كامل التمويل (${plainMoney(study.financeBase)} ريال): ${plainMoney(study.feeFinance)} ريال`);
     expect(text).toContain("- مبلغ مقطوع: 5,000 ريال");
     expect(text).toContain(`${OFFER.feeTotal}: *${plainMoney(study.fee)}* ريال ${ESTIMATE_MARK}`);
+    // The terms the fee is owed on close the fee's own part, when the approval kept them.
+    expect(text).not.toContain("تُستحق");
+    const kept = clientOffer({ input, study }, { ...feePlan(input, study), terms: { due: "disbursement", collection: "deducted" } })!;
+    expect(offerText(facts, kept, extras)).toContain(`${OFFER.feeTotal}: *${plainMoney(study.fee)}* ريال ${ESTIMATE_MARK}\n${offerTerms({ due: "disbursement", collection: "deducted" })}\n\n*${OFFER.keeps}`);
+    expect(offerText(facts, kept, extras)).not.toMatch(broken);
     expect(text).toContain(`*${OFFER.keeps}: ${plainMoney(study.clientNet)} ريال* ${ESTIMATE_MARK}`);
     expect(text).toContain(`_${ESTIMATE_NOTE}_`);
     expect(text).toContain(extras.link!);
@@ -171,11 +177,13 @@ describe("the messages for the client", () => {
 
     const input: DealInput = { ...defaultDealInput(), structure: "settle_personal", items: [], bankPersonal: 150000, fee: { settlePct: 0, settleIncludesPayoff: false, financePct: 0, financeBase: "total", fixed: 0 } };
     const study = dealStudy(input, { age: 35, basicSalary: 12000, totalSalary: 16000, serviceMonths: 120, sector: "gov" });
-    const offer = clientOffer({ input, study }, feePlan(input, study));
+    const offer = clientOffer({ input, study }, { ...feePlan(input, study), terms: { due: "agreement", collection: "transfer" } });
     if (offer) {
       const text = offerText(clientFacts({ stage: "agreement", input, study }), offer, extras);
       expect(text).toContain(`*${OFFER.fee}*\n${OFFER.noFee}.`);
       expect(text).not.toContain(OFFER.feeTotal);
+      // A fee of nothing is owed on no terms.
+      expect(text).not.toContain("تُستحق");
     }
   });
 

@@ -45,11 +45,40 @@ export function defaultDealInput(): DealInput {
   };
 }
 
+/** When the office's fee falls due: as the new financing is paid out, at the lender's approval, or at the agreement. */
+export const FEE_DUES = ["disbursement", "approval", "agreement"] as const;
+export type FeeDue = (typeof FEE_DUES)[number];
+
+/** How the fee is collected: taken out of the new financing as it is paid out, or paid by the client by transfer. */
+export const FEE_COLLECTIONS = ["deducted", "transfer"] as const;
+export type FeeCollection = (typeof FEE_COLLECTIONS)[number];
+
+/** The terms a fee is owed on. An approved plan keeps the ones it was approved under. */
+export interface FeeTerms {
+  due: FeeDue;
+  collection: FeeCollection;
+}
+
+/** The office's model as its owner described it: the fee comes out of the new financing when it is paid out. */
+export const DEFAULT_TERMS: FeeTerms = { due: "disbursement", collection: "deducted" };
+
+/** A fee is taken out of the financing only when it falls due as the financing is paid out: before that there is nothing to take it from. */
+export const termsHold = (terms: FeeTerms): boolean => terms.collection !== "deducted" || terms.due === "disbursement";
+
+/** Terms as they were stored, or null when what was stored does not read as terms. */
+export function readTerms(value: unknown): FeeTerms | null {
+  if (!value || typeof value !== "object") return null;
+  const { due, collection } = value as Record<string, unknown>;
+  const terms = { due, collection } as FeeTerms;
+  return (FEE_DUES as readonly unknown[]).includes(due) && (FEE_COLLECTIONS as readonly unknown[]).includes(collection) && termsHold(terms) ? terms : null;
+}
+
 /**
- * The office's fee policy, set by the manager: the percents a new deal starts from and the range no
- * deal's percent may leave. A deal keeps its own fee once saved, so a new policy changes no deal.
+ * The office's fee policy, set by the manager: the percents a new deal starts from, the range no
+ * deal's percent may leave, and the terms a fee is owed on. A deal keeps its own fee once saved, so a
+ * new policy changes no deal, and an approved plan keeps the terms it was approved under.
  */
-export interface FeePolicy {
+export interface FeePolicy extends FeeTerms {
   settlePct: number;
   financePct: number;
   financeBase: FinanceBase;
@@ -58,7 +87,10 @@ export interface FeePolicy {
   max: number;
 }
 
-export const DEFAULT_POLICY: FeePolicy = { settlePct: FEE_MIN, financePct: FEE_MIN, financeBase: "total", min: FEE_MIN, max: FEE_MAX };
+export const DEFAULT_POLICY: FeePolicy = { settlePct: FEE_MIN, financePct: FEE_MIN, financeBase: "total", min: FEE_MIN, max: FEE_MAX, ...DEFAULT_TERMS };
+
+/** The terms a plan approved under this policy is owed on. */
+export const policyTerms = (policy: FeeTerms): FeeTerms => ({ due: policy.due, collection: policy.collection });
 
 /** The fee a new deal starts from under a policy. */
 export const policyFee = (policy: FeePolicy): Fee => ({ settlePct: policy.settlePct, settleIncludesPayoff: false, financePct: policy.financePct, financeBase: policy.financeBase, fixed: 0 });
@@ -67,13 +99,15 @@ export const policyFee = (policy: FeePolicy): Fee => ({ settlePct: policy.settle
  * Why a policy cannot be kept. Null when it can.
  * - `RANGE`: the lowest is above the highest, or either is outside 0 to 100.
  * - `START_OUTSIDE`: a starting percent is outside the policy's own range.
+ * - `TERMS`: the fee is to be taken out of the financing before the financing is paid out.
  */
-export type PolicyProblem = "RANGE" | "START_OUTSIDE";
+export type PolicyProblem = "RANGE" | "START_OUTSIDE" | "TERMS";
 
 export function policyProblem(policy: FeePolicy): PolicyProblem | null {
   const { min, max } = policy;
   if (!(min >= 0 && max <= 100 && min <= max)) return "RANGE";
   if ([policy.settlePct, policy.financePct].some((pct) => pct < min || pct > max)) return "START_OUTSIDE";
+  if (!termsHold(policy)) return "TERMS";
   return null;
 }
 
