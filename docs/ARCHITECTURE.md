@@ -178,7 +178,7 @@ Kept as the old system has them and worth a decision before the switch:
 - `totalToClear` leaves out an open bounced cheque, and a travel ban or an open cheque alone still reads as a "clean" standing
 - a settled telecom default causes no waiting period, and a settlement with no date is read as made just now
 
-Three things differ from the old system on purpose. The analysis no longer writes a guessed creditor back onto the report; it returns the guess, marked as a guess. A bounced cheque is no longer paired with a default of a similar amount, which used to drop that default from the deal's list. A new card in the deal editor defaults to being bought out by the new personal finance, as the old item list already did.
+Four things differ from the old system on purpose. The analysis no longer writes a guessed creditor back onto the report; it returns the guess, marked as a guess. A bounced cheque is no longer paired with a default of a similar amount, which used to drop that default from the deal's list. A new card in the deal editor defaults to being bought out by the new personal finance, as the old item list already did. And the finding that asks for a phone bill to be paid (`TELECOM_DEFAULTS`) counts the unpaid bills only: the old engine counted paid ones with them and asked for a paid bill to be paid. The count in `stats.telecomDefaults` is unchanged.
 
 ## Eligibility
 

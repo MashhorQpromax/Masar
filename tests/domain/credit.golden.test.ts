@@ -23,6 +23,13 @@ const { cases } = JSON.parse(readFileSync(file, "utf8")) as { cases: Case[] };
 /** Same JSON round trip the stored answers went through (drops undefined, turns -0 into 0). */
 const plain = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 
+/**
+ * The old engine told a client to pay a phone bill that the record shows as paid: it counted paid and
+ * unpaid bills together under one sentence. The new one counts the unpaid ones only, so that finding
+ * is left out of the comparison here and covered in credit.examples.test.ts.
+ */
+const exceptBills = <T extends { code: string }>(findings: T[]): T[] => findings.filter((f) => f.code !== "TELECOM_DEFAULTS");
+
 /** The old engine printed the rule's numbers only where its sentences named them. */
 function comparable(a: CreditAnalysis) {
   return plain({
@@ -37,7 +44,7 @@ function comparable(a: CreditAnalysis) {
       const { creditorGuessed: _creditorGuessed, ...params } = b.params;
       return { code: b.code, params };
     }),
-    findings: a.findings.map((f) => {
+    findings: exceptBills(a.findings).map((f) => {
       if (f.code === "RECENT_DELAYS") return { level: f.level, code: f.code, params: { count: f.params.count, worstDelay: f.params.worstDelay } };
       if (f.code === "OLD_DELAY") return { level: f.level, code: f.code, params: { worstDelay: f.params.worstDelay } };
       return { level: f.level, code: f.code, params: f.params };
@@ -53,7 +60,7 @@ describe("credit grading matches the production answers", () => {
 
   it.each(cases.map((c, i) => [i + 1, c] as const))("record %i", (_n, c) => {
     const { flags: _flags, items: _items, ...expected } = c.expected;
-    expect(comparable(analyzeCredit(c.report))).toEqual(expected);
+    expect(comparable(analyzeCredit(c.report))).toEqual({ ...expected, findings: exceptBills(expected.findings as { code: string }[]) });
   });
 
   it("leaves the report as it received it", () => {

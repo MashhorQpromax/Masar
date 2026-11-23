@@ -161,7 +161,9 @@ export function analyzeCredit(report: CreditReport): CreditAnalysis {
     findings.push({ code: "FINANCE_CO_DEFAULTS", level: "warn", params: { count: stats.financeCoDefaults, waitMonths: R.bankWaitAfterFinanceCoDefault } });
   }
   if (stats.bankDefaults > 0) findings.push({ code: "BANK_DEFAULTS", level: "warn", params: { count: stats.bankDefaults, waitMonths: R.bankWaitAfterBankDefault } });
-  if (stats.telecomDefaults > 0) findings.push({ code: "TELECOM_DEFAULTS", level: "info", params: { count: stats.telecomDefaults } });
+  // Only the bills still unpaid: a paid one is told by its own finding below, and has nothing left to pay.
+  const unpaidBills = unpaid.filter((d) => d.creditorType === "telecom").length;
+  if (unpaidBills > 0) findings.push({ code: "TELECOM_DEFAULTS", level: "info", params: { count: unpaidBills } });
   for (const d of settled) {
     findings.push({
       code: "SETTLED_DEFAULT",

@@ -57,6 +57,20 @@ describe("credit grading by example", () => {
     expect(a.severity).toBe(6);
     expect(a.grade).toBe("E");
     expect(a.banks).toEqual({ access: "closed", reason: "BLOCKER", reopenInMonths: null });
+    expect(a.findings).toContainEqual({ code: "TELECOM_DEFAULTS", level: "info", params: { count: 1 } });
+  });
+
+  it("asks for a phone bill to be paid only while one is unpaid", () => {
+    const bill = (parts: Partial<Facility>) => loan({ lender: "اتصالات", creditorType: "telecom", product: "الهاتف الجوال", defaultAmount: 420, ...parts });
+    const paid = analyzeCredit(report({ facilities: [bill({ status: "settled", settledMonthsAgo: 2 })] }));
+    // The paid bill is told as paid, and nobody is asked to pay it again.
+    expect(paid.findings.map((f) => f.code)).toContain("SETTLED_DEFAULT");
+    expect(paid.findings.map((f) => f.code)).not.toContain("TELECOM_DEFAULTS");
+    expect(paid.stats.telecomDefaults).toBe(1);
+
+    const one = analyzeCredit(report({ facilities: [bill({ status: "settled", settledMonthsAgo: 2 }), bill({ lender: "شركة أخرى", status: "default" })] }));
+    expect(one.findings).toContainEqual({ code: "TELECOM_DEFAULTS", level: "info", params: { count: 1 } });
+    expect(one.stats.telecomDefaults).toBe(2);
   });
 
   it("keeps banks closed for 24 months after a finance company default is settled, and finance companies for 6", () => {
