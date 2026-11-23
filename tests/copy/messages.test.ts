@@ -95,6 +95,8 @@ describe("the messages for the client", () => {
       const allowed = new Set<string>([
         ...[offer.totalFinancing, offer.keeps, offer.fee.total, offer.obligations?.amount ?? 0, ...offer.financing.map((part) => part.amount), ...offer.costs.map((cost) => cost.amount)].flatMap((amount) => numbers(plainMoney(amount))),
         ...offer.fee.items.flatMap((item) => (item.kind === "fixed" ? numbers(plainMoney(item.amount)) : [...numbers(plainMoney(item.amount)), ...numbers(plainMoney(item.base)), ...numbers(`${Number.isInteger(item.pct) ? item.pct : item.pct.toFixed(1)}`)])),
+        // The monthly deduction is the client's own: what leaves their salary once the financing is paid out.
+        ...(offer.deduction == null ? [] : numbers(`${Number.isInteger(offer.deduction) ? offer.deduction : offer.deduction.toFixed(1)}`)),
         String(LINK_DAYS),
         ...facts.financing.flatMap((part) => numbers(part.lender ?? "")),
       ]);
@@ -145,6 +147,9 @@ describe("the messages for the client", () => {
     expect(text).toContain(`*${OFFER.keeps}: ${plainMoney(study.clientNet)} ريال* ${ESTIMATE_MARK}`);
     expect(text).toContain(`_${ESTIMATE_NOTE}_`);
     expect(text).toContain(extras.link!);
+    // The monthly side of the offer: what leaves the salary after the new financing, always an estimate.
+    const share = study.financing.dbrAfter!;
+    expect(text).toContain(`*${OFFER.monthly}*\n- ${OFFER.deduction}: ${Number.isInteger(share) ? share : share.toFixed(1)}% ${ESTIMATE_MARK}`);
     // The lender is named only when the person chooses to.
     expect(text).not.toContain("بنك الراتب");
     expect(offerText(facts, offer, { ...extras, nameLender: true })).toContain("- تمويل شخصي من *بنك الراتب*:");

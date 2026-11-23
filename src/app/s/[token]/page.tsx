@@ -155,6 +155,19 @@ export default async function ClientPage({ params }: { params: Promise<{ token: 
                   )}
                 </ul>
               )}
+              {view.offer.deduction != null && (
+                <>
+                  <h2>{OFFER.monthly}</h2>
+                  <ul>
+                    <li>
+                      <span>
+                        {OFFER.deduction} <Certain value="estimated" />
+                      </span>
+                      <b className="num">{percent(view.offer.deduction)}</b>
+                    </li>
+                  </ul>
+                </>
+              )}
             </div>
             <p className="portal-fine">{view.offer.certainty === "estimated" ? ESTIMATE_NOTE : OFFER.written}</p>
           </section>

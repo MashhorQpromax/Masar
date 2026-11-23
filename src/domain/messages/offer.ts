@@ -30,6 +30,12 @@ export interface ClientOffer {
   fee: { items: OfferFeeItem[]; total: number; certainty: Certainty };
   /** Cash the client keeps at the end. */
   keeps: number;
+  /**
+   * The client's monthly deduction after the new financing, percent of their salary: the owner's
+   * roadmap shows it to the client beside the net and the costs. It is counted from the rates the
+   * study assumes, so it is an estimate even on a written offer. Null when the salary is not known.
+   */
+  deduction: number | null;
   /** Confirmed only when every line above stands on a written word. */
   certainty: Certainty;
 }
@@ -74,6 +80,7 @@ export function clientOffer(deal: { input: DealInput; study: DealStudy }, approv
     costs,
     fee: { items, total: amounts.total, certainty: line("fee")?.certainty ?? "confirmed" },
     keeps: study.clientNet,
+    deduction: net.deduction.after,
     certainty: net.certainty,
   };
 }

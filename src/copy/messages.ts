@@ -204,7 +204,9 @@ export const OFFER = {
   feeTotal: "مجموع الأتعاب",
   fixed: "مبلغ مقطوع",
   keeps: "يبقى لك نقداً",
-  written: "كل رقم فيه من عرض الجهة المكتوب وخطابات الدائنين.",
+  monthly: "شهرياً بعد التمويل",
+  deduction: "استقطاعك المتوقع من الراتب",
+  written: "كل مبلغ فيه من عرض الجهة المكتوب وخطابات الدائنين.",
 } as const;
 
 /** One item of the fee in words, without its amounts: the percent goes before it and the base after. */
@@ -251,6 +253,9 @@ export function offerText(facts: Pick<ClientFacts, "financing">, offer: ClientOf
   }
 
   out.push(`*${OFFER.keeps}: ${plainMoney(offer.keeps)} ريال*${mark(offer.certainty)}`);
+  // The monthly side of the same offer: what leaves the salary once the financing is paid out.
+  if (offer.deduction != null) out.push(`*${OFFER.monthly}*
+- ${OFFER.deduction}: ${pct(offer.deduction)} ${ESTIMATE_MARK}`);
   out.push(`_${offer.certainty === "estimated" ? ESTIMATE_NOTE : OFFER.written}_`);
   out.push(closing(x));
   return out.join("\n\n");

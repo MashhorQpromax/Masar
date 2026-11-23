@@ -38,6 +38,9 @@ describe("the client's final offer", () => {
     expect(offer.costs).toEqual(study.summary.costs);
     expect(offer.keeps).toBe(study.clientNet);
     expect(offerTotal(offer)).toBe(offer.keeps);
+    // The monthly side: the deduction from the salary after the new financing, as the study counts it.
+    expect(offer.deduction).toBe(study.financing.dbrAfter);
+    expect(offer.deduction).toBeGreaterThan(0);
   });
 
   it("gives the fee item by item: the percent, what it is counted on, and what it comes to", () => {
@@ -120,6 +123,7 @@ describe("the client's final offer", () => {
       made += 1;
       expect(offerTotal(offer!)).toBe(study.clientNet);
       expect(offer!.keeps).toBe(study.clientNet);
+      expect(offer!.deduction).toBe(study.financing.dbrAfter);
       expect(offer!.fee.total).toBe(study.fee);
       expect(offer!.fee.items.reduce((total, item) => total + item.amount, 0)).toBe(study.fee);
       for (const item of offer!.fee.items) {
