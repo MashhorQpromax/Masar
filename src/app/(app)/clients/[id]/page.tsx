@@ -162,10 +162,16 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
                   <Link href={`/deals/${deal.id}/documents`}>المستندات</Link>
                   {maySee && <Link href={`/deals/${deal.id}/messages`}>الرسائل</Link>}
                   {maySee && <Link href={`/clients/${client.id}/credit`}>سمة</Link>}
+                  {maySee && <Link href={`/clients/${client.id}/analysis`}>التحليل الائتماني</Link>}
                   <Link href={`/deals/${deal.id}/lenders`}>جهات التمويل</Link>
                 </>
               ) : (
-                maySee && <Link href={`/clients/${client.id}/credit`}>سمة</Link>
+                maySee && (
+                  <>
+                    <Link href={`/clients/${client.id}/credit`}>سمة</Link>
+                    <Link href={`/clients/${client.id}/analysis`}>التحليل الائتماني</Link>
+                  </>
+                )
               )}
               {mayDecide && (state.kind === "none" || state.kind === "done") && (
                 <Link className={deal ? undefined : "btn btn--white"} href={`/deals/new?client=${client.id}`}>

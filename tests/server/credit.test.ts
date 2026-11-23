@@ -45,9 +45,22 @@ describe("a client's credit record", () => {
     expect(await creditHistory(c.db, clientId)).toEqual([]);
   });
 
+  it("is not read before the client's consent is on the file", async () => {
+    await expect(addCreditReport(c.db, { clientId, reading: blocked, actor: SYSTEM, now })).rejects.toMatchObject({ code: "CONSENT_NEEDED" });
+    expect(await latestCredit(c.db, clientId)).toBeNull();
+    const [client] = await c.db.select().from(clients).where(eq(clients.id, clientId));
+    expect(client!.consentAt).toBeNull();
+  });
+
   it("stores a reading, grades it and marks the client's standing", async () => {
-    const { reportId, analysis } = await addCreditReport(c.db, { clientId, reading: blocked, actor: SYSTEM, now });
+    const { reportId, analysis } = await addCreditReport(c.db, { consent: true, clientId, reading: blocked, actor: SYSTEM, now });
     expect(analysis).toMatchObject({ grade: "E", standing: "default", stats: { totalToClear: 128400 } });
+
+    // The consent given with the first report is kept on the file, with who recorded it.
+    const [agreed] = await c.db.select().from(clients).where(eq(clients.id, clientId));
+    expect(agreed!.consentAt).toEqual(now);
+    const consents = await c.db.select().from(auditLog).where(eq(auditLog.action, "client.consent"));
+    expect(consents.map((entry) => [entry.entityId, entry.details])).toEqual([[clientId, { given: true, with: "report" }]]);
 
     const [row] = await c.db.select().from(creditReports).where(eq(creditReports.id, reportId));
     expect(row).toMatchObject({ clientId, grade: "E", derivedSimah: "default" });
@@ -101,7 +114,9 @@ describe("a client's credit record", () => {
       reportDate: "2027/01/09",
       facilities: [{ lender: "شركة تمويل", creditorType: "finance_company", product: "قرض شخصي", status: "settled", defaultAmount: 128000, defaultNow: 0, settledMonthsAgo: 1 }],
     });
+    // The consent is on the file: a newer report asks for nothing more, and records nothing more.
     const { reportId, analysis } = await addCreditReport(c.db, { clientId, reading: clean, actor: SYSTEM, now: later });
+    expect((await c.db.select().from(auditLog).where(eq(auditLog.action, "client.consent"))).length).toBe(1);
     expect(analysis).toMatchObject({ grade: "B", standing: "late", banks: { access: "closed", reopenInMonths: 23 }, financeCompanies: { access: "closed", reopenInMonths: 5 } });
     expect((await latestCredit(c.db, clientId))!.id).toBe(reportId);
     expect((await creditHistory(c.db, clientId)).map((h) => [h.id, h.grade])).toEqual([
@@ -127,7 +142,7 @@ describe("a client's credit record", () => {
       { ...reading({}), confidence: "certain" },
     ];
     for (const value of bad) {
-      await expect(addCreditReport(c.db, { clientId, reading: value, actor: SYSTEM, now })).rejects.toMatchObject({ code: "INVALID_INPUT" });
+      await expect(addCreditReport(c.db, { consent: true, clientId, reading: value, actor: SYSTEM, now })).rejects.toMatchObject({ code: "INVALID_INPUT" });
     }
     expect((await creditHistory(c.db, clientId)).length).toBe(before);
   });
@@ -135,6 +150,7 @@ describe("a client's credit record", () => {
   it("cuts an over-long name instead of refusing the report", async () => {
     const long = "ا".repeat(900);
     const { reportId } = await addCreditReport(c.db, {
+      consent: true,
       clientId,
       reading: reading({ facilities: [{ lender: `  ${long}  `, creditorType: "other", product: "منتج", status: "current" }] }),
       actor: SYSTEM,
@@ -146,7 +162,7 @@ describe("a client's credit record", () => {
   });
 
   it("answers for an unknown client or report with not found", async () => {
-    await expect(addCreditReport(c.db, { clientId: 99999, reading: blocked, actor: SYSTEM, now })).rejects.toMatchObject({ code: "NOT_FOUND" });
+    await expect(addCreditReport(c.db, { consent: true, clientId: 99999, reading: blocked, actor: SYSTEM, now })).rejects.toMatchObject({ code: "NOT_FOUND" });
     const review = { suspension: null, travelBan: false, note: null };
     await expect(reviewCreditReport(c.db, { clientId, reportId: 99999, review, actor: SYSTEM, now })).rejects.toMatchObject({ code: "NOT_FOUND" });
     // A report of one client cannot be reviewed through another client.

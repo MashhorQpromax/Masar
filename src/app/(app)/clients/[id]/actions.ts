@@ -1,8 +1,9 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { z } from "zod";
 import { requireActor } from "@/server/auth/actor";
-import { addNote, updateContact } from "@/server/clients/service";
+import { addNote, setConsent, updateContact } from "@/server/clients/service";
 import { getDb } from "@/server/db/client";
 import { rejectDeal, reopenDeal } from "@/server/deals/service";
 import { DomainError } from "@/server/shared/errors";
@@ -82,4 +83,21 @@ export async function decideFile(clientId: number, decision: "reject" | "reopen"
     revalidatePath("/deals");
     refresh(clientId);
   });
+}
+
+const consentSchema = z.object({ clientId: z.coerce.number().int().positive(), given: z.enum(["yes", "no"]) });
+
+/**
+ * Records that the client agreed to the office keeping and reading their data and their credit
+ * report, or that they took it back.
+ */
+export async function recordConsent(form: FormData): Promise<void> {
+  const actor = await requireActor("client.edit");
+  const parsed = consentSchema.safeParse(Object.fromEntries(form));
+  if (!parsed.success) return;
+  const { clientId, given } = parsed.data;
+  await setConsent(await getDb(), { clientId, given: given === "yes", actor });
+  refresh(clientId);
+  revalidatePath(`/clients/${clientId}/analysis`);
+  revalidatePath(`/clients/${clientId}/credit`);
 }

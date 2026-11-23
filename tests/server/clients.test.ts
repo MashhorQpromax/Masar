@@ -2,7 +2,7 @@ import { desc, eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { defaultDealInput } from "@/domain/deal";
 import { getClientCard, listClients } from "@/server/clients/directory";
-import { addNote, updateContact } from "@/server/clients/service";
+import { addNote, setConsent, updateContact } from "@/server/clients/service";
 import type { Connection } from "@/server/db/client";
 import { auditLog, clients, waMessages } from "@/server/db/schema";
 import { deals, notes } from "@/server/db/schema";
@@ -93,6 +93,28 @@ describe("a person's file", () => {
     expect(await code(() => addNote(c.db, { clientId: people["سالم"]!, body: "   ", actor }))).toBe("NOTE_EMPTY");
     expect(await code(() => addNote(c.db, { clientId: people["سالم"]!, body: "ن".repeat(1001), actor }))).toBe("INVALID_INPUT");
     expect(await code(() => addNote(c.db, { clientId: 9999, body: "ملاحظة", actor }))).toBe("NOT_FOUND");
+  });
+});
+
+describe("a client's consent", () => {
+  it("is recorded with its day and with who recorded it, and can be taken back", async () => {
+    const id = people["فهد"]!;
+    const consent = async () => (await c.db.select({ at: clients.consentAt }).from(clients).where(eq(clients.id, id)))[0]!.at;
+    expect(await consent()).toBeNull();
+
+    await setConsent(c.db, { clientId: id, given: true, actor, now });
+    expect(await consent()).toEqual(now);
+    expect(await lastAudit()).toMatchObject({ action: "client.consent", entity: "client", entityId: id, details: { given: true } });
+
+    // Saying it twice changes nothing and records nothing.
+    const later = new Date(now.getTime() + 60_000);
+    await setConsent(c.db, { clientId: id, given: true, actor, now: later });
+    expect(await consent()).toEqual(now);
+
+    await setConsent(c.db, { clientId: id, given: false, actor, now: later });
+    expect(await consent()).toBeNull();
+    expect(await lastAudit()).toMatchObject({ action: "client.consent", details: { given: false } });
+    expect(await code(() => setConsent(c.db, { clientId: 9999, given: true, actor }))).toBe("NOT_FOUND");
   });
 });
 

@@ -21,6 +21,7 @@ const idSchema = z.coerce.number().int().positive();
 
 async function refresh(clientId: number): Promise<void> {
   revalidatePath(`/clients/${clientId}/credit`);
+  revalidatePath(`/clients/${clientId}/analysis`);
   const view = await getCredit(await getDb(), clientId);
   if (view?.dealId) {
     revalidatePath(`/deals/${view.dealId}`);
@@ -58,7 +59,8 @@ export async function uploadReport(clientId: number, _previous: CreditAnswer, fo
   if (!facilities.length && !judgments.length && summary?.activeCount == null) return { error: "NOT_SIMAH" };
 
   try {
-    await addCreditReport(await getDb(), { clientId: id.data, reading, file: { name: file.name, bytes }, actor, now });
+    // With no consent on the file yet, the person uploading has to say the client gave it.
+    await addCreditReport(await getDb(), { clientId: id.data, reading, file: { name: file.name, bytes }, consent: formData.get("consent") === "on", actor, now });
   } catch (error) {
     if (error instanceof DomainError) return { error: error.code };
     throw error;

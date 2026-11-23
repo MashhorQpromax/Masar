@@ -192,3 +192,14 @@ export function UploadIcon({ size = 18 }: { size?: number }) {
     </svg>
   );
 }
+
+/** A sheet leaving a printer: put the page on paper. */
+export function PrintIcon({ size = 18 }: { size?: number }) {
+  return (
+    <svg {...base(size)}>
+      <path d="M7.5 9V4.5h9V9" />
+      <path d="M7.5 17H5.5a1.5 1.5 0 0 1-1.5-1.5v-5A1.5 1.5 0 0 1 5.5 9h13a1.5 1.5 0 0 1 1.5 1.5v5a1.5 1.5 0 0 1-1.5 1.5h-2" />
+      <path d="M7.5 14h9v5.5h-9z" />
+    </svg>
+  );
+}

@@ -70,6 +70,12 @@ export const INBOX_PAPER = "inbox";
 /** The SIMAH report is the one paper that is read, not only kept. It enters through the credit record. */
 export const SIMAH_PAPER: PaperCode = "simah";
 
+/**
+ * The papers that state what a client earns: a salary certificate, a payslip, a GOSI statement or a
+ * pension statement. An income is confirmed once a person has checked one of them.
+ */
+export const INCOME_PROOF: readonly PaperCode[] = ["salary_cert", "payslip", "gosi", "pension"];
+
 export interface PaperNeed {
   code: PaperCode;
   category: PaperCategory;

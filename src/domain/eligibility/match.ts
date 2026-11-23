@@ -20,6 +20,15 @@ export function regulatoryLtv(p: Profile): number {
 const worth = (amount: number, months: number, monthlyRate: number): number =>
   months <= 0 ? 0 : monthlyRate === 0 ? amount * months : (amount * (1 - Math.pow(1 + monthlyRate, -months))) / monthlyRate;
 
+/**
+ * How well a product fits, 0 to 100. Every refusal and every condition costs, covering less of what
+ * was asked for costs, a dearer rate costs, and the bank the salary is already paid into gains.
+ */
+export function fitScore(fit: { fails: number; warns: number; coverage: number; apr: number; salaryBank: boolean }): number {
+  const score = (100 - fit.fails * 30 - fit.warns * 8) * (0.6 + 0.4 * fit.coverage) - fit.apr * 2.5 + (fit.salaryBank ? 8 : 0);
+  return Math.max(0, Math.min(100, Math.round(score)));
+}
+
 /** Holds one product against the client: every condition, the most it would lend and what that costs. */
 export function matchProduct(p: Profile, cap: Capacity, product: Product): Match {
   const checks: Check[] = [];
@@ -151,10 +160,7 @@ export function matchProduct(p: Profile, cap: Capacity, product: Product): Match
   const warns = checks.filter((c) => c.status === "warn").length;
   const verdict: CheckStatus = fails ? "fail" : warns ? "warn" : "pass";
   const coverage = requested > 0 ? Math.min(1, maxPrincipal / requested) : 1;
-  let score = 100 - fails * 30 - warns * 8;
-  score = score * (0.6 + 0.4 * coverage) - apr * 2.5;
-  if (product.bankCode && p.salaryBank === product.bankCode) score += 8;
-  score = Math.max(0, Math.min(100, Math.round(score)));
+  const score = fitScore({ fails, warns, coverage, apr, salaryBank: !!product.bankCode && p.salaryBank === product.bankCode });
 
   return {
     product,

@@ -47,6 +47,12 @@ html {
   background: var(--color-ground);
   color: var(--color-ink);
 }
+/* Paper is white to its edges. */
+@media print {
+  html {
+    background: #fff;
+  }
+}
 
 /* In the base layer, so a component can shape its own focus ring. */
 @layer base {

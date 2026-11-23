@@ -88,17 +88,27 @@ export function itemDrafts(report: CreditReport | null, obligations: readonly Ow
   return drafts;
 }
 
+/** The kind of commitment a deal settles as a mortgage, a loan or a card. */
+export type RunningKind = "mortgage" | "personal" | "card" | "auto";
+
 /** How a running product on the record is taken as a commitment, by the name SIMAH gives the product. */
-const OWED_KIND: [RegExp, "mortgage" | "personal" | "card" | "auto"][] = [
+const OWED_KIND: [RegExp, RunningKind][] = [
   [/منزلي|عقاري/, "mortgage"],
   [/شخصي/, "personal"],
   [/بطاقة/, "card"],
   [/سيارة|تأجير|تاجير/, "auto"],
 ];
 
-const owedKind = (f: Facility): "mortgage" | "personal" | "card" | "auto" | null => OWED_KIND.find(([pattern]) => pattern.test(f.product))?.[1] ?? null;
-/** Still being paid: neither closed, nor defaulted, nor a default that was paid. */
-const running = (f: Facility): boolean => f.status === "current" || f.status === "late";
+/**
+ * The finance on a record that is still being paid, neither closed nor defaulted nor a default that
+ * was paid, each with the kind of commitment its name says it is. Null is finance SIMAH names in
+ * another way, such as buy now and pay later. A phone line is not finance.
+ */
+export function runningFinance(report: CreditReport | null): { facility: Facility; kind: RunningKind | null }[] {
+  return (report?.facilities ?? [])
+    .filter((f) => (f.status === "current" || f.status === "late") && f.creditorType !== "telecom")
+    .map((facility) => ({ facility, kind: OWED_KIND.find(([pattern]) => pattern.test(facility.product))?.[1] ?? null }));
+}
 
 /**
  * The loans and cards a record shows as still running, as commitments a deal can settle. A product
@@ -107,9 +117,8 @@ const running = (f: Facility): boolean => f.status === "current" || f.status ===
  */
 export function owedFrom(report: CreditReport | null): Owed[] {
   const owed: Owed[] = [];
-  for (const f of report?.facilities ?? []) {
-    const kind = owedKind(f);
-    if (!kind || !running(f) || f.creditorType === "telecom") continue;
+  for (const { facility: f, kind } of runningFinance(report)) {
+    if (!kind) continue;
     const monthly = f.installment ?? 0;
     const remaining = f.balance ?? 0;
     if (monthly <= 0 && remaining <= 0) continue;
@@ -142,8 +151,8 @@ function gaps(draft: ItemDraft): DraftGap[] {
  */
 export function reportDrafts(report: CreditReport | null): ReportDraft[] {
   const drafts: ItemDraft[] = itemDrafts(report, owedFrom(report));
-  for (const f of report?.facilities ?? []) {
-    if (owedKind(f) || !running(f) || f.creditorType === "telecom") continue;
+  for (const { facility: f, kind } of runningFinance(report)) {
+    if (kind) continue;
     const monthly = f.installment ?? 0;
     const remaining = f.balance ?? 0;
     if (monthly <= 0) continue;

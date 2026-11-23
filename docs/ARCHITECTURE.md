@@ -22,6 +22,8 @@ src/
                what a lender may ask for beyond its terms, the ways to a larger amount,
                and the profile a quick estimate is made from.
     funding/   Which lender funds the new financing of a bridge deal.
+    analysis/  A client's credit and financial analysis: the file, the SIMAH record and the lenders'
+               terms read together, with what is missing or unconfirmed named and never guessed.
     knowledge/ What the office learned about lenders beyond their terms: the notes people wrote down,
                and what lenders actually answered, added up lender by lender.
     project/   The study of a project that asks for finance against its land and its income: its ratios,
@@ -44,6 +46,7 @@ src/
     lenders/   The catalogue of lenders and products: reading it, adding a lender or a product,
                correcting a product and stopping one.
     funding/   The funding routes of a deal.
+    analysis/  A client's analysis, worked out on every read from what is stored. Nothing of it is kept.
     knowledge/ Notes about lenders and the decisions lenders gave: writing them down and reading them back.
     projects/  A project's file: opening it, changing it, and its study worked out on every read.
     documents/ A client's papers and their files.
@@ -212,6 +215,36 @@ The calculator is `/lenders/calculator`. Anyone who works in the office may open
 - `applyRoute` writes a route's terms on a deal in progress. It works the routes out again on the server, refuses a route the lender would turn down, and never replaces a recorded offer.
 - The catalogue starts from `src/server/lenders/base.ts`. Its terms are indicative until someone confirms them on the `/lenders` page, and every screen that shows them says so.
 
+## Credit and financial analysis
+
+`src/domain/analysis` reads three things together: what the client's file says, what the newest SIMAH record shows, and the terms of the lenders in the catalogue. `analyzeClient` returns one `ClientAnalysis`. It is new, not a port, and it adds no rule of its own: the record's grading comes from `src/domain/credit`, the room in the income from `capacity`, a product's conditions on the person from `matchProduct`, and its reading of the record from the funding rules (`recordAfterSettlement`). The page is `/clients/[id]/analysis`, behind `client.view_pii` like the credit page.
+
+The ground rule is that nothing is assumed. A figure that is not in the file or the record is listed as a gap and nothing is put in its place.
+
+- `commitmentsOf(report)` lists the finance the record shows as still running. A card or a loan with no installment on the record is listed and not counted: the share of income is then a floor and every room a ceiling, and both are said so (`burden.uncounted`).
+- The income is the total salary plus half of a regular other income, as the eligibility engine counts it. Its basis is `verified` only when a person marked one of the papers in `INCOME_PROOF` as verified; otherwise it is `stated`, and that is a gap.
+- `burden.share` is the installments on the record as a percent of that income (the debt burden ratio). `kinds` holds, for each kind of finance studied, the room SAMA's rules leave and every active product held against the client, best first (`fitScore`: no refusal, fewer conditions, how much of the request it covers, the rate, and the bank the salary is paid into).
+- When something on the record blocks every lender, each kind carries a second reading, `cleared`: the same products once it is paid. It is shown as what could follow, with the line that paying does not guarantee acceptance. No product says how long it waits after a paid default until someone confirms it (`settledDefaultWaitMonths` null), so after a payment every lender is a condition and none is a promise.
+- `strengths` and `risks` carry where each was read (`source`: the file or the record). Risks are the blockers, what the record warns of, three things it only notes and a lender may still ask about (a paid default, an unpaid phone bill, an old delay), then what the file adds. A middling score or a moderate card balance is in neither list.
+- `gaps` are what the analysis could not stand on, each `missing` or `unconfirmed`: income, proof of income, age, service, salary bank, an installment the record does not give, a card's share, the report's age (`STALE_REPORT_MONTHS`, counted in whole months by the day), a reading nobody reviewed, an assumed suspension, unverified lender terms, and the client's consent.
+- `steps` are what to do next, in order: record the consent, complete the file, review the reading, confirm the suspension, what the record needs (lift, settle, pay), a newer report, free room, verify the income, then one application per kind to the best fit.
+- The verdict is `eligible`, `conditional`, `not_eligible` or `pending`. It is `pending` when the consent is not on file, the income is missing, no kind could be studied or the reading's confidence is low. `afterClearing` says what it becomes once the blockers are paid.
+
+`getAnalysis` (`src/server/analysis/service.ts`) works it out on every read from the stored file, the newest record and the catalogue as it stands. Nothing of it is stored, so it cannot fall behind them. Before a record is read there is no analysis: the page shows the upload and nothing else.
+
+Consent. `clients.consentAt` is when the client agreed to the processing of their data and their credit report. `setConsent` records it or its withdrawal, with an audit entry (`client.consent`). `addCreditReport` refuses a report for a client with no consent on file (`CONSENT_NEEDED`); the upload form carries the tick that records it in the same step. Without it the analysis still shows its figures, says `pending`, and makes recording the consent the first step. The credit page and the deal pages are not gated on consent yet: that belongs with the controls phase, and records brought over from the old system will show the gap until someone records it.
+
+The page prints. `PrintButton` opens every folded list before printing and folds them again after; the `@media print` block in `src/ui/ui.css` keeps the desk layout on A4 (`.page { zoom: 0.66 }`) and shows the line that the analysis supports a person's decision and is not a lender's approval (`DECISION_SUPPORT`, also at the foot of the screen).
+
+Choices made here that the owner has not reviewed, each worth a decision before the switch:
+
+- a card with no installment on the record is not counted in the share; some lenders count a percent of its limit
+- a report is flagged as old at three months
+- the mortgage room counts the existing mortgage as a commitment, as if it stays
+- a client with no deal has their salary and birth year edited only through a deal
+
+`tests/domain/analysis.examples.test.ts` holds worked examples small enough to check by hand, and checks that the analysis of every record in the golden file holds together (the total is the sum of what the record gives, a blocked record leaves no lender open today). `tests/copy/analysis.test.ts` words every gap, step, mark and condition the golden records produce against seven files and four readings. `tests/server/analysis.test.ts` reads the demo's clients end to end, with the consent and the income paper changed underneath.
+
 ## Keeping the catalogue
 
 The catalogue is kept on `/lenders` by whoever holds `lender.manage` (the manager and the analyst). Everyone else in the office reads it. `src/server/lenders/service.ts` does the writing, each act in one transaction with an audit event in the lenders' part of the log:
@@ -362,6 +395,7 @@ Old module (under `legacy/lib`) and its state in the rebuild:
 - [x] managing accounts from `auth.ts` and `actions.ts`, and the audit log: `src/server/auth/users.ts`, `src/domain/audit`, `src/server/audit`, `/users`, `/audit`
 - [x] the calculator: `src/domain/eligibility/quick.ts`, `src/copy/calculator.ts`, `/lenders/calculator`
 - [x] the knowledge screen and a lender's decision on a deal: `/lenders/knowledge`, the knowledge and decision tiles on `/deals/[id]/lenders`
+- [x] new, not a port: a client's credit and financial analysis from the SIMAH record, the file and the catalogue, with the client's consent: `src/domain/analysis`, `src/copy/analysis.ts`, `src/server/analysis`, `/clients/[id]/analysis`
 - [ ] data migration from the live database, then the domain switch (only after the owner approves)
 
 To regenerate a golden file while `legacy/` still exists: `npm run golden:deal`, `npm run golden:credit`, `npm run golden:simah`, `npm run golden:eligibility`, `npm run golden:advisor`, `npm run golden:experience`, `npm run golden:project`. Each generator is seeded, so it writes the same file every time.

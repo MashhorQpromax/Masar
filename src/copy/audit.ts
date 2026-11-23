@@ -42,6 +42,7 @@ const AUDIT_ACTION: Record<AuditAction, string> = {
   "client.update": "تعديل بيانات العميل",
   "client.contact": "تعديل بيانات التواصل",
   "client.note": "ملاحظة على الملف",
+  "client.consent": "موافقة العميل على معالجة بياناته",
   "client.reject": "رفض الملف",
   "client.reopen": "إعادة الملف إلى الدراسة",
   "credit.report_add": "قراءة تقرير سمة",
@@ -160,6 +161,8 @@ export function auditDetail(action: string, details: Record<string, unknown> | n
       return fields(d.changed);
     case "client.contact":
       return joined([fields(d.changed), (number(d.adopted) ?? 0) > 0 && `انضمت ${counted(number(d.adopted)!, MESSAGES)}`, d.via === "inbox" && "من الوارد"]);
+    case "client.consent":
+      return joined([d.given === false ? "سُحبت" : "سُجلت", d.with === "report" && "مع رفع تقرير سمة"]);
     case "client.reject":
       return text(d.reason) ?? "";
     case "credit.report_review":

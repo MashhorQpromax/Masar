@@ -45,16 +45,24 @@ async function latestRow(tx: Tx, clientId: number) {
  * Stores a reading of a client's SIMAH report and grades it. Each reading is kept: the newest one is
  * the client's record, and the older ones are its history. The PDF it was read from, when there is
  * one, is kept with the client's papers.
+ *
+ * A credit report is read only with the client's consent. When none is on the file yet, whoever
+ * stores the reading has to say the client gave it, and that is recorded with the reading.
  */
 export async function addCreditReport(
   db: Db,
-  args: { clientId: number; reading: unknown; file?: { name: string; bytes: Uint8Array }; actor: Actor; now?: Date },
+  args: { clientId: number; reading: unknown; file?: { name: string; bytes: Uint8Array }; consent?: boolean; actor: Actor; now?: Date },
 ): Promise<{ reportId: number; analysis: CreditAnalysis }> {
   const reading: Reading = valid(() => parseReading(args.reading));
   const now = args.now ?? new Date();
   return db.transaction(async (tx) => {
-    const [client] = await tx.select({ id: clients.id }).from(clients).where(eq(clients.id, args.clientId));
+    const [client] = await tx.select({ id: clients.id, consentAt: clients.consentAt }).from(clients).where(eq(clients.id, args.clientId));
     if (!client) throw new DomainError("NOT_FOUND", `client ${args.clientId}`);
+    if (client.consentAt == null) {
+      if (!args.consent) throw new DomainError("CONSENT_NEEDED", `client ${client.id}`);
+      await tx.update(clients).set({ consentAt: now }).where(eq(clients.id, client.id));
+      await audit(tx, args.actor, "client.consent", "client", client.id, { given: true, with: "report" });
+    }
     const analysis = analyzeCredit(reading.report);
     // A client is read many times over the years. The paper keeps the newest files and lets the oldest go.
     const kept = args.file ? await keepFile(tx, { clientId: client.id, code: SIMAH_PAPER, ...args.file, actor: args.actor, now, makeRoom: true }) : null;
@@ -146,7 +154,7 @@ export async function creditHistory(db: Tx, clientId: number): Promise<{ id: num
 
 /** Everything the credit page shows about one client. */
 export interface CreditView {
-  client: { id: number; fileNo: string; fullName: string };
+  client: { id: number; fileNo: string; fullName: string; /** The client's consent to reading their report is on the file. */ consented: boolean };
   /** The client's newest deal, where the page leads back to. */
   dealId: number | null;
   record: CreditRecord | null;
@@ -154,8 +162,9 @@ export interface CreditView {
 }
 
 export async function getCredit(db: Tx, clientId: number): Promise<CreditView | null> {
-  const [client] = await db.select({ id: clients.id, fileNo: clients.fileNo, fullName: clients.fullName }).from(clients).where(eq(clients.id, clientId));
-  if (!client) return null;
+  const [row] = await db.select({ id: clients.id, fileNo: clients.fileNo, fullName: clients.fullName, consentAt: clients.consentAt }).from(clients).where(eq(clients.id, clientId));
+  if (!row) return null;
+  const client = { id: row.id, fileNo: row.fileNo, fullName: row.fullName, consented: row.consentAt != null };
   const [deal] = await db.select({ id: deals.id }).from(deals).where(eq(deals.clientId, client.id)).orderBy(desc(deals.id)).limit(1);
   return { client, dealId: deal?.id ?? null, record: await latestCredit(db, client.id), history: await creditHistory(db, client.id) };
 }

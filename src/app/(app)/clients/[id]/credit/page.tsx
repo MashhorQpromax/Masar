@@ -3,12 +3,10 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { CSSProperties, ReactNode } from "react";
 import {
-  ACCESS,
   actionText,
   actionTitle,
   blockerText,
   CONFIDENCE,
-  doorText,
   FACILITY_STATUS,
   findingText,
   GRADE,
@@ -18,17 +16,18 @@ import {
 import { notInDeal } from "@/copy/editor";
 import { counted, dayOfRecord, dayShort, ltr, money, percent, plainMoney } from "@/copy/format";
 import { can } from "@/domain/auth";
-import type { Door, Facility, FacilityStatus, FindingLevel, Grade } from "@/domain/credit";
+import type { Facility, FacilityStatus, FindingLevel, Grade } from "@/domain/credit";
 import { pendingDrafts } from "@/domain/deal";
 import { requireActor } from "@/server/auth/actor";
 import { getCredit } from "@/server/credit/service";
 import { getDb } from "@/server/db/client";
 import { getDeal } from "@/server/deals/service";
-import { BackIcon, CheckIcon, ChevronIcon, CloseIcon } from "@/ui/icons";
+import { BackIcon, ChevronIcon } from "@/ui/icons";
 import { Num } from "@/ui/Num";
 import { SubmitButton } from "@/ui/SubmitButton";
 import { reportOffer } from "../../../deals/report-offer";
 import { answerSuspension } from "./actions";
+import { DoorRow } from "./DoorRow";
 import { ReportUpload } from "./ReportUpload";
 import { ReviewForm } from "./ReviewForm";
 
@@ -55,30 +54,6 @@ function GateArt({ swing }: { swing: 0 | 45 | 90 }) {
       </g>
       <circle cx="162" cy="14" r="7.5" fill="#ffc233" stroke="#0f2a43" strokeWidth="3" />
     </svg>
-  );
-}
-
-/** Whether one kind of lender would take the client today, and why. */
-function DoorRow({ name, door }: { name: string; door: Door }) {
-  const { reason, reopen } = doorText(door);
-  return (
-    <li className="door" data-access={door.access}>
-      <div className="door-head">
-        <i className="door-node" aria-hidden="true">
-          {door.access === "open" ? <CheckIcon size={16} /> : door.access === "closed" ? <CloseIcon size={15} /> : <b />}
-        </i>
-        <div>
-          <h3 className="door-name">
-            {name}
-            <span className="door-state">{ACCESS[door.access]}</span>
-          </h3>
-          <p className="door-say">
-            {reason}
-            {reopen && ` ${reopen}`}
-          </p>
-        </div>
-      </div>
-    </li>
   );
 }
 
@@ -138,7 +113,7 @@ export default async function CreditPage({ params }: { params: Promise<{ id: str
           <GateArt swing={45} />
           <h2>لا تقرير بعد</h2>
           <p>ارفع تقرير سمة كما نزل من سمة، ونقرؤه في ثوانٍ: التقييم، ومن يقبل العميل اليوم، وما المطلوب سداده.</p>
-          {mayUpload && <ReportUpload clientId={client.id} />}
+          {mayUpload && <ReportUpload clientId={client.id} consented={client.consented} />}
         </section>
       </>
     );
@@ -227,7 +202,10 @@ export default async function CreditPage({ params }: { params: Promise<{ id: str
             {report.reportDate && <> · تقرير {dayOfRecord(report.reportDate)}</>}
             {record.confidence && record.confidence !== "high" && <> · {CONFIDENCE[record.confidence]}</>}
           </p>
-          {mayUpload && <ReportUpload clientId={client.id} again />}
+          {mayUpload && <ReportUpload clientId={client.id} again consented={client.consented} />}
+          <Link className="edit-link" href={`/clients/${client.id}/analysis`}>
+            التحليل الكامل
+          </Link>
         </>,
       )}
 

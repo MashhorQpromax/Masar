@@ -264,7 +264,7 @@ describe("the SIMAH report", () => {
     const fahad = people["فهد"]!;
     expect(await paper("فهد", "simah")).toMatchObject({ status: "missing", files: [] });
     const bytes = pdf("simah of nobody");
-    const { reportId } = await addCreditReport(c.db, { clientId: fahad, reading, file: { name: "SIMAH Report.pdf", bytes }, actor: SYSTEM, now });
+    const { reportId } = await addCreditReport(c.db, { consent: true, clientId: fahad, reading, file: { name: "SIMAH Report.pdf", bytes }, actor: SYSTEM, now });
     const simah = await paper("فهد", "simah");
     expect(simah).toMatchObject({ status: "verified" });
     expect(simah.files.map((f) => f.name)).toEqual(["SIMAH Report.pdf"]);
@@ -273,7 +273,7 @@ describe("the SIMAH report", () => {
     expect((await list("فهد")).missing).toBe(0);
 
     // The same PDF read again is one file, and both readings point to it.
-    const again = await addCreditReport(c.db, { clientId: fahad, reading, file: { name: "again.pdf", bytes }, actor: SYSTEM, now });
+    const again = await addCreditReport(c.db, { consent: true, clientId: fahad, reading, file: { name: "again.pdf", bytes }, actor: SYSTEM, now });
     expect((await c.db.select().from(creditReports).where(eq(creditReports.id, again.reportId)))[0]!.fileId).toBe(simah.files[0]!.id);
     expect((await paper("فهد", "simah")).files).toHaveLength(1);
   });
@@ -282,7 +282,7 @@ describe("the SIMAH report", () => {
     const fahad = people["فهد"]!;
     const first = (await paper("فهد", "simah")).files[0]!.id;
     for (let n = 0; n < PAPER_MAX_FILES; n++) {
-      await addCreditReport(c.db, { clientId: fahad, reading, file: { name: `r${n}.pdf`, bytes: pdf(`reading ${n}`) }, actor: SYSTEM, now });
+      await addCreditReport(c.db, { consent: true, clientId: fahad, reading, file: { name: `r${n}.pdf`, bytes: pdf(`reading ${n}`) }, actor: SYSTEM, now });
     }
     const files = (await paper("فهد", "simah")).files;
     expect(files).toHaveLength(PAPER_MAX_FILES);
@@ -296,7 +296,7 @@ describe("the SIMAH report", () => {
   it("refuses a report whose file is not a PDF or a picture, and stores nothing", async () => {
     const reem = people["ريم"]!;
     const before = await c.db.select({ id: creditReports.id }).from(creditReports).where(eq(creditReports.clientId, reem));
-    await expect(addCreditReport(c.db, { clientId: reem, reading, file: { name: "x.pdf", bytes: new TextEncoder().encode("not a pdf") }, actor: SYSTEM })).rejects.toMatchObject({ code: "FILE_TYPE" });
+    await expect(addCreditReport(c.db, { consent: true, clientId: reem, reading, file: { name: "x.pdf", bytes: new TextEncoder().encode("not a pdf") }, actor: SYSTEM })).rejects.toMatchObject({ code: "FILE_TYPE" });
     expect(await c.db.select({ id: creditReports.id }).from(creditReports).where(eq(creditReports.clientId, reem))).toHaveLength(before.length);
   });
 });

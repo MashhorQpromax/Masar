@@ -272,11 +272,18 @@ const UPLOAD_ERROR: Record<string, string> = {
   UNREADABLE: "تعذرت قراءة الملف. ارفع التقرير الأصلي من سمة، لا صورة منه.",
   NOT_SIMAH: "لم نجد بيانات سمة في الملف. ارفع التقرير الائتماني الأساسي.",
   NOT_FOUND: "هذا الملف غير موجود.",
+  CONSENT_NEEDED: "التقرير لا يُقرأ بلا موافقة العميل. أكّد موافقته ثم ارفعه.",
   INVALID_INPUT: "قرأنا التقرير ولم نستطع حفظه. راجع الملف وحاول مرة أخرى.",
 };
 
 /** Why a report was not taken, or why a review was not saved. */
 export const creditError = (code: string): string => UPLOAD_ERROR[code] ?? "تعذر الحفظ. حاول مرة أخرى.";
+
+/** What a person confirms before the first report of a client is read. */
+export const CONSENT_ASK = "وافق العميل على قراءة تقريره ومعالجة بياناته";
+
+/** What recording that a client took their consent back does, said before it is recorded. */
+export const CONSENT_WITHDRAWN = "يُسجَّل السحب في سجل التدقيق، ولا يُقرأ له تقرير جديد ولا يُعتمد تحليله قبل موافقة جديدة.";
 
 /** The codes an upload can answer with, for the test that every one has its sentence. */
 export const UPLOAD_ERROR_CODES = Object.keys(UPLOAD_ERROR);

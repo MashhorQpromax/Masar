@@ -6739,6 +6739,351 @@
     }
   }
 
+  /* ---------- Credit and financial analysis ---------- */
+  /* The income bent into an arc. The lit part is what the installments take of it. */
+  .an-arc-lit {
+    stroke-dasharray: var(--share) 100;
+    stroke-dashoffset: var(--share);
+    animation: fill 1.2s 0.5s var(--ease-in-out) forwards;
+  }
+  .an-arc-dot {
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: pop 0.5s 1.6s var(--ease-spring) backwards;
+  }
+  /* The arc is larger here than a corner drawing: it carries the page's main figure. */
+  .an-gauge {
+    top: 26px;
+    inset-inline-end: 30px;
+    width: 310px;
+    container-type: inline-size;
+  }
+  .an-gauge .an-arc {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+  .an-gauge-say {
+    position: absolute;
+    inset-inline: 0;
+    bottom: 1cqw;
+    display: grid;
+    justify-items: center;
+    line-height: 1.25;
+    animation: rise 0.8s 0.9s var(--ease-out) backwards;
+  }
+  .an-gauge-say b {
+    font-size: 15.5cqw;
+    font-weight: 700;
+  }
+  .an-gauge-say small {
+    font-size: max(11px, 4.2cqw);
+    color: var(--color-navy-mist);
+  }
+  .an-gauge abbr,
+  .an-verdict .route-figures abbr {
+    margin-inline-start: 2px;
+    font-size: 0.82em;
+    letter-spacing: 0.06em;
+    text-decoration: none;
+    opacity: 0.75;
+  }
+  .an-verdict .verdict-text > .label,
+  .an-verdict .verdict-say,
+  .an-say {
+    padding-inline-end: 336px;
+  }
+  .an-verdict .verdict-say {
+    font-size: clamp(32px, 3.7vw, 52px);
+  }
+  .an-say {
+    max-width: calc(46ch + 336px);
+    margin-top: 8px;
+    font-size: 19px;
+    line-height: 1.7;
+    color: var(--color-navy-mist);
+  }
+  /* The arc says the share. Where the arc is not drawn, the figures say it. */
+  .an-share {
+    display: none;
+  }
+  /* On paper the page says what it is before anything else. On screen the last tile says it. */
+  .an-paper {
+    display: none;
+  }
+  .an-standing-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .an-standing-head .note-link {
+    font-size: 13.5px;
+  }
+  .an-working {
+    animation-delay: 0.24s;
+  }
+  .an-working .ledger-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    margin-top: 16px;
+  }
+  /* Where the record gives no figure, the words that say so stand in its column. */
+  .an-words {
+    font-size: 13px;
+    color: var(--color-sun-ink);
+  }
+  .an-floor {
+    margin-top: 12px;
+    font-size: 13.5px;
+    line-height: 1.7;
+    color: var(--color-sun-ink);
+  }
+  .an-half {
+    grid-column: span 6;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    animation-delay: 0.32s;
+  }
+  .an-src {
+    display: inline-block;
+    margin-inline-start: 4px;
+    padding: 1px 9px;
+    border-radius: 999px;
+    background: rgba(15, 42, 67, 0.07);
+    font-size: 11.5px;
+    font-weight: 500;
+    color: var(--color-body);
+    white-space: nowrap;
+    vertical-align: 1px;
+  }
+  .an-none {
+    font-size: 14.5px;
+    line-height: 1.7;
+    color: var(--color-muted);
+  }
+  .an-kind-head {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px 32px;
+  }
+  .an-kind-head h2 {
+    font-size: 26px;
+    font-weight: 700;
+    line-height: 1.4;
+  }
+  .an-room {
+    display: grid;
+    justify-items: end;
+  }
+  .an-room small {
+    font-size: 13px;
+    color: var(--color-muted);
+  }
+  .an-room .num {
+    font-size: 30px;
+    font-weight: 700;
+    line-height: 1.3;
+  }
+  .an-after {
+    margin-top: 14px;
+    padding: 11px 16px;
+    border-radius: 14px;
+    background: var(--color-sun-soft);
+    font-size: 14.5px;
+    line-height: 1.7;
+    color: var(--color-sun-ink);
+  }
+  .an-kind .routes {
+    margin-top: 6px;
+  }
+  .an-kind > .an-none {
+    margin-top: 14px;
+  }
+  .an-fit {
+    grid-template-columns: minmax(0, 1.2fr) minmax(0, 2fr) minmax(0, 0.8fr);
+  }
+  /* The amounts line up under the room they are measured on. */
+  .an-fit .route-keep {
+    justify-self: end;
+  }
+  .an-kind .routes-closed {
+    border-top: 1px solid var(--color-line);
+    padding-top: 6px;
+  }
+  .an-gaps {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    animation-delay: 0.4s;
+  }
+  .an-gap {
+    display: grid;
+    grid-template-columns: 78px minmax(0, 1fr);
+    align-items: baseline;
+    gap: 8px 12px;
+  }
+  .an-gap-kind {
+    padding: 2px 0;
+    border-radius: 999px;
+    background: var(--color-coral-soft);
+    font-size: 12px;
+    font-weight: 600;
+    text-align: center;
+    color: #8a2410;
+    white-space: nowrap;
+  }
+  .an-gap[data-kind="unconfirmed"] .an-gap-kind {
+    background: var(--color-sun-soft);
+    color: var(--color-sun-ink);
+  }
+  .an-gap p {
+    font-size: 14.5px;
+    line-height: 1.75;
+    color: var(--color-body);
+  }
+  /* A client may take their consent back. Recording it is one fold away, never one slip away. */
+  .an-consent > summary {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    font-size: 13px;
+    color: var(--color-muted);
+    text-decoration: underline;
+    text-underline-offset: 4px;
+    cursor: pointer;
+    list-style: none;
+  }
+  .an-consent > summary::-webkit-details-marker {
+    display: none;
+  }
+  .an-consent p {
+    margin-bottom: 10px;
+    font-size: 13.5px;
+    line-height: 1.7;
+    color: var(--color-body);
+  }
+  .an-consent .btn {
+    min-height: 44px;
+  }
+  .an-foot .facts > div:has(.an-consent[open]) {
+    grid-column: span 2;
+  }
+  .an-support {
+    font-size: 17px;
+    font-weight: 600;
+    line-height: 1.7;
+  }
+  .an-foot .facts {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid var(--color-line);
+  }
+  .an-foot .facts dd {
+    font-size: 15px;
+  }
+  /* A client whose consent is not on the file takes one tick before the report can be picked. */
+  .upload[data-ask] {
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+  }
+  .head-side .upload[data-ask] {
+    flex-direction: row;
+  }
+  .upload-consent {
+    color: var(--color-ink);
+  }
+  .upload label[aria-disabled="true"] {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+  .empty--credit .an-arc {
+    width: 220px;
+    margin-bottom: 6px;
+  }
+  .empty--credit .an-arc path:first-child {
+    stroke: var(--color-ground);
+  }
+  .empty--credit .an-arc .road-dash {
+    stroke: var(--color-navy-mist);
+    stroke-dasharray: 6 10;
+  }
+
+  @media (max-width: 1240px) {
+    .an-gauge {
+      width: 220px;
+    }
+    .an-verdict .verdict-text > .label,
+    .an-verdict .verdict-say,
+    .an-say {
+      padding-inline-end: 244px;
+    }
+    .an-say {
+      max-width: calc(46ch + 244px);
+    }
+  }
+  @media (max-width: 1100px) {
+    .an-working .ledger-grid {
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    }
+    .an-foot .facts {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+  }
+  @media (max-width: 900px) {
+    .an-half,
+    .an-gaps {
+      grid-column: 1 / -1;
+    }
+    .an-verdict .verdict-text > .label,
+    .an-verdict .verdict-say,
+    .an-say {
+      padding-inline-end: 0;
+    }
+    .an-say {
+      max-width: 46ch;
+      font-size: 17px;
+    }
+    .an-share {
+      display: block;
+    }
+    .an-room {
+      justify-items: start;
+    }
+    .an-fit {
+      grid-template-columns: minmax(0, 1fr) auto;
+    }
+    .an-fit .route-keep {
+      grid-column: 1 / -1;
+      justify-self: start;
+    }
+    .upload[data-ask],
+    .head-side .upload[data-ask] {
+      flex-direction: column;
+      align-items: flex-start;
+    }
+    .empty--credit .upload[data-ask] {
+      align-items: center;
+    }
+  }
+  @media (max-width: 560px) {
+    .an-foot .facts {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .an-gap {
+      grid-template-columns: minmax(0, 1fr);
+      justify-items: start;
+      gap: 4px;
+    }
+    .an-gap-kind {
+      padding-inline: 12px;
+    }
+  }
+
   /* ---------- Small screens ---------- */
   @media (max-width: 900px) {
     .page {
@@ -7017,7 +7362,8 @@
     .road-dash {
       opacity: 1;
     }
-    .dial-arc {
+    .dial-arc,
+    .an-arc-lit {
       stroke-dashoffset: 0;
     }
     .login-station {
@@ -7025,6 +7371,157 @@
     }
     .login-traveller {
       display: none;
+    }
+  }
+
+  /* ---------- On paper ---------- */
+  /*
+   * The analysis as a document: nothing to press, nothing that moves, and the colours as they are on
+   * screen. A sheet is narrower than a phone held sideways, so the page is drawn at desk width and
+   * scaled to the sheet, and the rules for small screens are set back to the desk's.
+   */
+  @media print {
+    @page {
+      size: A4;
+      margin: 11mm;
+    }
+    body {
+      background: #fff;
+      min-height: 0;
+    }
+    * {
+      animation: none !important;
+      transition: none !important;
+      print-color-adjust: exact;
+      -webkit-print-color-adjust: exact;
+    }
+    .topbar,
+    .dock,
+    .back,
+    .btn,
+    .edit-link,
+    .note-link,
+    .upload,
+    .an-consent,
+    .more > summary {
+      display: none !important;
+    }
+    .page {
+      zoom: 0.66;
+      max-width: none;
+      padding: 0;
+    }
+    .head {
+      padding: 0 0 6px;
+    }
+    .title {
+      font-size: 40px;
+    }
+    .where {
+      padding: 0;
+      background: none;
+    }
+    .an-paper {
+      display: block;
+      margin-bottom: 12px;
+      font-size: 14.5px;
+      color: var(--color-body);
+    }
+    .bento {
+      gap: 12px;
+    }
+    .tile {
+      padding: 20px 22px;
+      border: 1px solid var(--color-line);
+      break-inside: avoid;
+    }
+    .tile--verdict {
+      grid-column: span 7;
+      grid-row: span 2;
+      border: 0;
+      padding: 26px 28px 24px;
+    }
+    .tile--next,
+    .tile--access {
+      grid-column: span 5;
+      min-height: 0;
+    }
+    .tile--next {
+      border: 0;
+    }
+    .tile--plan {
+      grid-column: span 7;
+    }
+    .an-half {
+      grid-column: span 6;
+    }
+    .an-gaps {
+      grid-column: span 5;
+    }
+    .tile--notes.an-half {
+      border: 0;
+    }
+    .verdict-art {
+      display: block;
+    }
+    .an-gauge {
+      width: 220px;
+    }
+    .an-verdict .verdict-text > .label,
+    .an-verdict .verdict-say,
+    .an-say {
+      padding-inline-end: 244px;
+    }
+    .an-verdict .verdict-say {
+      font-size: 44px;
+    }
+    .an-say {
+      max-width: none;
+      font-size: 17px;
+    }
+    .an-share {
+      display: none;
+    }
+    .an-arc-lit {
+      stroke-dashoffset: 0;
+    }
+    .an-working .ledger-grid {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+    .an-kind,
+    .an-working,
+    .tile--plan {
+      break-inside: auto;
+    }
+    .route,
+    .ledger-section,
+    .plan li,
+    .an-gap,
+    .note,
+    .an-kind-head {
+      break-inside: avoid;
+    }
+    .an-room {
+      justify-items: end;
+    }
+    .route.an-fit {
+      grid-template-columns: minmax(0, 1.2fr) minmax(0, 2fr) minmax(0, 0.8fr);
+      gap: 6px 28px;
+      padding: 12px 0;
+    }
+    .an-fit .route-who,
+    .an-fit .route-figures,
+    .an-fit .route-keep {
+      grid-column: auto;
+    }
+    .an-fit .route-keep {
+      justify-self: end;
+    }
+    .an-fit .route-notes {
+      grid-column: 1 / -1;
+    }
+    .an-foot .facts {
+      grid-template-columns: repeat(6, minmax(0, 1fr));
     }
   }
 }

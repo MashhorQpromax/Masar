@@ -159,6 +159,21 @@ export async function updateContact(db: Db, args: { clientId: number; input: unk
   });
 }
 
+/**
+ * Records that the client agreed to the office keeping and reading their data and their credit
+ * report, or that they took it back. The day is kept on the file and the audit log says who recorded it.
+ */
+export async function setConsent(db: Db, args: { clientId: number; given: boolean; actor: Actor; now?: Date }): Promise<void> {
+  const now = args.now ?? new Date();
+  await db.transaction(async (tx) => {
+    const [client] = await tx.select({ id: clients.id, consentAt: clients.consentAt }).from(clients).where(eq(clients.id, args.clientId));
+    if (!client) throw new DomainError("NOT_FOUND", `client ${args.clientId}`);
+    if ((client.consentAt != null) === args.given) return;
+    await tx.update(clients).set({ consentAt: args.given ? now : null, updatedAt: now }).where(eq(clients.id, client.id));
+    await audit(tx, args.actor, "client.consent", "client", client.id, { given: args.given });
+  });
+}
+
 const NOTE_MAX = 1000;
 
 /** Leaves a note on a client's file, for whoever opens it next. */

@@ -32,6 +32,7 @@ export class DomainError extends Error {
       | "PHONE_TAKEN"
       | "ID_TAKEN"
       | "NOTE_EMPTY"
+      | "CONSENT_NEEDED"
       | "NUMBER_KNOWN"
       | "OWN_ACCOUNT"
       | "FORBIDDEN"

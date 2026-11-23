@@ -683,6 +683,8 @@ export async function seedDemo(db: Db, now: Date): Promise<void> {
       await addCreditReport(db, {
         clientId: client!.id,
         reading: { ...rest, report: { ...emptyReport(), ...report } },
+        // The made-up office asked each made-up client before reading their report.
+        consent: true,
         actor: SYSTEM,
         now: ago(demo.credit.readDaysAgo),
       });
