@@ -41,7 +41,8 @@ src/
     auth/      Who is acting. Every route and action asks here first. Passwords, sessions,
                authenticator codes, one-time codes, passkeys, lockouts, and the accounts themselves.
     credit/    A client's credit reports: the upload, the reading, the stored record.
-    lenders/   The catalogue of lenders and products, and its terms.
+    lenders/   The catalogue of lenders and products: reading it, adding a lender or a product,
+               correcting a product and stopping one.
     funding/   The funding routes of a deal.
     knowledge/ Notes about lenders and the decisions lenders gave: writing them down and reading them back.
     projects/  A project's file: opening it, changing it, and its study worked out on every read.
@@ -188,6 +189,23 @@ The calculator is `/lenders/calculator`. Anyone who works in the office may open
 - `applyRoute` writes a route's terms on a deal in progress. It works the routes out again on the server, refuses a route the lender would turn down, and never replaces a recorded offer.
 - The catalogue starts from `src/server/lenders/base.ts`. Its terms are indicative until someone confirms them on the `/lenders` page, and every screen that shows them says so.
 
+## Keeping the catalogue
+
+The catalogue is kept on `/lenders` by whoever holds `lender.manage` (the manager and the analyst). Everyone else in the office reads it. `src/server/lenders/service.ts` does the writing, each act in one transaction with an audit event in the lenders' part of the log:
+
+- `addLender` adds a bank or a finance company by its name. A name the list already holds is refused whatever its spelling (`foldText`), and the refusal names the lender as the list writes it (`LENDER_KNOWN`). A bank also becomes a bank a salary can be paid into: its code is the one its name speaks of (`bankCodeIn`, so "البنك العربي الوطني" is `anb`), or `bank_` and its number when the name speaks of none or the code is taken.
+- `addProduct` adds a product to a lender: its kind (personal, mortgage, cars, businesses: `PRODUCT_KINDS`), what it is called, who it is given to (sectors, nationalities, the youngest age) and its terms. The share of a property's value is kept for a mortgage only. From then on every deal and every estimate is matched against it.
+- `updateProductTerms` corrects the terms, and with a `scope` also the name and who the product is given to. It writes nothing when nothing changed, and a product marked confirmed takes the day as the day it was confirmed.
+- `setProductActive` stops a product and brings it back. Nothing in the catalogue is deleted: the old system had a box for a product in use and no deletion either, and a lender's notes and the decisions it gave stay readable. A stopped product is matched against no client. A lender is never stopped itself: with no running product it is out of every calculation and out of sight of everyone but its keeper, who still sees it with its stopped products and can add to it.
+
+`listCatalogue` reads the lenders with their products. Its plain reading is what the office works with: running products, and the lenders that have one. With `stopped: true` it is the keeper's reading: stopped products and lenders with none as well.
+
+Input is checked at the edge (`src/server/lenders/input.ts`): a name is trimmed and its spaces collapsed, sectors and nationalities are stored once each and in the engine's own order whatever order they were ticked in, and anything out of range is refused whole. The page keeps one form for both acts (`ProductForm`): it corrects a product, and with a lender instead of a product it adds one, starting from what such a product usually is (people on a salary, citizens, 60 months, or 300 for a mortgage) and leaving the margin and the largest amount for the person to write. A new lender's tile opens on the form for its first product.
+
+The old system did all of this in one action (`saveProduct`), which also created a lender typed beside a new product. Three things differ on purpose. A lender is added on its own and a twin is refused, where the old form made a second lender of the same name. Nothing is worked out again for open clients after a change, because the rebuild matches on read and stores no answer. And the free note a product had is not asked for: what the office learns about a lender is a note on the knowledge page.
+
+Not built, and the old system did not have them either: renaming a lender, moving a product to another kind or lender, and merging two lenders entered twice under different names.
+
 ## What the office knows about lenders
 
 A lender's terms say what it publishes. `src/domain/knowledge` holds what the office learned beyond them, in two kinds:
@@ -313,7 +331,7 @@ Old module (under `legacy/lib`) and its state in the rebuild:
 - [x] clients, their contact details and notes from `data.ts` and `actions.ts`: `src/domain/clients`, `src/server/clients` (`directory.ts`, `updateContact`, `addNote`), `/clients`, `/clients/[id]`
 - [x] the inbox and numbers the office does not know: `src/server/messages/inbox.ts`, `/inbox`, `/inbox/[phone]` (migration `0005_inbox_seen`)
 - [x] lender rules and recorded outcomes from `data.ts` and `actions.ts` (`lenderExperience`, `lenderRules`, `recordOutcome`, `addLenderRule`, `archiveLenderRule`): `src/domain/knowledge`, `src/server/knowledge`, locked by `tests/golden/experience.json` (80 books, 1,761 decisions)
-- [ ] the rest of `data.ts` and `actions.ts`: adding and removing lenders and products
+- [x] the rest of `data.ts` and `actions.ts`, keeping the catalogue (`saveProduct`: a new lender, a new product, its terms, and the box for a product in use): `src/server/lenders/service.ts` (`addLender`, `addProduct`, `updateProductTerms`, `setProductActive`), the forms on `/lenders`
 - [x] screens on the "الخريطة" direction: the road (home), the deals list, the deal file with stage moves and the step by step calculation, the deal editor
 - [x] opening a client file and revising its facts, from `data.ts` and `actions.ts`: `src/server/clients`
 - [x] the client portal, where the client follows their file and uploads their own papers: `/s/[token]`, `src/server/messages/portal.ts`

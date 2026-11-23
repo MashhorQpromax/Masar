@@ -8,6 +8,7 @@ export class DomainError extends Error {
       | "DEAL_ALREADY_OPEN"
       | "DEAL_ENDED"
       | "NOT_A_PROJECT"
+      | "LENDER_KNOWN"
       | "OFFER_RECORDED"
       | "ROUTE_GONE"
       | "ROUTE_REFUSED"

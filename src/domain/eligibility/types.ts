@@ -16,6 +16,10 @@ export { SECTORS, type Sector } from "../shared/sector";
 export const FINANCE_TYPES = ["personal", "mortgage", "auto", "sme", "card", "project"] as const;
 export type FinanceType = (typeof FINANCE_TYPES)[number];
 
+/** The kinds of finance a lender's product may be for. A card and a project are not products a client is sent to. */
+export const PRODUCT_KINDS = ["personal", "mortgage", "auto", "sme"] as const satisfies readonly FinanceType[];
+export type ProductKind = (typeof PRODUCT_KINDS)[number];
+
 export type Nationality = "saudi" | "non_saudi";
 
 /** The credit record in one word. `unknown` means no SIMAH report was read yet. */

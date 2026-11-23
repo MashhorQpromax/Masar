@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { AUDIT_AREA, auditAction, auditDetail, eventsCount, NOBODY } from "@/copy/audit";
+import { FINANCE_TYPE } from "@/copy/eligibility";
 import { AUDIT_ACTIONS, AUDIT_AREA_NAMES } from "@/domain/audit";
 import { STAGES } from "@/domain/deal";
 import { PAPER_CODES } from "@/domain/documents";
@@ -128,6 +129,23 @@ describe("the detail beside an event", () => {
     expect(auditDetail("lender.decision", { lender: "بنك الرياض", part: "mortgage", decision: "approved", onDeal: true })).toBe("موافقة، بنك الرياض، العقاري، حُسبت الصفقة عليه");
     expect(auditDetail("lender.decision", { lender: "بنك الرياض", part: "personal", decision: "rejected", onDeal: false })).toBe("رفض، بنك الرياض، الشخصي");
     expect(auditDetail("lender.decision", { lender: "بنك الرياض", part: "boat", decision: "maybe" })).toBe("بنك الرياض");
+  });
+
+  it("says which lender or product joined the catalogue, and which product stopped or came back", () => {
+    expect(auditAction("lender.add")).toBe("إضافة جهة");
+    expect(auditAction("lender.product_add")).toBe("إضافة منتج");
+    expect(auditAction("lender.product_update")).toBe("تعديل منتج");
+    expect(auditAction("lender.product_switch")).toBe("إيقاف منتج أو إعادته");
+    expect(auditDetail("lender.add", { name: "بنك الخليج", type: "bank" })).toBe("بنك، بنك الخليج");
+    expect(auditDetail("lender.add", { name: "شركة اليسر", type: "finance_company" })).toBe("شركة تمويل، شركة اليسر");
+    expect(auditDetail("lender.add", { name: "بنك الخليج", type: "something" })).toBe("بنك الخليج");
+    expect(auditDetail("lender.product_add", { lender: "بنك الخليج", financeType: "mortgage", verified: true })).toBe(`بنك الخليج، ${FINANCE_TYPE.mortgage}، مؤكدة`);
+    expect(auditDetail("lender.product_add", { lender: "بنك الخليج", financeType: "personal", verified: false })).toBe(`بنك الخليج، ${FINANCE_TYPE.personal}`);
+    expect(auditDetail("lender.product_add", { lender: "بنك الخليج", financeType: "boat" })).toBe("بنك الخليج");
+    expect(auditDetail("lender.product_switch", { active: false, lender: "بنك الخليج" })).toBe("أُوقف، بنك الخليج");
+    expect(auditDetail("lender.product_switch", { active: true, lender: "بنك الخليج" })).toBe("عاد يعمل، بنك الخليج");
+    expect(auditDetail("lender.product_switch", { lender: "بنك الخليج" })).toBe("بنك الخليج");
+    expect(auditDetail("lender.product_switch", {})).toBe("");
   });
 
   it("reads whatever the log holds without breaking or showing a code", () => {

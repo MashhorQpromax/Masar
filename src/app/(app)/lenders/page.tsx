@@ -7,8 +7,11 @@ import type { Product } from "@/domain/eligibility";
 import { requireActor } from "@/server/auth/actor";
 import { getDb } from "@/server/db/client";
 import { listCatalogue } from "@/server/lenders/service";
-import { ChevronIcon } from "@/ui/icons";
+import { ChevronIcon, PlusIcon } from "@/ui/icons";
 import { Num } from "@/ui/Num";
+import { SubmitButton } from "@/ui/SubmitButton";
+import { switchProduct } from "./actions";
+import { LenderForm } from "./LenderForm";
 import { LendersNav } from "./LendersNav";
 import { ProductForm } from "./ProductForm";
 
@@ -29,6 +32,8 @@ const termsOf = (p: Product) => ({
   settledDefaultWaitMonths: p.settledDefaultWaitMonths ?? null,
   verified: !!p.verified,
 });
+
+const scopeOf = (p: Product) => ({ name: p.name, sectors: p.sectors, nationalities: p.nationalities, minAge: p.minAge });
 
 function Summary({ product }: { product: Product }) {
   return (
@@ -57,8 +62,10 @@ function Summary({ product }: { product: Product }) {
 export default async function LendersPage() {
   const me = await requireActor();
   const mayManage = can(me.role, "lender.manage");
-  const catalogue = await listCatalogue(await getDb());
-  const all = catalogue.flatMap((lender) => lender.products);
+  // Whoever keeps the catalogue also sees what was stopped, and a lender that has no product yet.
+  const catalogue = await listCatalogue(await getDb(), { stopped: mayManage });
+  const all = catalogue.flatMap((lender) => lender.products).filter((p) => p.active);
+  const inUse = catalogue.filter((lender) => lender.products.some((p) => p.active)).length;
   const confirmed = all.filter((p) => p.verified).length;
 
   return (
@@ -69,13 +76,13 @@ export default async function LendersPage() {
         </div>
         <div className="head-side">
           <p className="where">
-            {counted(catalogue.length, LENDERS)} · {counted(all.length, PRODUCTS)} · <b>{confirmed ? `المؤكد منها ${confirmed}` : "لم تؤكَّد شروطها بعد"}</b>
+            {counted(inUse, LENDERS)} · {counted(all.length, PRODUCTS)} · <b>{confirmed ? `المؤكد منها ${confirmed}` : "لم تؤكَّد شروطها بعد"}</b>
           </p>
         </div>
       </div>
       <LendersNav current="/lenders" />
 
-      {!catalogue.length ? (
+      {!catalogue.length && !mayManage ? (
         <section className="empty">
           <h2>لا جهات في القائمة</h2>
           <p>تُضاف الجهات وشروطها هنا، وتُحسب عليها كل صفقة.</p>
@@ -96,13 +103,38 @@ export default async function LendersPage() {
                 <small>{LENDER_TYPE[lender.type]}</small>
               </h2>
               {lender.products.map((product) =>
-                mayManage ? (
+                !product.active ? (
+                  <div key={product.id} className="product" data-stopped>
+                    <div className="product-row">
+                      <span className="product-name">
+                        <b>{FINANCE_TYPE[product.financeType]}</b>
+                        <small>{product.name}</small>
+                      </span>
+                      <span className="product-terms">
+                        <span>متوقف. لا يُعرض على عميل ولا تُحسب عليه صفقة.</span>
+                      </span>
+                      <form action={switchProduct}>
+                        <input type="hidden" name="productId" value={product.id} />
+                        <input type="hidden" name="active" value="1" />
+                        <SubmitButton className="btn btn--soft">أعده</SubmitButton>
+                      </form>
+                    </div>
+                  </div>
+                ) : mayManage ? (
                   <details key={product.id} className="product">
                     <summary>
                       <Summary product={product} />
                       <ChevronIcon />
                     </summary>
-                    <ProductForm productId={Number(product.id)} mortgage={product.financeType === "mortgage"} initial={termsOf(product)} />
+                    <ProductForm productId={Number(product.id)} kind={product.financeType} initial={termsOf(product)} scope={scopeOf(product)} />
+                    <details className="know-remove product-stop">
+                      <summary aria-label={`أوقف: ${product.name}`}>أوقف هذا المنتج</summary>
+                      <form action={switchProduct}>
+                        <input type="hidden" name="productId" value={product.id} />
+                        <input type="hidden" name="active" value="0" />
+                        <SubmitButton className="btn btn--soft">نعم، أوقفه</SubmitButton>
+                      </form>
+                    </details>
                   </details>
                 ) : (
                   <div key={product.id} className="product">
@@ -112,8 +144,27 @@ export default async function LendersPage() {
                   </div>
                 ),
               )}
+              {mayManage && (
+                <details className="product product--new" open={lender.products.length === 0}>
+                  <summary>
+                    <span className="product-add">
+                      <PlusIcon size={16} />
+                      {lender.products.length ? "منتج جديد" : "أضف منتجها الأول"}
+                    </span>
+                    <ChevronIcon />
+                  </summary>
+                  <ProductForm lenderId={lender.id} bank={lender.type === "bank"} />
+                </details>
+              )}
             </section>
           ))}
+          {mayManage && (
+            <section className="tile tile--lender tile--newlender">
+              <h2 className="lender-name">جهة جديدة</h2>
+              <p className="lender-new-say">جهة بدأ المكتب يتعامل معها. تُضاف باسمها، ثم يُكتب منتجها الأول وشروطه.</p>
+              <LenderForm />
+            </section>
+          )}
         </div>
       )}
     </>

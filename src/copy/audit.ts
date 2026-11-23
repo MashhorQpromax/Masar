@@ -6,7 +6,9 @@ import { ROLE } from "./auth";
 import { STAGE } from "./deal";
 import { PAPER_STATUS, paperLabel } from "./documents";
 import { counted, dayFull, dayLong, days, ltr, type CountForms } from "./format";
+import { FINANCE_TYPE } from "./eligibility";
 import { DECISION, PART, RULE_KIND } from "./knowledge";
+import { LENDER_TYPE } from "./lenders";
 import { MESSAGE_KIND } from "./messages";
 
 export const AUDIT_AREA: Record<AuditArea, string> = {
@@ -59,7 +61,10 @@ const AUDIT_ACTION: Record<AuditAction, string> = {
   "wa.handled": "محادثة لا تحتاج رداً",
   "link.open": "فتح رابط العميل",
   "link.close": "إغلاق رابط العميل",
-  "lender.product_update": "تعديل شروط منتج",
+  "lender.add": "إضافة جهة",
+  "lender.product_add": "إضافة منتج",
+  "lender.product_update": "تعديل منتج",
+  "lender.product_switch": "إيقاف منتج أو إعادته",
   "lender.rule_add": "ملاحظة عن جهة",
   "lender.rule_archive": "حذف ملاحظة عن جهة",
   "lender.decision": "تسجيل قرار جهة",
@@ -193,6 +198,12 @@ export function auditDetail(action: string, details: Record<string, unknown> | n
       return (number(d.days) ?? 0) > 0 ? `صالح ${days(number(d.days)!)}` : "";
     case "link.close":
       return (number(d.links) ?? 0) > 0 ? counted(number(d.links)!, LINKS) : "";
+    case "lender.add":
+      return joined([(d.type === "bank" || d.type === "finance_company") && LENDER_TYPE[d.type], text(d.name)]);
+    case "lender.product_add":
+      return joined([text(d.lender), typeof d.financeType === "string" && d.financeType in FINANCE_TYPE && FINANCE_TYPE[d.financeType as keyof typeof FINANCE_TYPE], d.verified === true && "مؤكدة"]);
+    case "lender.product_switch":
+      return joined([d.active === false ? "أُوقف" : d.active === true ? "عاد يعمل" : null, text(d.lender)]);
     case "lender.product_update":
       return joined([strings(d.changed).length > 0 && counted(strings(d.changed).length, TERMS), d.verified === true && "مؤكدة"]);
     case "lender.rule_add":

@@ -91,6 +91,16 @@ const BANK_SHORT_NAME: Record<string, string> = {
 /** The short name of a salary bank, or the code itself when the bank is not one we name. */
 export const bankShortName = (code: string): string => BANK_SHORT_NAME[code] ?? code;
 
+/**
+ * The code of the salary bank a lender's full name speaks of. Null when it speaks of none we name.
+ * The article folds into a preposition before it ("السعودي للاستثمار"), so both spellings count.
+ */
+export const bankCodeIn = (name: string): string | null =>
+  Object.keys(BANK_SHORT_NAME).find((code) => {
+    const short = BANK_SHORT_NAME[code]!;
+    return name.includes(short) || name.includes(`لل${short.slice(2)}`);
+  }) ?? null;
+
 const LEVEL_ORDER: Record<ConditionLevel, number> = { block: 0, warn: 1, info: 2 };
 
 type RetireCheck = Extract<Check, { code: "RETIRES_IN_TERM" }>;
