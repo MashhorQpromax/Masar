@@ -22,11 +22,13 @@ import {
   stepTitle,
   verdictSay,
 } from "@/copy/analysis";
+import { approvalLine, approvalState, openText } from "@/copy/approval";
 import { CONSENT_WITHDRAWN, GRADE } from "@/copy/credit";
 import { counted, dayFull, dayOfRecord, ltr, money, months, percent, plainMoney } from "@/copy/format";
 import { ELIGIBILITY } from "@/copy/funding";
-import type { Fit, KindFit, Mark, Step } from "@/domain/analysis";
+import { completeness, type Fit, type KindFit, type Mark, type Step } from "@/domain/analysis";
 import { can } from "@/domain/auth";
+import { approvalsOf } from "@/server/analysis/approval";
 import { getAnalysis } from "@/server/analysis/service";
 import { requireActor } from "@/server/auth/actor";
 import { getDb } from "@/server/db/client";
@@ -37,6 +39,7 @@ import { SubmitButton } from "@/ui/SubmitButton";
 import { recordConsent } from "../actions";
 import { DoorRow } from "../credit/DoorRow";
 import { ReportUpload } from "../credit/ReportUpload";
+import { ApproveForm } from "./ApproveForm";
 import { PrintButton } from "./PrintButton";
 
 export const dynamic = "force-dynamic";
@@ -269,7 +272,8 @@ export default async function AnalysisPage({ params }: { params: Promise<{ id: s
   const clientId = Number((await params).id);
   if (!Number.isInteger(clientId) || clientId <= 0) notFound();
   const now = new Date();
-  const view = await getAnalysis(await getDb(), { clientId, now });
+  const db = await getDb();
+  const view = await getAnalysis(db, { clientId, now });
   if (!view) notFound();
 
   const { client, deal, record, analysis: a } = view;
@@ -324,6 +328,18 @@ export default async function AnalysisPage({ params }: { params: Promise<{ id: s
   const door = first ? stepDoor(first, { clientId: client.id, deal, mayDeal }) : null;
   const products = a.kinds.flatMap((k) => k.today.fits.map((fit) => fit.product));
   const confirmed = products.filter((product) => product.verified).length;
+
+  // The approval is held against the analysis as it reads now: it stands only while nothing it rested on changed.
+  const mayApprove = can(me.role, "study.approve");
+  const approvals = await approvalsOf(db, { clientId: client.id, now: view.fingerprint });
+  const latest = approvals[0] ?? null;
+  const open = completeness(a);
+  const approval = approvalState({
+    latest: latest && { ...latest, open: latest.summary.completeness },
+    now: open,
+    pending: a.verdict === "pending",
+    may: mayApprove,
+  });
 
   return (
     <>
@@ -503,6 +519,34 @@ export default async function AnalysisPage({ params }: { params: Promise<{ id: s
             </div>
           ))}
           {!a.gaps.length && <p className="an-none">لا شيء ناقص، وكل ما بُني عليه مؤكد.</p>}
+        </section>
+
+        <section className="tile tile--wide an-approval" data-state={approval.state}>
+          <div>
+            <p className="label">اعتماد التوصية</p>
+            <h2>{approval.title}</h2>
+            <p className="due">{approval.text}</p>
+          </div>
+          {mayApprove && approval.state !== "stands" && a.verdict !== "pending" && <ApproveForm key={view.fingerprint?.result} clientId={client.id} open={!open.complete} />}
+          {approvals.length > 0 && (
+            <details className="more">
+              <summary>سجل الاعتماد ({ltr(approvals.length)})</summary>
+              <div>
+                {approvals.map((entry) => (
+                  <p key={entry.id} className="note" data-level={entry.changed.length === 0 ? "good" : undefined}>
+                    <span>
+                      {approvalLine(entry)}
+                      {!entry.complete && (
+                        <small className="an-why">
+                          فيها {openText(entry.summary.completeness)}. السبب: {entry.reason}
+                        </small>
+                      )}
+                    </span>
+                  </p>
+                ))}
+              </div>
+            </details>
+          )}
         </section>
 
         <section className="tile tile--wide an-foot">

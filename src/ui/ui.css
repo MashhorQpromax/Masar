@@ -7354,6 +7354,71 @@
     line-height: 1.75;
     color: var(--color-body);
   }
+  /* The signature under the analysis: whether the office's recommendation is approved, and on what. */
+  .an-approval {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+    gap: 14px 28px;
+    border-inline-start: 6px solid var(--color-navy-mist);
+  }
+  .an-approval[data-state="stands"] {
+    border-inline-start-color: var(--color-navy);
+  }
+  .an-approval[data-state="fell"] {
+    border-inline-start-color: var(--color-coral);
+  }
+  .an-approval h2 {
+    margin: 4px 0 6px;
+    font-size: 22px;
+    font-weight: 700;
+  }
+  .an-approval[data-state="fell"] h2 {
+    color: var(--color-coral-ink);
+  }
+  .an-approval .due {
+    max-width: 72ch;
+    font-size: 15px;
+    line-height: 1.75;
+    color: var(--color-body);
+  }
+  .an-approval > .more {
+    grid-column: 1 / -1;
+  }
+  .an-why {
+    display: block;
+    margin-top: 2px;
+    font-size: 13px;
+    line-height: 1.7;
+    color: var(--color-muted);
+  }
+  .approve {
+    display: grid;
+    justify-items: start;
+    gap: 10px;
+    width: min(380px, 100%);
+  }
+  .approve .decide-ask {
+    width: 100%;
+    color: var(--color-body);
+  }
+  .approve textarea {
+    width: 100%;
+    min-height: 76px;
+    padding: 10px 14px;
+    border: 1.5px solid transparent;
+    border-radius: 14px;
+    background: var(--color-ground);
+    color: var(--color-ink);
+    font: inherit;
+    font-size: 15.5px;
+    line-height: 1.7;
+    resize: vertical;
+  }
+  .approve textarea:focus-visible {
+    outline: none;
+    border-color: var(--color-navy);
+  }
   /* A client may take their consent back. Recording it is one fold away, never one slip away. */
   .an-consent > summary {
     display: inline-flex;
@@ -7448,6 +7513,9 @@
     .an-half,
     .an-gaps {
       grid-column: 1 / -1;
+    }
+    .an-approval {
+      grid-template-columns: minmax(0, 1fr);
     }
     .an-verdict .verdict-text > .label,
     .an-verdict .verdict-say,
@@ -7813,6 +7881,7 @@
     .note-link,
     .upload,
     .an-consent,
+    .approve,
     .more > summary {
       display: none !important;
     }

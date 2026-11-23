@@ -12,7 +12,7 @@ describe("what each role may do", () => {
       "client.delete": "admin",
       "client.view_pii": "admin analyst officer",
       "deal.edit": "admin analyst officer",
-      "study.approve": "admin analyst",
+      "study.approve": "admin",
       "doc.upload": "admin analyst officer",
       "doc.verify": "admin analyst",
       "app.manage": "admin analyst officer",

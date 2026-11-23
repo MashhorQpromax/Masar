@@ -1,6 +1,7 @@
 import "server-only";
+import { createHash } from "node:crypto";
 import { desc, eq } from "drizzle-orm";
-import { analyzeClient, reportAgeMonths, type ClientAnalysis, type FileConflict, type FileFacts } from "@/domain/analysis";
+import { analyzeClient, approvalBasis, canonical, reportAgeMonths, type ClientAnalysis, type FileConflict, type FileFacts, type Fingerprint } from "@/domain/analysis";
 import { contractOf, PRODUCT_KINDS, SECTORS, type Answer, type ProductKind, type Sector } from "@/domain/eligibility";
 import { answersOf } from "../clients/conditions";
 import type { ClientRow } from "../clients/service";
@@ -49,7 +50,12 @@ export interface AnalysisView {
   salaryBank: string | null;
   /** Null until a credit record is read: there is nothing to analyse before it. */
   analysis: ClientAnalysis | null;
+  /** The print of each part the analysis rests on, which an approval is held against. Null with no analysis. */
+  fingerprint: Fingerprint | null;
 }
+
+/** The print of a value: equal values, equal prints. */
+export const printOf = (value: unknown): string => createHash("sha256").update(canonical(value)).digest("hex").slice(0, 32);
 
 /**
  * A client's credit and financial analysis, worked out now from what is stored: the file, the newest
@@ -65,6 +71,7 @@ export async function getAnalysis(db: Db, args: { clientId: number; now?: Date }
   const [bank] = client.salaryBank ? await db.select({ name: lenders.name }).from(lenders).where(eq(lenders.bankCode, client.salaryBank)).limit(1) : [];
   const record = await latestCredit(db, client.id);
   const file = fileFacts(client, { incomeVerified: standing.incomeProven, now, answers: await answersOf(db, client.id), conflicts: conflictsOf(standing) });
+  const products = record ? await listProducts(db, { now }) : [];
   const analysis = record
     ? analyzeClient({
         file,
@@ -76,8 +83,19 @@ export async function getAnalysis(db: Db, args: { clientId: number; now?: Date }
           readingWarnings: record.warnings.filter((warning) => warning.code !== "SUSPENSION_ASSUMED").length,
           ageMonths: record.report.reportDate ? reportAgeMonths(record.report.reportDate, riyadhDay(now)) : null,
         },
-        products: await listProducts(db, { now }),
+        products,
       })
     : null;
-  return { client, deal: deal ? { id: deal.id, open: !ENDED.includes(deal.stage) } : null, record, file, salaryBank: bank?.name ?? null, analysis };
+  // The record is printed as it was read and answered; what the engine makes of it is in the result.
+  const basis = analysis ? approvalBasis(analysis, products) : null;
+  const fingerprint: Fingerprint | null =
+    record && basis
+      ? {
+          file: printOf(file),
+          record: printOf({ id: record.id, report: record.report, warnings: record.warnings, confidence: record.confidence }),
+          lenders: printOf(basis.lenders),
+          result: printOf(basis.result),
+        }
+      : null;
+  return { client, deal: deal ? { id: deal.id, open: !ENDED.includes(deal.stage) } : null, record, file, salaryBank: bank?.name ?? null, analysis, fingerprint };
 }

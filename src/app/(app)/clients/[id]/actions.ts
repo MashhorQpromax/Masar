@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { approveAnalysis } from "@/server/analysis/approval";
 import { requireActor } from "@/server/auth/actor";
 import { addNote, setConsent, updateContact } from "@/server/clients/service";
 import { getDb } from "@/server/db/client";
@@ -100,4 +101,16 @@ export async function recordConsent(form: FormData): Promise<void> {
   refresh(clientId);
   revalidatePath(`/clients/${clientId}/analysis`);
   revalidatePath(`/clients/${clientId}/credit`);
+}
+
+/**
+ * Approves the client's analysis as it reads now. One with something still open is approved only with
+ * the reason, which is kept with the approval and in the log.
+ */
+export async function approveRecommendation(clientId: number, _before: CardAnswer, form: FormData): Promise<CardAnswer> {
+  const actor = await requireActor("study.approve");
+  return attempt(async () => {
+    await approveAnalysis(await getDb(), { clientId, reason: field(form, "reason"), actor });
+    revalidatePath(`/clients/${clientId}/analysis`);
+  });
 }

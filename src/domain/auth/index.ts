@@ -12,7 +12,8 @@ const PERMISSIONS = {
   "client.delete": ["admin"],
   "client.view_pii": ["admin", "analyst", "officer"],
   "deal.edit": ["admin", "analyst", "officer"],
-  "study.approve": ["admin", "analyst"],
+  /** Approving a client's analysis: the office's recommendation, signed. Until the owner says otherwise, the manager's alone. */
+  "study.approve": ["admin"],
   "doc.upload": ["admin", "analyst", "officer"],
   "doc.verify": ["admin", "analyst"],
   "app.manage": ["admin", "analyst", "officer"],

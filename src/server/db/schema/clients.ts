@@ -253,3 +253,32 @@ export const outcomes = masar.table(
   },
   (t) => [index("outcomes_lender_idx").on(t.lenderId, t.financeType)],
 );
+
+/**
+ * A client's analysis approved by the person who may sign the office's recommendation. Each print
+ * is of a part the approval rests on (the file, the record, the lenders' terms, the result); when one
+ * no longer matches, the approval has fallen. What the analysis read and found is kept as it was.
+ */
+export const analysisApprovals = masar.table(
+  "analysis_approvals",
+  {
+    id: id(),
+    clientId: integer()
+      .notNull()
+      .references(() => clients.id, { onDelete: "cascade" }),
+    userId: integer().references(() => users.id, { onDelete: "set null" }),
+    /** The approver's name as it was, so the log reads the same after their account is gone. */
+    approver: text(),
+    verdict: text().notNull(),
+    complete: boolean().notNull(),
+    /** Why an incomplete recommendation was approved all the same. Null for a complete one approved without a word. */
+    reason: text(),
+    fingerprint: jsonb().$type<Record<string, string>>().notNull(),
+    /** What the recommendation said: `ApprovalSummary`. */
+    summary: jsonb().$type<Record<string, unknown>>().notNull(),
+    /** What the analysis read and found, as it was: the file's facts, the record's id and the whole result. */
+    basis: jsonb().$type<Record<string, unknown>>().notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [index("analysis_approvals_client_idx").on(t.clientId)],
+);

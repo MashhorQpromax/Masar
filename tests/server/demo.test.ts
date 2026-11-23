@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { draftLabel } from "@/copy/credit";
 import { dealTimeline, fundsFlow, pendingDrafts, recordDifferences, reportDrafts, stationTimeline } from "@/domain/deal";
+import { approvalsOf } from "@/server/analysis/approval";
 import { getAnalysis } from "@/server/analysis/service";
 import { getAsked } from "@/server/clients/conditions";
 import { getClientCard, listClients } from "@/server/clients/directory";
@@ -9,6 +10,7 @@ import type { Connection } from "@/server/db/client";
 import { getDeal } from "@/server/deals/service";
 import { roadView } from "@/server/deals/views";
 import { DEMO_ANSWERED, DEMO_BANK, DEMO_COMPANY, DEMO_PAPER, DEMO_WORD, seedDemoLenders } from "@/server/demo/lenders";
+import { DEMO_APPROVED, DEMO_FALLEN, DEMO_REASON, seedDemoApprovals } from "@/server/demo/approvals";
 import { seedDemo } from "@/server/demo/seed";
 import { relyOnPaper } from "@/server/documents/facts";
 import { getPapers } from "@/server/documents/service";
@@ -314,5 +316,24 @@ describe("the demonstration's files against their papers", () => {
     // One press, and the example lender that takes him answers: the demonstration shows what settling is for.
     const after = await results();
     expect([...after].some((result) => result === "eligible" || result === "conditional")).toBe(true);
+  });
+});
+
+describe("the demonstration's approvals", () => {
+  it("shows one approval that stands and one that fell when the client's file changed", async () => {
+    await seedDemoLenders(c.db, now);
+    await seedDemoApprovals(c.db, now);
+    const of = async (fileNo: string) => {
+      const client = (await listClients(c.db, { q: fileNo })).rows.find((row) => row.fileNo === fileNo)!;
+      const view = (await getAnalysis(c.db, { clientId: client.id, now }))!;
+      return approvalsOf(c.db, { clientId: client.id, now: view.fingerprint });
+    };
+    const kept = await of(DEMO_APPROVED);
+    expect(kept.map((approval) => [approval.changed, approval.reason])).toEqual([[[], DEMO_REASON]]);
+    const fallen = await of(DEMO_FALLEN);
+    expect(fallen.map((approval) => approval.changed)).toEqual([["file"]]);
+    // Seeding again adds nothing.
+    await seedDemoApprovals(c.db, now);
+    expect(await of(DEMO_APPROVED)).toHaveLength(1);
   });
 });

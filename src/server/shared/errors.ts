@@ -23,6 +23,7 @@ export class DomainError extends Error {
       | "PAPER_HAS_FILES"
       | "FIGURE_REFUSED"
       | "RELY_REFUSED"
+      | "APPROVAL_REFUSED"
       | "UPLOAD_LIMIT"
       | "LINK_CLOSED"
       | "GATE_CLOSED"

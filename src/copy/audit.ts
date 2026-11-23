@@ -2,6 +2,8 @@
 import type { AuditAction, AuditArea, OldAuditAction } from "@/domain/audit";
 import { isRole } from "@/domain/auth";
 import { DECISIONS, RULE_KINDS, type Decision, type RuleKind } from "@/domain/knowledge";
+import { ANALYSIS_VERDICT } from "./analysis";
+import { openText } from "./approval";
 import { ROLE } from "./auth";
 import { STAGE } from "./deal";
 import type { PaperFact } from "@/domain/eligibility";
@@ -46,6 +48,7 @@ const AUDIT_ACTION: Record<AuditAction, string> = {
   "client.consent": "موافقة العميل على معالجة بياناته",
   "client.condition_answer": "جواب العميل عن شرط جهة",
   "client.fact_rely": "اعتماد ما في مستند على الملف",
+  "study.approve": "اعتماد التوصية",
   "client.reject": "رفض الملف",
   "client.reopen": "إعادة الملف إلى الدراسة",
   "credit.report_add": "قراءة تقرير سمة",
@@ -209,6 +212,17 @@ export function auditDetail(action: string, details: Record<string, unknown> | n
       });
       const source = text(d.paper);
       return joined([...said, source && `عن ${sourcePaper({ code: source, label: source.startsWith("custom:") ? "مستند أضفناه" : null })}`]);
+    }
+    case "study.approve": {
+      // An incomplete recommendation is approved with what was open in it and the reason, both kept here.
+      const verdict = text(d.verdict);
+      const open = record(d.open);
+      const counts = { verify: open.verify === true, missing: number(open.missing) ?? 0, unconfirmed: number(open.unconfirmed) ?? 0, conflict: number(open.conflict) ?? 0, terms: open.terms === true };
+      return joined([
+        verdict && verdict in ANALYSIS_VERDICT ? ANALYSIS_VERDICT[verdict as keyof typeof ANALYSIS_VERDICT] : null,
+        d.complete === true ? "مكتملة" : d.complete === false && `فيها ${openText({ complete: false, gaps: [], ...counts })}`,
+        text(d.reason),
+      ]);
     }
     case "client.reject":
       return text(d.reason) ?? "";

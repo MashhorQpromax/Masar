@@ -125,6 +125,21 @@ describe("the detail beside an event", () => {
     expect(auditAction("doc.state")).toBe("تسجيل ما في مستند");
   });
 
+  it("says what a recommendation was approved as, what was open in it, and why", () => {
+    expect(auditAction("study.approve")).toBe("اعتماد التوصية");
+    expect(auditDetail("study.approve", { verdict: "eligible", complete: true, open: null, reason: null })).toBe("مؤهل مبدئياً، مكتملة");
+    expect(
+      auditDetail("study.approve", {
+        verdict: "needs_verification",
+        complete: false,
+        open: { verify: true, missing: 2, unconfirmed: 0, conflict: 1, terms: true },
+        reason: "الجهة أكدت الشرط هاتفياً",
+      }),
+    ).toBe("بحاجة إلى تحقق، فيها ناقصان وتعارض واحد وشروط لم تؤكدها الجهة المقترحة، الجهة أكدت الشرط هاتفياً");
+    expect(auditDetail("study.approve", { verdict: "made_up", complete: false, open: { verify: true } })).toBe("فيها ما يحتاج تحققاً");
+    expect(auditDetail("study.approve", {})).toBe("");
+  });
+
   it("says what kind of message went out, and counts with Arabic agreement", () => {
     expect(auditDetail("wa.send", { kind: "papers" })).toBe("طلب المستندات");
     expect(auditDetail("wa.send", { kind: "reply", via: "manual" })).toBe("رد بكلماتك، من الجوال");
