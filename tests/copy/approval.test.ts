@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { APPROVAL_PART, APPROVAL_REFUSALS, approvalError, approvalLine, approvalState, changedText, openText } from "@/copy/approval";
+import { APPROVAL_PART, APPROVAL_REFUSALS, approvalError, approvalLine, approvalState, changedText, openText, sentLines } from "@/copy/approval";
 import { APPROVAL_PARTS, type ApprovalPart, type Completeness } from "@/domain/analysis";
 
 const done: Completeness = { complete: true, verify: false, missing: 0, unconfirmed: 0, conflict: 0, terms: false, gaps: [] };
@@ -44,6 +44,20 @@ describe("the wording of an approval", () => {
     expect(approvalState({ latest: null, now: open({ missing: 1 }), pending: false, may: false }).text).toBe("فيها ناقص واحد. يعتمدها مدير النظام بسبب مكتوب.");
     expect(approvalState({ latest: null, now: done, pending: false, may: true }).text).toBe("كل ما بُني عليه مؤكد. الاعتماد يثبت ما قرأه التحليل ووجده الآن.");
     expect(approvalState({ latest: null, now: open({ missing: 1 }), pending: true, may: true }).text).toBe("لا تُعتمد قبل أن يُقرأ التحليل: أكمل الملف أو سجّل موافقة العميل.");
+  });
+
+  it("does not offer an approval while the file disagrees with a checked paper", () => {
+    const disputed = open({ conflict: 1 });
+    expect(approvalState({ latest: null, now: disputed, pending: false, may: true }).text).toBe("فيها تعارض واحد. لا تُعتمد قبل أن يُحسم التعارض من صفحة المستندات.");
+    expect(approvalState({ latest: null, now: disputed, pending: false, may: false }).text).toBe("فيها تعارض واحد. لا تُعتمد قبل أن يُحسم التعارض من صفحة المستندات.");
+    expect(approvalError("APPROVAL_REFUSED", { reason: "CONFLICT" })).toBe("الملف يخالف مستنداً مراجعاً. احسم التعارض من صفحة المستندات قبل اعتمادها.");
+  });
+
+  it("says where each approval sent the client, with the answer it had then", () => {
+    const to = { kind: "personal" as const, lender: "بنك المثال", product: "منتج", amount: 250000, eligibility: "eligible" as const, afterClearing: false };
+    expect(sentLines([]).map(plain)).toEqual(["لم تقترح جهة."]);
+    expect(sentLines([to]).map(plain)).toEqual(["بنك المثال، تمويل شخصي حتى 250,000: مؤهل مبدئياً"]);
+    expect(sentLines([{ ...to, afterClearing: true, eligibility: "needs_verification" }]).map(plain)).toEqual(["بعد السداد: بنك المثال، تمويل شخصي حتى 250,000: بحاجة إلى تحقق"]);
   });
 
   it("lists each approval of the log with its day, who, and whether it stands", () => {

@@ -1,6 +1,8 @@
 /** Wording of the approval of a client's analysis: whether it stands, what fell, and why one was refused. */
-import { REASON_MIN, type ApprovalPart, type ApprovalRefusal, type Completeness } from "@/domain/analysis";
-import { counted, dayFull, ltr, type CountForms } from "./format";
+import { REASON_MIN, type ApprovalPart, type ApprovalRefusal, type ApprovalSummary, type Completeness } from "@/domain/analysis";
+import { kindTitle } from "./analysis";
+import { counted, dayFull, ltr, money, type CountForms } from "./format";
+import { ELIGIBILITY } from "./funding";
 
 /** What an approval rests on, as a person reads that it changed. */
 export const APPROVAL_PART: Record<ApprovalPart, string> = {
@@ -55,7 +57,9 @@ export function approvalState(args: {
   }
   const after = args.pending
     ? "لا تُعتمد قبل أن يُقرأ التحليل: أكمل الملف أو سجّل موافقة العميل."
-    : now.complete
+    : now.conflict > 0
+      ? `فيها ${openText(now)}. لا تُعتمد قبل أن يُحسم التعارض من صفحة المستندات.`
+      : now.complete
       ? args.may
         ? "كل ما بُني عليه مؤكد. الاعتماد يثبت ما قرأه التحليل ووجده الآن."
         : "كل ما بُني عليه مؤكد. يعتمدها مدير النظام."
@@ -64,6 +68,12 @@ export function approvalState(args: {
         : `فيها ${openText(now)}. يعتمدها مدير النظام بسبب مكتوب.`;
   if (latest) return { state: "fell", title: "سقط الاعتماد", text: `تغيّر منذ اعتمادها ${changedText(latest.changed)}. ${after}` };
   return { state: "none", title: "التوصية غير معتمدة", text: after };
+}
+
+/** Where an approval sent the client, one lender to a line, with the answer it had then. */
+export function sentLines(apply: ApprovalSummary["apply"]): string[] {
+  if (!apply.length) return ["لم تقترح جهة."];
+  return apply.map((to) => `${to.afterClearing ? "بعد السداد: " : ""}${to.lender}، ${kindTitle(to)} حتى ${money(to.amount)}: ${ELIGIBILITY[to.eligibility]}`);
 }
 
 /** A line of the approval log. */
@@ -79,6 +89,7 @@ export function approvalLine(approval: { by: string | null; at: Date; complete: 
 const REFUSAL: Record<ApprovalRefusal, string> = {
   PENDING: "التحليل لا يُقرأ بعد. أكمل الملف أو سجّل موافقة العميل أولاً.",
   STANDS: "هذه التوصية معتمدة كما هي.",
+  CONFLICT: "الملف يخالف مستنداً مراجعاً. احسم التعارض من صفحة المستندات قبل اعتمادها.",
   REASON_NEEDED: `اكتب سبب اعتمادها رغم ما لم يكتمل، ${ltr(REASON_MIN)} حرفاً على الأقل.`,
 };
 

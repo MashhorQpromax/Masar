@@ -137,6 +137,13 @@ describe("approving", () => {
     expect(approvalRefusal(open, { reason: "الجهة أكدت الشرط هاتفياً وخطابها في الطريق", now: print, standing: null })).toBeNull();
   });
 
+  it("does not approve at all while the file disagrees with a checked paper, whatever the reason", () => {
+    const year = { fact: "birthYear" as const, file: 1991, stated: [{ code: "id", label: null, value: 1986 }] };
+    const disputed = analyse([sure, other], { conflicts: [year] });
+    expect(completeness(disputed)).toMatchObject({ complete: false, conflict: 1 });
+    expect(approvalRefusal(disputed, { reason: "الجهة أكدت الشرط هاتفياً وخطابها في الطريق", now: print, standing: null })).toBe("CONFLICT");
+  });
+
   it("does not approve twice what an approval already stands on, and approves again once a part changed", () => {
     expect(approvalRefusal(complete, { reason: null, now: print, standing: print })).toBe("STANDS");
     expect(approvalRefusal(complete, { reason: null, now: { ...print, file: "f2" }, standing: print })).toBeNull();
@@ -155,6 +162,13 @@ describe("what an approval rests on", () => {
     // Confirming the unconfirmed lender's terms leaves both prints of the approval as they were.
     const after = analyse([sure, other, { ...unsure, rate: 4.5, verified: true, terms: confirmed() }]);
     expect(canonical(approvalBasis(after, [sure, other, unsure]).result)).toBe(canonical(approvalBasis(a, [sure, other, unsure]).result));
+  });
+
+  it("changes when the confirmation of the lender it sends the client to runs out", () => {
+    const a = analyse([sure, other]);
+    // The same source, read on a day past its three months.
+    const later = (p: Product): Product => ({ ...p, terms: Object.fromEntries(TERMS.map((term) => [term, termStanding({ kind: "lender_document", reference: "نشرة المنتج، نوفمبر 2026", confirmedOn: "2026-11-01" }, "2027-03-01")])) });
+    expect(canonical(approvalBasis(a, [later(sure), later(other)]).lenders)).not.toBe(canonical(approvalBasis(a, [sure, other]).lenders));
   });
 
   it("changes when the lender it sends the client to changes its terms", () => {

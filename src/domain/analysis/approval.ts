@@ -9,7 +9,7 @@
  * A recommendation is incomplete when its best answer needs verification or the analysis lists
  * anything missing, unconfirmed or in dispute. It is approved only with the reason the person
  * approves it all the same, and what was open is kept with it. An analysis that cannot be read at
- * all (`pending`) is not approved.
+ * all (`pending`), or whose file disagrees with a checked paper, is not approved at all.
  *
  * Pure: the prints are made by the server; this module only compares them.
  */
@@ -125,9 +125,11 @@ export function approvalBasis<P extends { lenderName: string; name: string }>(an
  * Why an approval is refused. Null when it may be recorded.
  * - `PENDING`: the analysis cannot be read: too little in the file, or no consent on file.
  * - `STANDS`: an approval of exactly this already stands.
+ * - `CONFLICT`: the file and a checked paper disagree. No reason approves over it: which figure is
+ *   true is settled first, since every lender's answer waits on it.
  * - `REASON_NEEDED`: the recommendation is incomplete and no reason, or too short a one, was given.
  */
-export type ApprovalRefusal = "PENDING" | "STANDS" | "REASON_NEEDED";
+export type ApprovalRefusal = "PENDING" | "STANDS" | "CONFLICT" | "REASON_NEEDED";
 
 export function approvalRefusal(
   analysis: Pick<ClientAnalysis, "verdict" | "gaps" | "steps">,
@@ -135,7 +137,9 @@ export function approvalRefusal(
 ): ApprovalRefusal | null {
   if (analysis.verdict === "pending") return "PENDING";
   if (args.standing && changedParts(args.standing, args.now).length === 0) return "STANDS";
-  if (!completeness(analysis).complete && (args.reason?.trim().length ?? 0) < REASON_MIN) return "REASON_NEEDED";
+  const open = completeness(analysis);
+  if (open.conflict > 0) return "CONFLICT";
+  if (!open.complete && (args.reason?.trim().length ?? 0) < REASON_MIN) return "REASON_NEEDED";
   return null;
 }
 

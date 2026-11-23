@@ -22,7 +22,7 @@ import {
   stepTitle,
   verdictSay,
 } from "@/copy/analysis";
-import { approvalLine, approvalState, openText } from "@/copy/approval";
+import { approvalLine, approvalState, openText, sentLines } from "@/copy/approval";
 import { CONSENT_WITHDRAWN, GRADE } from "@/copy/credit";
 import { counted, dayFull, dayOfRecord, ltr, money, months, percent, plainMoney } from "@/copy/format";
 import { ELIGIBILITY } from "@/copy/funding";
@@ -527,7 +527,7 @@ export default async function AnalysisPage({ params }: { params: Promise<{ id: s
             <h2>{approval.title}</h2>
             <p className="due">{approval.text}</p>
           </div>
-          {mayApprove && approval.state !== "stands" && a.verdict !== "pending" && <ApproveForm key={view.fingerprint?.result} clientId={client.id} open={!open.complete} />}
+          {mayApprove && approval.state !== "stands" && a.verdict !== "pending" && open.conflict === 0 && <ApproveForm key={view.fingerprint?.result} clientId={client.id} open={!open.complete} />}
           {approvals.length > 0 && (
             <details className="more">
               <summary>سجل الاعتماد ({ltr(approvals.length)})</summary>
@@ -536,6 +536,11 @@ export default async function AnalysisPage({ params }: { params: Promise<{ id: s
                   <p key={entry.id} className="note" data-level={entry.changed.length === 0 ? "good" : undefined}>
                     <span>
                       {approvalLine(entry)}
+                      {sentLines(entry.summary.apply).map((line, i) => (
+                        <small key={i} className="an-why">
+                          {line}
+                        </small>
+                      ))}
                       {!entry.complete && (
                         <small className="an-why">
                           فيها {openText(entry.summary.completeness)}. السبب: {entry.reason}

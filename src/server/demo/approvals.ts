@@ -5,9 +5,12 @@ import type { Db } from "../db/client";
 import { analysisApprovals, clients, users } from "../db/schema";
 import type { Actor } from "../shared/actor";
 
-/** The invented client whose approval stands, and the one whose approval fell when his file changed. */
+/**
+ * The invented client whose approval stands, and the one whose approval fell when her file changed.
+ * Neither file disagrees with its papers: one that does is not approved at all until it is settled.
+ */
 export const DEMO_APPROVED = "C-017";
-export const DEMO_FALLEN = "C-014";
+export const DEMO_FALLEN = "C-021";
 
 /** Written by whoever approved, in the demonstration's own words. */
 export const DEMO_REASON = "عرض تجريبي: اعتُمدت على أن يُسدَّد القرار قبل التقديم، والجهة تُسأل قبل أي سداد.";

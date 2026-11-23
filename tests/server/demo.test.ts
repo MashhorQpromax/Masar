@@ -321,19 +321,28 @@ describe("the demonstration's files against their papers", () => {
 
 describe("the demonstration's approvals", () => {
   it("shows one approval that stands and one that fell when the client's file changed", async () => {
-    await seedDemoLenders(c.db, now);
-    await seedDemoApprovals(c.db, now);
-    const of = async (fileNo: string) => {
-      const client = (await listClients(c.db, { q: fileNo })).rows.find((row) => row.fileNo === fileNo)!;
-      const view = (await getAnalysis(c.db, { clientId: client.id, now }))!;
-      return approvalsOf(c.db, { clientId: client.id, now: view.fingerprint });
-    };
-    const kept = await of(DEMO_APPROVED);
-    expect(kept.map((approval) => [approval.changed, approval.reason])).toEqual([[[], DEMO_REASON]]);
-    const fallen = await of(DEMO_FALLEN);
-    expect(fallen.map((approval) => approval.changed)).toEqual([["file"]]);
-    // Seeding again adds nothing.
-    await seedDemoApprovals(c.db, now);
-    expect(await of(DEMO_APPROVED)).toHaveLength(1);
+    // Seeded on a database of its own, in the order the demonstration opens: nothing settled first.
+    const fresh = await testDb();
+    try {
+      await seedDemo(fresh.db, now);
+      await seedDemoLenders(fresh.db, now);
+      await seedDemoApprovals(fresh.db, now);
+      const of = async (fileNo: string) => {
+        const client = (await listClients(fresh.db, { q: fileNo })).rows.find((row) => row.fileNo === fileNo)!;
+        const view = (await getAnalysis(fresh.db, { clientId: client.id, now }))!;
+        return approvalsOf(fresh.db, { clientId: client.id, now: view.fingerprint });
+      };
+      const kept = await of(DEMO_APPROVED);
+      expect(kept.map((approval) => [approval.changed, approval.reason])).toEqual([[[], DEMO_REASON]]);
+      const fallen = await of(DEMO_FALLEN);
+      expect(fallen.map((approval) => approval.changed)).toEqual([["file"]]);
+      // The client whose identity card disagrees with his file has none: it is settled first.
+      expect(await of("C-014")).toEqual([]);
+      // Seeding again adds nothing.
+      await seedDemoApprovals(fresh.db, now);
+      expect(await of(DEMO_APPROVED)).toHaveLength(1);
+    } finally {
+      await fresh.close();
+    }
   });
 });
