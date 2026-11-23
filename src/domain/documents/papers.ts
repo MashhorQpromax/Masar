@@ -31,6 +31,7 @@ export const PAPERS = {
   cr: "business",
   fin_statements: "business",
   zakat: "business",
+  simah_company: "business",
   feasibility: "business",
   boq: "business",
   sources_uses: "business",

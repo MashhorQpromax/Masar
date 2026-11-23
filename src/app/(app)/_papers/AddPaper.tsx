@@ -5,9 +5,9 @@ import { paperError } from "@/copy/documents";
 import { SubmitButton } from "@/ui/SubmitButton";
 import { addPaperByName, type PaperAnswer } from "./actions";
 
-/** A paper by name: what one lender, or this deal alone, asks for beyond the usual. */
-export function AddPaper({ dealId }: { dealId: number }) {
-  const [answer, send] = useActionState<PaperAnswer, FormData>(addPaperByName.bind(null, dealId), {});
+/** A paper by name: what one lender, or this file alone, asks for beyond the usual. */
+export function AddPaper({ home }: { home: string }) {
+  const [answer, send] = useActionState<PaperAnswer, FormData>(addPaperByName.bind(null, home), {});
   const form = useRef<HTMLFormElement>(null);
   const id = useId();
 

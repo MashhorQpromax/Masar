@@ -195,8 +195,15 @@ export function yearlyDebtService(amount: number): number {
   return amount * (r / (1 - Math.pow(1 + r, -n))) * 12;
 }
 
-/** Studies a project against the amount it asks for. */
-export function projectStudy(x: ProjectFacts, requested: number): ProjectStudy {
+const NOTHING_HELD: ReadonlySet<GapCode> = new Set();
+
+/**
+ * Studies a project against the amount it asks for.
+ *
+ * `held` names the gaps the file already answers with papers a person checked. Those are not asked
+ * for again, and no longer hold the verdict back. With nothing held the study reads the facts alone.
+ */
+export function projectStudy(x: ProjectFacts, requested: number, held: ReadonlySet<GapCode> = NOTHING_HELD): ProjectStudy {
   const land = x.landValue ?? 0;
   const build = x.constructionCost ?? 0;
   const totalCost = land && build ? land + build : null;
@@ -227,7 +234,9 @@ export function projectStudy(x: ProjectFacts, requested: number): ProjectStudy {
   if (dscr != null && dscr < MIN_DSCR) alerts.push({ code: "LOW_COVER", level: "warn", dscr });
 
   const gaps: ProjectGap[] = [];
-  const need = (code: GapCode, critical = true) => gaps.push({ code, critical });
+  const need = (code: GapCode, critical = true) => {
+    if (!held.has(code)) gaps.push({ code, critical });
+  };
   if (!x.borrowerType) need("BORROWER_TYPE");
   // Asked of every file. It holds the verdict back only while the deed is not in the register.
   need("DEED_COPY", x.deed !== "registered");

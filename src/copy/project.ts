@@ -212,6 +212,22 @@ const GAP: Record<GapCode, { label: string; why: string }> = {
   NO_EXPROPRIATION: { label: "إفادة من الأمانة أن القطعة خارج نزع الملكية ومشاريع التطوير", why: "تحمي الضمان." },
 };
 
+/** Where the papers of a gap stand, said beside it. A gap whose papers are still owed says nothing: it is on the list because of that. */
+export const GAP_STANDING: Record<"received" | "rejected", string> = {
+  received: "وصل وينتظر المراجعة",
+  rejected: "أُعيد وينتظر نسخة سليمة",
+};
+
+/** Over the gaps the file answers with checked papers. */
+export const HELD_SAY = "ثبت بمستند تحققنا منه";
+
+/** On the papers page: what checking a paper does to the study. */
+export const PAPERS_CLOSE_GAPS = "المستند الذي تتحقق منه يُغلق ما يقابله في نواقص الدراسة.";
+
+/** What a rejected project file says where its study would speak. */
+export const REJECTED_PROJECT = "الملف مرفوض";
+export const REJECTED_PROJECT_SAY = "الدراسة والمستندات محفوظة كما كانت. لا يُعدَّل شيء حتى يُعاد فتح الملف.";
+
 /** A paper or a fact the file still needs. */
 export const gapLabel = (code: GapCode): string => GAP[code].label;
 /** Why a lender asks for it. */
@@ -325,6 +341,7 @@ const SAVE_ERROR: Record<string, (params: Record<string, string>) => string> = {
   INVALID_INPUT: () => "في المكتوب ما لا يصح. راجعه ثم احفظ.",
   NOT_FOUND: () => "لم يعد هذا الملف موجوداً.",
   NOT_A_PROJECT: () => "هذا الملف ليس ملف مشروع.",
+  FILE_REJECTED: () => "الملف مرفوض. أعد فتحه من ملف المالك ثم عدّل.",
   BAD_PHONE: () => "رقم الجوال غير صحيح. اكتبه بعشرة أرقام تبدأ بـ 05، أو اتركه فارغاً.",
   PHONE_TAKEN: (p) => `هذا الجوال مسجل في الملف ${ltr(p.fileNo ?? "")}. افتح ذلك الملف بدل ملف جديد.`,
   FORBIDDEN: () => "لا تملك صلاحية هذا.",

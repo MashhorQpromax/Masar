@@ -10,9 +10,12 @@ import {
   DEED,
   DEED_FACT,
   FIT,
+  GAP_STANDING,
   gapLabel,
   gapWhy,
+  HELD_SAY,
   incomeSteps,
+  PAPERS_CLOSE_GAPS,
   PROJECT_ERROR_CODES,
   PROJECT_TYPE,
   PROJECT_VERDICT,
@@ -23,6 +26,8 @@ import {
   PURPOSE_FACT,
   ratioLines,
   reachSay,
+  REJECTED_PROJECT,
+  REJECTED_PROJECT_SAY,
   structureAsk,
   structureHow,
   structureNeeds,
@@ -287,9 +292,25 @@ describe("a large amount, the way it is said", () => {
   });
 });
 
+describe("a project's papers and its rejection, as the study says them", () => {
+  it("says where a gap's paper stands, and that a checked paper closed a gap", () => {
+    for (const standing of ["received", "rejected"] as const) label(GAP_STANDING[standing], standing);
+    expect(GAP_STANDING.received).not.toBe(GAP_STANDING.rejected);
+    label(HELD_SAY, "held");
+    sentence(PAPERS_CLOSE_GAPS, "papers close gaps");
+  });
+
+  it("says a rejected file is kept as it was, and how to change it again", () => {
+    label(REJECTED_PROJECT, "rejected");
+    sentence(REJECTED_PROJECT_SAY, "rejected say");
+    // The refusal to save sends the person to where the file is reopened.
+    expect(projectError("FILE_REJECTED")).toContain("أعد فتحه");
+  });
+});
+
 describe("why a project was not saved", () => {
   it("has a sentence for every refusal, and one for a refusal it does not know", () => {
-    for (const code of ["INVALID_INPUT", "NOT_FOUND", "NOT_A_PROJECT", "BAD_PHONE", "PHONE_TAKEN", "FORBIDDEN"]) expect(PROJECT_ERROR_CODES, code).toContain(code);
+    for (const code of ["INVALID_INPUT", "NOT_FOUND", "NOT_A_PROJECT", "FILE_REJECTED", "BAD_PHONE", "PHONE_TAKEN", "FORBIDDEN"]) expect(PROJECT_ERROR_CODES, code).toContain(code);
     for (const code of PROJECT_ERROR_CODES) {
       const text = projectError(code, { fileNo: "C-014" });
       expect(text, code).toMatch(/^[؀-ۿ]/);

@@ -7,7 +7,7 @@ import { SECTOR } from "@/copy/editor";
 import { CONTRACT_TYPE } from "@/copy/eligibility";
 import { amountParts, dayFull, dayOf, ltr, percent, plainMoney } from "@/copy/format";
 import { agoText } from "@/copy/messages";
-import { PROJECT_VERDICT, projectLine, verdictSay } from "@/copy/project";
+import { PROJECT_VERDICT, projectLine, REJECTED_PROJECT, REJECTED_PROJECT_SAY, verdictSay } from "@/copy/project";
 import { can } from "@/domain/auth";
 import { fileState, type ClientNationality } from "@/domain/clients";
 import { SECTORS, stationsFor, type Sector } from "@/domain/deal";
@@ -19,7 +19,7 @@ import { getOpportunities } from "@/server/opportunities/service";
 import { cardLenders, CONFIDENCE, OPPORTUNITY_CLASS, PLAN_STATE } from "@/copy/opportunity";
 import { cardOf } from "@/domain/opportunity";
 import { Num } from "@/ui/Num";
-import { isProjectFile, projectOf } from "@/server/projects/service";
+import { projectsOf } from "@/server/projects/service";
 import { BackIcon, PenIcon, PlusIcon } from "@/ui/icons";
 import { ContactForm } from "./ContactForm";
 import { DecideFile } from "./DecideFile";
@@ -44,7 +44,7 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
   const deal = deals[0] ?? null;
   const state = fileState(deal?.stage ?? null);
   // A project's file is studied on its land and its income. It has no deal and no salary.
-  const project = isProjectFile(client) ? projectOf(client) : null;
+  const project = (await projectsOf(db, [client])).get(client.id) ?? null;
   const nationality: ClientNationality = client.nationality === "non_saudi" ? "non_saudi" : "saudi";
   const sector = (SECTORS as readonly string[]).includes(client.sector) ? SECTOR[client.sector as Sector] : null;
   const age = client.birthYear != null ? now.getFullYear() - client.birthYear : null;
@@ -55,7 +55,7 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
   const opportunities = study ? study.list.map(cardOf) : [];
   const stations = deal ? stationsFor(deal.structure) : [];
   const position = state.kind === "open" ? stations.indexOf(state.station) : -1;
-  const why = state.kind === "rejected" ? (notes.find((note) => note.kind === "status")?.body ?? null) : null;
+  const why = state.kind === "rejected" || project?.rejected ? (notes.find((note) => note.kind === "status")?.body ?? null) : null;
   const figures = deal
     ? [
         deal.capital != null && { label: "رأس المال", value: deal.capital },
@@ -84,18 +84,18 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
         </div>
         <div className="head-side">
           <p className="where">
-            <span className="num">{client.fileNo}</span> · <b>{project ? "مشروع" : fileStateText(state)}</b> · فُتح ملفه {dayOf(client.createdAt, now)}
+            <span className="num">{client.fileNo}</span> · <b>{project ? (project.rejected ? "مشروع مرفوض" : "مشروع") : fileStateText(state)}</b> · فُتح ملفه {dayOf(client.createdAt, now)}
           </p>
         </div>
       </div>
 
       <div className="bento bento--file">
         {project ? (
-          <section className="tile tile--verdict tile--file" data-state="project">
+          <section className="tile tile--verdict tile--file" data-state={project.rejected ? "rejected" : "project"}>
             <div>
               <p className="label">دراسة المشروع</p>
-              <h2 className="compose-title">{PROJECT_VERDICT[project.study.verdict]}</h2>
-              <p className="file-say">{[projectLine(project.facts), verdictSay(project.study)].filter(Boolean).join(". ")}</p>
+              <h2 className="compose-title">{project.rejected ? REJECTED_PROJECT : PROJECT_VERDICT[project.study.verdict]}</h2>
+              <p className="file-say">{project.rejected ? (why ?? REJECTED_PROJECT_SAY) : [projectLine(project.facts), verdictSay(project.study)].filter(Boolean).join(". ")}</p>
             </div>
             <dl className="file-figures">
               {project.requested > 0 && (
@@ -121,9 +121,11 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
               <Link className="btn btn--white" href={`/clients/${client.id}/project`}>
                 افتح الدراسة
               </Link>
-              {mayEdit && <Link href={`/clients/${client.id}/project/edit`}>عدّل المشروع</Link>}
+              <Link href={`/clients/${client.id}/project/papers`}>المستندات</Link>
+              {mayEdit && !project.rejected && <Link href={`/clients/${client.id}/project/edit`}>عدّل المشروع</Link>}
               {maySee && <Link href={`/clients/${client.id}/credit`}>سمة</Link>}
             </div>
+            {mayDecide && <DecideFile clientId={client.id} decision={project.rejected ? "reopen" : "reject"} project />}
           </section>
         ) : (
           <section className="tile tile--verdict tile--file" data-state={state.kind}>

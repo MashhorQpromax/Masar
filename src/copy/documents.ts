@@ -41,11 +41,14 @@ const DEAL_PAPER: Record<string, string> = {
 /** The tray of pictures and documents a client sent by WhatsApp, before a person puts each under its paper. */
 export const TRAY = "وصل في واتساب";
 
-/** What a paper is called. One a person added carries the name they gave it. */
-export function paperLabel(paper: { code: string; label: string | null }, who: { sector: Sector; nationality: Nationality }): string {
+/**
+ * What a paper is called. One a person added carries the name they gave it. A few papers read
+ * differently in a project's file, where the deed is the land's and the valuation is the full report.
+ */
+export function paperLabel(paper: { code: string; label: string | null }, who: { sector: Sector; nationality: Nationality }, file: "deal" | "project" = "deal"): string {
   if (paper.label) return paper.label;
   if (paper.code === INBOX_PAPER) return TRAY;
-  return DEAL_PAPER[paper.code] ?? documentLabel(paper.code, { financeType: "mortgage", ...who });
+  return DEAL_PAPER[paper.code] ?? documentLabel(paper.code, { financeType: file === "project" ? "project" : "mortgage", ...who });
 }
 
 /** The papers a figure is written down from, by the short name each goes by in a sentence. */

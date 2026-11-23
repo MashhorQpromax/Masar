@@ -6,7 +6,7 @@ import { digitsOf } from "@/domain/shared/phone";
 import { FOLD_DROP, FOLD_FROM, FOLD_TO, foldText } from "@/domain/shared/text";
 import type { Db } from "../db/client";
 import { clients, deals, notes, users } from "../db/schema";
-import { isProjectFile, projectOf } from "../projects/service";
+import { projectsOf } from "../projects/service";
 import type { ClientRow } from "./service";
 
 /** One person in the list of everyone the office opened a file for. */
@@ -20,7 +20,7 @@ export interface DirectoryRow {
   /** Their newest deal. Null for a file with no deal. */
   deal: { id: number; stage: Stage; structure: Structure; verdict: Verdict | null } | null;
   /** The project the file is for, when it is a project's file: what it is, where, and what its study says. */
-  project: { type: ProjectType | null; city: string | null; district: string | null; requested: number; verdict: ProjectVerdict } | null;
+  project: { type: ProjectType | null; city: string | null; district: string | null; requested: number; verdict: ProjectVerdict; rejected: boolean } | null;
   /** When the file last moved: its newest deal's last change, or its own. */
   movedAt: Date;
 }
@@ -69,10 +69,14 @@ export async function listClients(db: Db, args: { q?: string | null; byPhone?: b
     .orderBy(desc(movedAt), desc(clients.id))
     .limit(args.limit ?? 60);
 
+  const projects = await projectsOf(
+    db,
+    found.map((row) => row.client),
+  );
   return {
     total,
     rows: found.map(({ client, ...row }) => {
-      const project = isProjectFile(client) ? projectOf(client) : null;
+      const project = projects.get(client.id) ?? null;
       return {
         id: client.id,
         fileNo: client.fileNo,
@@ -81,7 +85,7 @@ export async function listClients(db: Db, args: { q?: string | null; byPhone?: b
         employer: client.employer,
         city: client.city,
         deal: row.dealId != null && row.stage && row.structure ? { id: row.dealId, stage: row.stage, structure: row.structure, verdict: row.verdict } : null,
-        project: project && { type: project.facts.projectType, city: project.facts.city, district: project.facts.district, requested: project.requested, verdict: project.study.verdict },
+        project: project && { type: project.facts.projectType, city: project.facts.city, district: project.facts.district, requested: project.requested, verdict: project.study.verdict, rejected: project.rejected },
         movedAt: row.dealAt ?? client.updatedAt,
       };
     }),

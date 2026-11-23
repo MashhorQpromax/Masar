@@ -650,6 +650,18 @@ const PROJECT: { owner: string; phone: string; requested: number; openedDaysAgo:
   },
 };
 
+/**
+ * The papers the invented project's owner sent: three checked, one that arrived and waits for a look,
+ * and one sent back. Every file is a made-up page.
+ */
+const PROJECT_PAPERS: { code: string; name: string; daysAgo: number; verdict?: "verified" | { sentBack: string } }[] = [
+  { code: "deed", name: "صك الأرض.pdf", daysAgo: 8, verdict: "verified" },
+  { code: "valuation", name: "تقرير التقييم.pdf", daysAgo: 8, verdict: "verified" },
+  { code: "permit", name: "رخصة البناء.pdf", daysAgo: 2, verdict: "verified" },
+  { code: "bank_12", name: "كشف الحساب.pdf", daysAgo: 2, verdict: { sentBack: "الكشف لستة أشهر فقط، والمطلوب اثنا عشر شهراً." } },
+  { code: "feasibility", name: "دراسة الجدوى.pdf", daysAgo: 1 },
+];
+
 /** Fills an empty database with the demo deals, dated relative to `now` so the map always looks alive. */
 export async function seedDemo(db: Db, now: Date): Promise<void> {
   const ago = (days: number) => new Date(now.getTime() - days * DAY);
@@ -775,6 +787,15 @@ export async function seedDemo(db: Db, now: Date): Promise<void> {
     now: ago(PROJECT.changedDaysAgo),
   });
   await dated(ago(PROJECT.changedDaysAgo));
+  for (const [index, paper] of PROJECT_PAPERS.entries()) {
+    const at = ago(paper.daysAgo);
+    const { paperId } = await db.transaction((tx) => keepFile(tx, { clientId: project.clientId, code: paper.code, name: paper.name, bytes: madeUpPdf(`project ${index + 1}`), actor: SYSTEM, now: at }));
+    if (paper.verdict) {
+      const review = paper.verdict === "verified" ? { verdict: "verified" } : { verdict: "rejected", note: paper.verdict.sentBack };
+      await reviewPaper(db, { clientId: project.clientId, paperId, review, actor: SYSTEM, now: at });
+    }
+    await dated(at);
+  }
   for (const stranger of STRANGERS) {
     for (const [index, said] of stranger.said.entries()) {
       const at = new Date(now.getTime() - said.hoursAgo * 3_600_000 + index * 40_000);

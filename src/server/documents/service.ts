@@ -57,7 +57,7 @@ function valid<T>(parse: () => T): T {
 }
 
 /** The papers kept for a client with their files, without the files' contents. */
-async function keptPapers(db: Tx, clientId: number): Promise<KeptPaper[]> {
+export async function keptPapers(db: Tx, clientId: number): Promise<KeptPaper[]> {
   const rows = await db.select().from(documents).where(eq(documents.clientId, clientId)).orderBy(asc(documents.id));
   if (!rows.length) return [];
   const files = await db

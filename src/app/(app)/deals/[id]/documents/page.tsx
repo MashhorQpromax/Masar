@@ -1,47 +1,23 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import type { CSSProperties } from "react";
 import { STAGE } from "@/copy/deal";
-import { BY_OFFICE, conflictText, FILE_KIND, fileTitle, owedBrief, PAPER_CATEGORY, PAPER_STATUS, paperLabel, sourcePaper, statedLine, TRAY } from "@/copy/documents";
+import { BY_OFFICE, conflictText, owedBrief, paperLabel, sourcePaper } from "@/copy/documents";
 import { counted, ltr } from "@/copy/format";
 import { can } from "@/domain/auth";
-import { INBOX_PAPER, PAPER_CATEGORIES, PAPER_MAX_FILES, SIMAH_PAPER, statesOf, type Paper, type PaperStatus } from "@/domain/documents";
+import type { Paper } from "@/domain/documents";
 import { clientReachable, messageGate } from "@/domain/messages";
 import { requireActor } from "@/server/auth/actor";
 import { getDb } from "@/server/db/client";
 import { getPapers } from "@/server/documents/service";
-import { BackIcon, CheckIcon, CloseIcon } from "@/ui/icons";
-import { SubmitButton } from "@/ui/SubmitButton";
-import { AddPaper } from "./AddPaper";
-import { PaperFigures, RelyOn } from "./PaperFigures";
-import { PaperUpload } from "@/ui/PaperUpload";
-import { dropPaper, fileUnder, judgePaper, removeFile, uploadPaperFile } from "./actions";
+import { BackIcon } from "@/ui/icons";
+import { RelyOn } from "../../../_papers/PaperFigures";
+import { PapersList, Sheets } from "../../../_papers/PapersList";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "المستندات · مسار" };
 
-const OPTIONAL = { one: "مستند اختياري", two: "مستندان اختياريان", few: "مستندات اختيارية", many: "مستنداً اختيارياً" };
 const VISIBLE_OWED = 4;
-const SHEET_ORDER: Record<PaperStatus, number> = { verified: 0, received: 1, rejected: 2, missing: 3 };
-
-/**
- * The file as a row of sheets, one for each paper it needs: gold when it was verified, white when it
- * arrived, an outline while it is still owed. The drawing is the count.
- */
-function Sheets({ states }: { states: PaperStatus[] }) {
-  const sheets = [...states].sort((a, b) => SHEET_ORDER[a] - SHEET_ORDER[b]);
-  return (
-    <ol className="sheets" aria-hidden="true">
-      {sheets.map((status, index) => (
-        <li key={index} data-status={status} style={{ animationDelay: `${0.3 + index * 0.05}s` } as CSSProperties}>
-          {status === "verified" && <CheckIcon size={20} />}
-        </li>
-      ))}
-    </ol>
-  );
-}
-
 export default async function DocumentsPage({ params }: { params: Promise<{ id: string }> }) {
   const me = await requireActor();
   const dealId = Number((await params).id);
@@ -58,123 +34,16 @@ export default async function DocumentsPage({ params }: { params: Promise<{ id: 
   const conflicts = view.facts.filter((reading) => reading.state === "conflict");
   const disputedPapers = new Set(conflicts.flatMap((reading) => reading.stated.map((statement) => statement.paperId)));
 
+  const home = `d${deal.id}`;
   const name = (paper: Paper) => paperLabel(paper, who);
   const required = list.papers.filter((paper) => paper.required);
   const owed = required.filter((paper) => paper.status === "missing" || paper.status === "rejected");
   const arrived = list.required - list.missing;
-  // An optional paper nobody sent stays out of the way until someone wants it.
-  const idle = (paper: Paper) => !paper.required && paper.files.length === 0;
-  // What arrived by WhatsApp is not a paper yet. It has its own place at the top, where each file is put under one.
-  const tray = list.papers.find((paper) => paper.code === INBOX_PAPER);
-  const shown = list.papers.filter((paper) => !idle(paper) && paper !== tray);
-  const homes = list.papers.filter((paper) => paper !== tray && paper.code !== SIMAH_PAPER && paper.asked);
-  const optional = list.papers.filter(idle);
   // The client is asked for what is theirs to bring. What the office brings itself is the office's next step.
   const fromClient = owed.filter((paper) => paper.by === "client");
   const fromOffice = owed.filter((paper) => paper.by === "office");
   // A client the office does not write to is not asked for anything either.
   const mayAsk = mayUpload && clientReachable(messageGate({ stage: deal.stage, verdict: view.verdict }));
-
-  const row = (paper: Paper) => {
-    const label = name(paper);
-    const simah = paper.code === SIMAH_PAPER;
-    const hasFiles = paper.files.length > 0;
-    // The figures this paper states, which whoever checks it writes down.
-    const states = statesOf(paper.code);
-    const said = statedLine(paper.stated);
-    return (
-      <li key={paper.code} className="paper" data-status={paper.status}>
-        <div className="paper-what">
-          <b>{label}</b>
-          <span className="paper-state" data-status={paper.status}>
-            {PAPER_STATUS[paper.status]}
-          </span>
-          {paper.by === "office" && paper.status !== "verified" && <small>{BY_OFFICE}</small>}
-          {!paper.required && <small>{paper.asked ? "اختياري" : "غير مطلوب الآن"}</small>}
-          {paper.status === "rejected" && paper.note && <p className="paper-why">{paper.note}</p>}
-          {paper.status === "verified" && states.length > 0 && (
-            <p className="paper-stated" data-conflict={(paper.id != null && disputedPapers.has(paper.id)) || undefined} data-empty={!said || undefined}>
-              {said || "لم يُكتب ما فيه، فلا يثبت به رقم."}
-            </p>
-          )}
-        </div>
-        <div className="paper-files">
-          {paper.files.map((file, index) => {
-            // A file's name can carry the client's own. Who may not open the file does not read its name either.
-            const title = mayOpen ? fileTitle(file.name) : `ملف ${ltr(index + 1)}`;
-            return (
-              <span key={file.id} className="file">
-                {mayOpen ? (
-                  <a href={`/files/${file.id}`} target="_blank" rel="noreferrer">
-                    <small>{FILE_KIND[file.kind]}</small>
-                    <bdi>{title}</bdi>
-                  </a>
-                ) : (
-                  <span>
-                    <small>{FILE_KIND[file.kind]}</small>
-                    <bdi>{title}</bdi>
-                  </span>
-                )}
-                {mayUpload && !simah && (
-                  <form action={removeFile}>
-                    <input type="hidden" name="dealId" value={deal.id} />
-                    <input type="hidden" name="fileId" value={file.id} />
-                    <button type="submit" className="file-remove" aria-label={`احذف ${title}`}>
-                      <CloseIcon size={14} />
-                    </button>
-                  </form>
-                )}
-              </span>
-            );
-          })}
-          {mayUpload && !simah && hasFiles && paper.files.length < PAPER_MAX_FILES && <PaperUpload send={uploadPaperFile.bind(null, deal.id, paper.code)} name={label} look="more" />}
-        </div>
-        <div className="paper-do">
-          {simah ? (
-            mayOpen && (
-              <Link className="btn btn--soft" href={`/clients/${client.id}/credit`}>
-                {paper.status === "verified" ? "السجل الائتماني" : "ارفعه ليُقرأ"}
-              </Link>
-            )
-          ) : (
-            <>
-              {mayVerify && hasFiles && paper.id != null && paper.status !== "verified" && states.length === 0 && (
-                <form action={judgePaper}>
-                  <input type="hidden" name="dealId" value={deal.id} />
-                  <input type="hidden" name="paperId" value={paper.id} />
-                  <input type="hidden" name="verdict" value="verified" />
-                  <SubmitButton className="btn btn--navy">سليم</SubmitButton>
-                </form>
-              )}
-              {mayVerify && hasFiles && paper.id != null && states.length > 0 && (
-                <PaperFigures key={paper.status} dealId={deal.id} paperId={paper.id} name={label} facts={states} stated={paper.stated} verify={paper.status !== "verified"} />
-              )}
-              {mayVerify && hasFiles && paper.id != null && paper.status !== "rejected" && (
-                <details className="send-back">
-                  <summary className="btn btn--ghost">أعده</summary>
-                  <form action={judgePaper}>
-                    <input type="hidden" name="dealId" value={deal.id} />
-                    <input type="hidden" name="paperId" value={paper.id} />
-                    <input type="hidden" name="verdict" value="rejected" />
-                    <input className="field-input" name="note" required minLength={2} maxLength={200} placeholder="لماذا يُعاد؟" aria-label={`سبب إعادة ${label}`} autoComplete="off" />
-                    <SubmitButton className="btn btn--soft">أعده للعميل</SubmitButton>
-                  </form>
-                </details>
-              )}
-              {mayUpload && !hasFiles && <PaperUpload send={uploadPaperFile.bind(null, deal.id, paper.code)} name={label} look="soft" />}
-              {mayUpload && paper.category === "extra" && !hasFiles && paper.id != null && (
-                <form action={dropPaper}>
-                  <input type="hidden" name="dealId" value={deal.id} />
-                  <input type="hidden" name="paperId" value={paper.id} />
-                  <SubmitButton className="btn btn--ghost">احذفه</SubmitButton>
-                </form>
-              )}
-            </>
-          )}
-        </div>
-      </li>
-    );
-  };
 
   return (
     <>
@@ -300,87 +169,14 @@ export default async function DocumentsPage({ params }: { params: Promise<{ id: 
               return (
                 <div key={reading.fact} className="conflict">
                   <p className="conflict-what">{conflictText(reading)}</p>
-                  <RelyOn dealId={deal.id} paperId={first.paperId} fact={reading.fact} value={first.value} paper={sourcePaper(first)} papersAgree={reading.papersAgree} may={mayRely} />
+                  <RelyOn home={home} paperId={first.paperId} fact={reading.fact} value={first.value} paper={sourcePaper(first)} papersAgree={reading.papersAgree} may={mayRely} />
                 </div>
               );
             })}
           </section>
         )}
 
-        <section className="tile tile--wide">
-          {tray && (
-            <div className="papers-group tray">
-              <h2 className="label">{TRAY}</h2>
-              <p className="tray-say">{mayUpload ? "افتح كل ملف ثم ضعه تحت مستنده." : "ملفات أرسلها العميل وتنتظر من يضعها تحت مستنداتها."}</p>
-              <ul className="papers">
-                {tray.files.map((file, index) => {
-                  const title = mayOpen ? fileTitle(file.name) : `ملف ${ltr(index + 1)}`;
-                  return (
-                    <li key={file.id} className="paper">
-                      <div className="paper-files">
-                        <span className="file">
-                          {mayOpen ? (
-                            <a href={`/files/${file.id}`} target="_blank" rel="noreferrer">
-                              <small>{FILE_KIND[file.kind]}</small>
-                              <bdi>{title}</bdi>
-                            </a>
-                          ) : (
-                            <span>
-                              <small>{FILE_KIND[file.kind]}</small>
-                              <bdi>{title}</bdi>
-                            </span>
-                          )}
-                        </span>
-                      </div>
-                      {mayUpload && (
-                        <form action={fileUnder} className="tray-put">
-                          <input type="hidden" name="dealId" value={deal.id} />
-                          <input type="hidden" name="fileId" value={file.id} />
-                          <select className="field-input" name="code" required defaultValue="" aria-label={`المستند الذي يوضع تحته ${title}`}>
-                            <option value="" disabled>
-                              أي مستند هذا؟
-                            </option>
-                            {homes.map((paper) => (
-                              <option key={paper.code} value={paper.code}>
-                                {name(paper)}
-                              </option>
-                            ))}
-                          </select>
-                          <SubmitButton className="btn btn--navy">ضعه هنا</SubmitButton>
-                        </form>
-                      )}
-                      {mayUpload && (
-                        <form action={removeFile}>
-                          <input type="hidden" name="dealId" value={deal.id} />
-                          <input type="hidden" name="fileId" value={file.id} />
-                          <SubmitButton className="btn btn--ghost">احذفه</SubmitButton>
-                        </form>
-                      )}
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
-          )}
-          {PAPER_CATEGORIES.filter((category) => shown.some((paper) => paper.category === category)).map((category) => (
-            <div key={category} className="papers-group">
-              <h2 className="label">{PAPER_CATEGORY[category]}</h2>
-              <ul className="papers">{shown.filter((paper) => paper.category === category).map(row)}</ul>
-            </div>
-          ))}
-          {optional.length > 0 && (
-            <details className="more papers-more">
-              <summary>{counted(optional.length, OPTIONAL)}</summary>
-              <ul className="papers">{optional.map(row)}</ul>
-            </details>
-          )}
-          {mayUpload && (
-            <details className="more papers-more">
-              <summary>أضف مستنداً تطلبه جهة بعينها</summary>
-              <AddPaper dealId={deal.id} />
-            </details>
-          )}
-        </section>
+        <PapersList home={home} clientId={client.id} list={list} who={who} may={{ upload: mayUpload, verify: mayVerify, open: mayOpen }} disputed={disputedPapers} />
       </div>
     </>
   );

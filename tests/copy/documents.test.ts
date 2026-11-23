@@ -26,6 +26,18 @@ describe("the wording of papers", () => {
     expect(paperLabel({ code: "transfer_deed", label: null }, { sector: "gov", nationality: "saudi" })).toBe("صك العقار بعد الإفراغ لطرفنا");
   });
 
+  it("names a project's papers as a project's, and tells the company's credit report from its owner's", () => {
+    const who = { sector: "self", nationality: "saudi" } as const;
+    for (const code of PAPER_CODES) {
+      const label = paperLabel({ code, label: null }, who, "project");
+      expect(label, code).not.toMatch(/[a-z_]{3,}/);
+      expect(label, code).not.toMatch(broken);
+    }
+    expect(paperLabel({ code: "simah_company", label: null }, who, "project")).toBe("تقرير سمة التجارية للشركة");
+    expect(paperLabel({ code: "simah_company", label: null }, who, "project")).not.toBe(paperLabel({ code: "simah", label: null }, who, "project"));
+    expect(paperLabel({ code: "custom:ab12", label: "خطاب المشغّل" }, who, "project")).toBe("خطاب المشغّل");
+  });
+
   it("has a word for every state and every group", () => {
     for (const status of PAPER_STATUSES) expect(PAPER_STATUS[status]).toBeTruthy();
     for (const category of PAPER_CATEGORIES) expect(PAPER_CATEGORY[category]).toBeTruthy();

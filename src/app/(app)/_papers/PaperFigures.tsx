@@ -17,8 +17,8 @@ const typedOf = (fact: PaperFact, value: number | undefined): string => (value =
  * The fields start empty when the paper is checked: the figure is typed from the paper, not from the file.
  * What was typed stays in the fields when it is refused, beside the reason.
  */
-export function PaperFigures({ dealId, paperId, name, facts, stated, verify }: { dealId: number; paperId: number; name: string; facts: readonly PaperFact[]; stated: Stated; verify: boolean }) {
-  const [answer, send] = useActionState<PaperAnswer, FormData>((verify ? verifyPaper : stateFigures).bind(null, dealId, paperId), {});
+export function PaperFigures({ home, paperId, name, facts, stated, verify }: { home: string; paperId: number; name: string; facts: readonly PaperFact[]; stated: Stated; verify: boolean }) {
+  const [answer, send] = useActionState<PaperAnswer, FormData>((verify ? verifyPaper : stateFigures).bind(null, home, paperId), {});
   const box = useRef<HTMLDetailsElement>(null);
   const written = facts.some((fact) => stated[fact] != null);
   const start = (): Partial<Record<PaperFact, string>> => Object.fromEntries(facts.map((fact) => [fact, verify ? "" : typedOf(fact, stated[fact])]));
@@ -85,8 +85,8 @@ export function PaperFigures({ dealId, paperId, name, facts, stated, verify }: {
 }
 
 /** One fact in dispute, with the way out of it: the file takes what the papers say. */
-export function RelyOn({ dealId, paperId, fact, value, paper, papersAgree, may }: { dealId: number; paperId: number; fact: PaperFact; value: number; paper: string; papersAgree: boolean; may: boolean }) {
-  const [answer, send] = useActionState<PaperAnswer, FormData>(relyOn.bind(null, dealId, paperId, fact), {});
+export function RelyOn({ home, paperId, fact, value, paper, papersAgree, may }: { home: string; paperId: number; fact: PaperFact; value: number; paper: string; papersAgree: boolean; may: boolean }) {
+  const [answer, send] = useActionState<PaperAnswer, FormData>(relyOn.bind(null, home, paperId, fact), {});
   return (
     <form action={send} className="rely">
       <p className="rely-way">{conflictWay({ papersAgree })}</p>

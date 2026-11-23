@@ -460,7 +460,7 @@ Old behaviours kept as they were, each worth a decision before the switch:
 
 One thing changed on purpose: the old wording named one city and one request's amount in places. The new wording names no city and no amount of its own, and a lender's name stands only under who to ask, never as a promise that it accepts.
 
-**Storage.** A project is a client's file with `financeType` `"project"`, the amount in `requestedAmount` and the facts in `extra`: the same twenty keys the old system kept there as text, so its rows move as they are. `projectFactsOf` reads each value on its own, from an object or from the old text, and what is not what it should be reads as not known. The file has no salary (sector `self`), no deal and, for now, no list of papers to upload. No migration was needed.
+**Storage.** A project is a client's file with `financeType` `"project"`, the amount in `requestedAmount` and the facts in `extra`: the same twenty keys the old system kept there as text, so its rows move as they are. `projectFactsOf` reads each value on its own, from an object or from the old text, and what is not what it should be reads as not known. The file has no salary (sector `self`) and no deal. Its papers hang on the client, as every paper does. No migration was needed.
 
 `src/server/projects` opens and changes one. `openProject` opens the owner's file through `createClient`, so the rules of a phone, the file number and the messages a number already wrote are the ones every file has. `saveProject` changes it. Both validate with `projectInputSchema`, where nothing and zero both read as not known. Each writes `project.save` in the clients' part of the log: that the project was new, or the names of the facts that changed, never a value. A save that changes nothing writes nothing. The verdict is not stored: `projectOf` works the study out on every read, so it cannot go stale when a rule changes.
 
@@ -470,7 +470,22 @@ One thing changed on purpose: the old wording named one city and one request's a
 - The wording is in `src/copy/project.ts`. An amount in the millions is said in millions (`millions`, `amountParts` in `src/copy/format.ts`).
 - The demo holds one made-up project, a hotel on land in Jeddah. No real land, owner or valuation is in the repository.
 
-Not built yet for a project: uploading its papers, rejecting or reopening its file, and turning a salary file into a project.
+**A project's papers.** `/clients/[id]/project/papers` is the same list a deal has, for a file with no deal. `projectPapers` (`src/domain/documents/project.ts`) works out what the file needs from what a lender asks of a project, and from three facts: a company brings its register, its statements, its zakat certificate and the company's own credit report (`simah_company`); an individual is not asked for them, and while nobody said which the owner is they stand as optional. The lien letter is asked for when the land is mortgaged, and the zoning letter when the land is near the Haram. The screens and actions are shared with a deal's papers in `src/app/(app)/_papers`: every action takes a home, `d<dealId>` or `p<clientId>`, and resolves the client and the pages to refresh from it. The rules of a file, of opening one and of judging one are the same.
+
+**A checked paper answers the study.** Eight of the fourteen gaps name a paper (`gapPapers` in `src/domain/documents/gaps.ts`): the deed, the feasibility study, the permit, the valuation, the statements, the credit report, the plan for the money and the zoning letter. Once every paper a gap names is verified, `projectStudy(facts, requested, held)` no longer raises that gap, so the verdict moves on evidence and not on a tick in a form. `projectsOf` reads the checked papers of many files in two queries, and the study, the list of projects, the list of everyone and the editor all read the same answer. A paper that only arrived, or was sent back, closes nothing: the study shows where it stands beside the gap. Removing a file or sending a paper back opens the gap again, because nothing is stored.
+
+**Rejecting a project.** A project has no deal to carry a rejection, so the mark is the file's own `status`. `rejectDeal` and `reopenDeal` already handled a file with no deal: the reason is asked for, kept as a note on the file and written to the log. The owner's file carries the control (`deal.edit`). A rejected file is kept as it stood: `saveProject` refuses with `FILE_REJECTED`, the paper actions refuse, the editor leads back to the study, and the study, the papers and the list all say the file is rejected. Reopening returns it to study with its papers and its facts as they were.
+
+Choices made here that nobody at the office reviewed, each worth a decision before the switch:
+
+- Only a paper someone checked closes a gap. A paper that arrived and waits closes nothing.
+- A company's statements gap needs both the bank statements and the audited statements, and its credit gap needs both the owner's report and the company's. An individual needs one of each.
+- An individual is not asked for a company's papers, though the study still warns that most lenders want a company.
+- The owner brings every paper of a project, the valuation included. In a deal the office orders the valuation.
+- A rejected project refuses every change, to its facts and to its papers, until it is reopened.
+- Rejecting and reopening a project ask for the same permission as rejecting a deal.
+
+Not built yet for a project: turning a salary file into a project.
 
 ## Documents
 

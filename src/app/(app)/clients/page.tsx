@@ -81,10 +81,10 @@ export default async function ClientsPage({ searchParams }: { searchParams: Prom
                 <span>
                   {person.project ? (
                     <>
-                      <span className="state" data-kind="project">
-                        مشروع
+                      <span className="state" data-kind={person.project.rejected ? "rejected" : "project"}>
+                        {person.project.rejected ? "مشروع مرفوض" : "مشروع"}
                       </span>
-                      <small>{PROJECT_VERDICT_SHORT[person.project.verdict]}</small>
+                      {!person.project.rejected && <small>{PROJECT_VERDICT_SHORT[person.project.verdict]}</small>}
                     </>
                   ) : state.kind === "open" ? (
                     <>

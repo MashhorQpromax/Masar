@@ -7367,6 +7367,59 @@
     font-weight: 400;
     color: var(--color-muted);
   }
+  /* Where a gap's papers stand: arrived and waiting for a look, or sent back. */
+  .pj-gap-list small[data-paper] {
+    display: inline-block;
+    margin-top: 6px;
+    padding: 2px 12px;
+    border-radius: 999px;
+    background: var(--color-sun-soft);
+    font-weight: 600;
+    color: var(--color-sun-ink);
+  }
+  .pj-gap-list small[data-paper="rejected"] {
+    background: var(--color-coral-soft);
+    color: var(--color-coral-ink);
+  }
+  /* What the file already answers with a checked paper. */
+  .pj-held li {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding-inline-start: 0;
+    color: var(--color-body);
+  }
+  .pj-held li::before {
+    content: none;
+  }
+  .pj-held svg {
+    flex: none;
+    margin-top: 6px;
+    color: var(--color-sun-ink);
+  }
+  .pj-gaps > .note-link {
+    display: inline-block;
+    margin-top: 18px;
+  }
+  /* A rejected project: said once, across the top, with the way to the owner's file where it is reopened. */
+  .pj-rejected {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px 24px;
+    background: var(--color-coral-soft);
+  }
+  .pj-rejected .label {
+    color: #8a2410;
+  }
+  .pj-rejected p:not(.label) {
+    margin-top: 6px;
+    font-size: 15px;
+    line-height: 1.8;
+    color: var(--color-ink);
+  }
   .pj-facts {
     grid-column: span 5;
     animation-delay: 0.42s;

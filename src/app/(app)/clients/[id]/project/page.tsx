@@ -10,8 +10,10 @@ import {
   BORROWER_TYPE,
   DEED_FACT,
   FIT,
+  GAP_STANDING,
   gapLabel,
   gapWhy,
+  HELD_SAY,
   incomeSteps,
   PROJECT_TYPE,
   PROJECT_VERDICT,
@@ -19,6 +21,8 @@ import {
   PURPOSE_FACT,
   ratioLines,
   reachSay,
+  REJECTED_PROJECT,
+  REJECTED_PROJECT_SAY,
   structureAsk,
   structureHow,
   structureNeeds,
@@ -26,11 +30,13 @@ import {
   verdictSay,
 } from "@/copy/project";
 import { can } from "@/domain/auth";
-import { CASH_LTV_LIMIT, MIN_DSCR, WEAK_LTV, type AlertLevel, type Fit } from "@/domain/project";
+import { gapStanding } from "@/domain/documents";
+import { CASH_LTV_LIMIT, MIN_DSCR, WEAK_LTV, type AlertLevel, type Fit, type GapCode } from "@/domain/project";
 import { requireActor } from "@/server/auth/actor";
 import { getDb } from "@/server/db/client";
+import { getProjectPapers } from "@/server/projects/papers";
 import { getProject } from "@/server/projects/service";
-import { BackIcon, ChevronIcon, PenIcon } from "@/ui/icons";
+import { BackIcon, CheckIcon, ChevronIcon, PenIcon } from "@/ui/icons";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "دراسة المشروع · مسار" };
@@ -77,12 +83,21 @@ function Amount({ value }: { value: number }) {
  */
 export default async function ProjectPage({ params }: { params: Promise<{ id: string }> }) {
   const me = await requireActor();
-  const mayEdit = can(me.role, "client.edit");
   const clientId = Number((await params).id);
   if (!Number.isInteger(clientId) || clientId <= 0) notFound();
-  const view = await getProject(await getDb(), clientId);
+  const db = await getDb();
+  const view = await getProject(db, clientId);
   if (!view) notFound();
-  const { client, facts, requested, study } = view;
+  const { client, facts, requested, study, rejected } = view;
+  // A rejected file is read as it stood. It is reopened before anything in it changes.
+  const mayEdit = can(me.role, "client.edit") && !rejected;
+  const papers = (await getProjectPapers(db, clientId))?.list.papers ?? [];
+  // Where the papers of a gap stand, for the gaps that are answered by papers: arrived and waiting, or sent back.
+  const standing = (code: GapCode) => {
+    const state = gapStanding(code, facts, papers);
+    return state === "received" || state === "rejected" ? state : null;
+  };
+  const papersHref = `/clients/${client.id}/project/papers`;
   const now = new Date();
 
   const ask = amountParts(requested);
@@ -126,8 +141,11 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
         </div>
         <div className="head-side">
           <p className="where">
-            <span className="num">{client.fileNo}</span> · <b>دراسة مشروع</b> · آخر تعديل {dayOf(client.updatedAt, now)}
+            <span className="num">{client.fileNo}</span> · <b>{rejected ? "مشروع مرفوض" : "دراسة مشروع"}</b> · آخر تعديل {dayOf(client.updatedAt, now)}
           </p>
+          <Link className="edit-link" data-soft href={papersHref}>
+            المستندات
+          </Link>
           {mayEdit && (
             <Link className="edit-link" href={editHref}>
               <PenIcon size={16} />
@@ -138,6 +156,17 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
       </div>
 
       <div className="bento pj">
+        {rejected && (
+          <section className="tile pj-rejected" role="status">
+            <div>
+              <p className="label">{REJECTED_PROJECT}</p>
+              <p>{REJECTED_PROJECT_SAY}</p>
+            </div>
+            <Link className="btn btn--soft" href={`/clients/${client.id}`}>
+              ملف المالك
+            </Link>
+          </section>
+        )}
         <section className="tile tile--verdict pj-verdict" data-verdict={study.verdict}>
           <SiteArt />
           <div className="verdict-text">
@@ -308,7 +337,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
 
         <section className="tile pj-gaps">
           <div className="facts-head">
-            <p className="label">ما ينقص الملف</p>
+            <p className="label">{study.gaps.length ? "ما ينقص الملف" : "لا شيء ينقص الملف"}</p>
             {basics.length > 0 && <p className="pj-count">{counted(basics.length, BASICS)}</p>}
           </div>
           {basics.length > 0 && (
@@ -317,6 +346,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
                 <li key={gap.code} data-critical>
                   {gapLabel(gap.code)}
                   <small>{gapWhy(gap.code)}</small>
+                  {standing(gap.code) && <small data-paper={standing(gap.code)}>{GAP_STANDING[standing(gap.code)!]}</small>}
                 </li>
               ))}
             </ul>
@@ -329,11 +359,28 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
                   <li key={gap.code}>
                     {gapLabel(gap.code)}
                     <small>{gapWhy(gap.code)}</small>
+                    {standing(gap.code) && <small data-paper={standing(gap.code)}>{GAP_STANDING[standing(gap.code)!]}</small>}
                   </li>
                 ))}
               </ul>
             </>
           )}
+          {view.held.length > 0 && (
+            <>
+              <p className="pj-sub">{HELD_SAY}</p>
+              <ul className="pj-gap-list pj-held" aria-label={HELD_SAY}>
+                {view.held.map((code) => (
+                  <li key={code}>
+                    <CheckIcon size={16} />
+                    {gapLabel(code)}
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+          <Link className="note-link" href={papersHref}>
+            افتح المستندات
+          </Link>
         </section>
 
         <section className="tile pj-facts">

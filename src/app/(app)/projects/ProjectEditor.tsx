@@ -4,11 +4,13 @@ import Link from "next/link";
 import { useMemo, useState, useTransition } from "react";
 import { ltr, millions, percent, plainMillions, plainMoney } from "@/copy/format";
 import { alertTitle, BORROWER_TYPE, criticalGaps, DEED, PROJECT_TYPE, PROJECT_VERDICT, projectError, PURPOSE } from "@/copy/project";
+import { heldGaps } from "@/domain/documents/gaps";
 import { projectStudy, type ProjectFacts } from "@/domain/project";
 import { Check, DayField, NumberField, TextField } from "@/ui/fields";
 import { saveProjectForm } from "./actions";
 
 const AMOUNT_MAX = 100_000_000_000;
+const NO_PAPERS: readonly string[] = [];
 
 /** One choice out of a few, all visible. Nothing chosen means not known yet, and a second tap takes the choice back. */
 function Choice<T extends string>({ label, value, onChange, options }: { label: string; value: T | null; onChange: (value: T | null) => void; options: Record<T, string> }) {
@@ -38,6 +40,7 @@ export function ProjectEditor({
   owner: knownOwner,
   requested: knownRequested,
   facts: known,
+  checked = NO_PAPERS,
   today,
 }: {
   /** The project's file, or null for a new project. */
@@ -45,6 +48,8 @@ export function ProjectEditor({
   owner: string;
   requested: number | null;
   facts: ProjectFacts;
+  /** The codes of the file's papers that were checked. The gaps they answer are not asked for again. */
+  checked?: readonly string[];
   /** Today in Riyadh, yyyy-mm-dd, from the server: a valuation is not dated after it. */
   today: string;
 }) {
@@ -56,7 +61,18 @@ export function ProjectEditor({
   const [pending, startTransition] = useTransition();
   const set = (patch: Partial<ProjectFacts>) => setX((prev) => ({ ...prev, ...patch }));
 
-  const study = useMemo(() => projectStudy(x, requested ?? 0), [x, requested]);
+  const study = useMemo(
+    () =>
+      projectStudy(
+        x,
+        requested ?? 0,
+        heldGaps(
+          x,
+          checked.map((code) => ({ code, status: "verified" as const })),
+        ),
+      ),
+    [x, requested, checked],
+  );
   const hotel = x.projectType === "hotel";
   const ready = !!requested || !!x.landValue || !!x.constructionCost;
   const missing = criticalGaps(study);
