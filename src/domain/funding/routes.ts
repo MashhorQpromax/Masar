@@ -263,7 +263,8 @@ function route(args: Args, mortgageProduct: Product | null, personalProduct: Pro
     if (!leg) continue;
     for (const check of leg.checks) {
       // One lender asks a thing once, whichever of its two products raised it.
-      const id = `${leg.product.lenderId}:${check.code}`;
+      // What the record itself lacks is said once: it is the same for every lender.
+      const id = check.code === "RECORD_UNKNOWN" || check.code === "RECORD_OPEN" ? check.code : `${leg.product.lenderId}:${check.code}`;
       // A term cut short by the age limit is already in the leg's months and amount: nothing the client has to meet.
       if (check.status === "pass" || check.code === "TENOR_SHORTENED" || seen.has(id)) continue;
       seen.add(id);

@@ -144,6 +144,18 @@ The numbers are locked to the old engine by `npm run golden:eligibility`. Old be
 
 One thing changed on purpose: the old list of documents could name a paper twice (a self-employed client asking for project finance), and the old screen then stored it twice. The new list names each paper once.
 
+## Funding routes
+
+`src/domain/funding` answers the question a bridge deal ends with: which lender funds the new financing. It is new, not a port: the old system matched products to a client and studied deals apart, and the two disagreed about a client whose default was just paid.
+
+- A route is one lender's product for each part the deal's structure has: a mortgage, a personal finance, or both. With both, each mortgage product is paired with the personal product that serves it best, and never with a second lender that also wants the salary.
+- Acceptance comes from the eligibility engine's conditions on the person (salary, sector, nationality, age, service, salary transfer). Amounts and the verdict come from the deal engine run on the lender's own terms, so a route's numbers are the deal's numbers.
+- The credit record is read as it will stand after the settlement: `recordAfterSettlement` (an open default, a default paid and how long ago, recent late payments, or no report). Each product says how long it waits after a paid default in `settledDefaultWaitMonths`: 0 takes the client at once, a number of months refuses until they pass, and null means nobody has confirmed it, which is a condition and not a refusal.
+- Routes rank by: a lender that would take the client, a deal that closes, what the client keeps, one lender over two, fewer conditions, the lower installment.
+- A lender's ceiling is part of the deal engine (`mortgageCeiling`, `personalCeiling` on the input): it holds an estimate and never an offer the lender actually gave. The ledger shows it as its own line.
+- `applyRoute` writes a route's terms on a deal in progress. It works the routes out again on the server, refuses a route the lender would turn down, and never replaces a recorded offer.
+- The catalogue starts from `src/server/lenders/base.ts`. Its terms are indicative until someone confirms them on the `/lenders` page, and every screen that shows them says so.
+
 ## Porting checklist
 
 Old module (under `legacy/lib`) and its state in the rebuild:
@@ -164,10 +176,11 @@ Old module (under `legacy/lib`) and its state in the rebuild:
 - [ ] `auth-methods.ts` delivery of the WhatsApp code: arrives with the WhatsApp module
 - [x] `schema.ts`, `db.ts`: replaced by `src/server/db` (Drizzle schema, `db/migrations`, Postgres schema `masar`)
 - [x] deal storage and stages from `data.ts` and `actions.ts`: `src/server/deals` (save, stage, reject, reopen, read), tested on a real Postgres engine in memory
-- [ ] the rest of `data.ts` and `actions.ts`: clients, credit, lenders, documents, notes
+- [x] the lender catalogue and its terms: `src/server/lenders`, the `/lenders` page; funding routes for a deal: `src/domain/funding`, `src/server/funding`, `/deals/[id]/lenders` (migration `0002_lender_routes`)
+- [ ] the rest of `data.ts` and `actions.ts`: clients, documents, notes, adding and removing lenders and products, lender rules
 - [x] screens on the "الخريطة" direction: the road (home), the deals list, the deal file with stage moves and the step by step calculation, the deal editor
 - [x] opening a client file and revising its facts, from `data.ts` and `actions.ts`: `src/server/clients`
-- [ ] screens still to build: clients, lenders, inbox, calculator, knowledge, users, audit, client portal
+- [ ] screens still to build: clients, required documents, inbox, calculator, knowledge, users, audit, client portal
 - [ ] data migration from the live database, then the domain switch (only after the owner approves)
 
 To regenerate a golden file while `legacy/` still exists: `npm run golden:deal`, `npm run golden:credit`, `npm run golden:simah`. Each generator is seeded, so it writes the same file every time.

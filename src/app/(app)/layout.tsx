@@ -5,7 +5,7 @@ import { dayLong, initial } from "@/copy/format";
 import { can } from "@/domain/auth";
 import { requireActor } from "@/server/auth/actor";
 import { Dock } from "@/ui/Dock";
-import { DealsIcon, LeaveIcon, Mark, PlusIcon, RoadIcon } from "@/ui/icons";
+import { DealsIcon, LeaveIcon, LendersIcon, Mark, PlusIcon, RoadIcon } from "@/ui/icons";
 import { signOut } from "../login/actions";
 
 export const dynamic = "force-dynamic";
@@ -46,6 +46,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
         items={[
           { href: "/", label: "اليوم", icon: <RoadIcon /> },
           { href: "/deals", label: "الصفقات", icon: <DealsIcon /> },
+          { href: "/lenders", label: "الجهات", icon: <LendersIcon /> },
         ]}
         action={can(me.role, "client.create") ? { href: "/deals/new", label: "صفقة جديدة", icon: <PlusIcon size={22} /> } : undefined}
       />

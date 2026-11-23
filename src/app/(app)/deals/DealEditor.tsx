@@ -300,7 +300,7 @@ export function DealEditor({
             {st.mortgage && (
               <NumberField label="قيمة العقار" money value={x.propertyValue} onChange={(propertyValue) => set({ propertyValue })} max={10_000_000_000} hint="سعر البيع المتوقع للبنك" />
             )}
-            <TextField label="البنك المستهدف" value={x.targetBank ?? ""} onChange={(bank) => set({ targetBank: bank || null })} maxLength={60} />
+            <TextField label="البنك المستهدف" value={x.targetBank ?? ""} onChange={(bank) => set({ targetBank: bank || null, mortgageCeiling: null })} maxLength={60} />
             {st.mortgage && (
               <NumberField
                 label="عرض البنك للعقاري"
@@ -389,7 +389,7 @@ export function DealEditor({
               <>
                 <NumberField label="هامش الشخصي السنوي" suffix="%" decimals={2} max={30} value={x.personalFlat} onChange={(n) => set({ personalFlat: n ?? 0 })} hint="ثابت" />
                 <NumberField label="مدة الشخصي" suffix="شهراً" max={120} grouped={false} value={x.personalMonths} onChange={(n) => set({ personalMonths: n ?? 0 })} />
-                <TextField label="جهة التمويل الشخصي" value={x.personalLender ?? ""} onChange={(lender) => set({ personalLender: lender || null })} maxLength={60} />
+                <TextField label="جهة التمويل الشخصي" value={x.personalLender ?? ""} onChange={(lender) => set({ personalLender: lender || null, personalCeiling: null })} maxLength={60} />
                 <SelectField
                   label="نوعها"
                   value={(x.personalLenderKind ?? "") as LenderKind | ""}

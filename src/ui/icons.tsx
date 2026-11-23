@@ -43,6 +43,17 @@ export function DealsIcon({ size = 22 }: { size?: number }) {
   );
 }
 
+/** A building with a pediment: the lenders. */
+export function LendersIcon({ size = 22 }: { size?: number }) {
+  return (
+    <svg {...base(size)}>
+      <path d="M4 9.5 12 5l8 4.5" />
+      <path d="M6.5 12v5M12 12v5M17.5 12v5" />
+      <path d="M4.5 19.5h15" />
+    </svg>
+  );
+}
+
 /** Points back along the reading direction: to the right in Arabic. */
 export function BackIcon({ size = 18 }: { size?: number }) {
   return (

@@ -38,7 +38,8 @@ export function routeCheckText(check: RouteCheck): string {
 /** A condition with the lender that sets it, when the route has two lenders and the reader must know which. */
 export function routeNoteText(note: RouteNote, route: Pick<FundingRoute, "oneLender">): string {
   const text = routeCheckText(note.check);
-  return route.oneLender || note.check.code === "TWO_SALARY_TRANSFERS" ? text : `${note.lender}: ${text}`;
+  const aboutAll = note.check.code === "TWO_SALARY_TRANSFERS" || note.check.code === "RECORD_UNKNOWN" || note.check.code === "RECORD_OPEN";
+  return route.oneLender || aboutAll ? text : `${note.lender}: ${text}`;
 }
 
 /** Who funds the route, in a few words. */

@@ -6,7 +6,7 @@ import { getDeal, setDealStage } from "@/server/deals/service";
 import { roadView } from "@/server/deals/views";
 import { seedDemo } from "@/server/demo/seed";
 import { applyRoute, getFunding, setSalaryBank } from "@/server/funding/service";
-import { listProducts, seedCatalogue } from "@/server/lenders/service";
+import { listCatalogue, listProducts, seedCatalogue, updateProductTerms } from "@/server/lenders/service";
 import { SYSTEM } from "@/server/shared/actor";
 import { testDb } from "../helpers/db";
 
@@ -39,6 +39,59 @@ describe("the lender catalogue", () => {
     await c.db.update(products).set({ active: false }).where(eq(products.id, Number(first!.id)));
     expect((await listProducts(c.db)).map((p) => p.id)).not.toContain(first!.id);
     await c.db.update(products).set({ active: true }).where(eq(products.id, Number(first!.id)));
+  });
+});
+
+describe("a lender's terms", () => {
+  const termsOf = (p: Awaited<ReturnType<typeof listProducts>>[number]) => ({
+    rate: p.rate,
+    rateType: p.rateType,
+    maxAmount: p.maxAmount,
+    maxTenor: p.maxTenor,
+    maxAgeAtMaturity: p.maxAgeAtMaturity,
+    minSalary: p.minSalary,
+    minServiceMonths: p.minServiceMonths,
+    maxLtv: p.maxLtv,
+    requiresSalaryTransfer: p.requiresSalaryTransfer,
+    acceptsLateSimah: p.acceptsLateSimah,
+    settledDefaultWaitMonths: p.settledDefaultWaitMonths ?? null,
+    verified: !!p.verified,
+  });
+
+  it("lists the catalogue lender by lender", async () => {
+    const catalogue = await listCatalogue(c.db);
+    expect(catalogue).toHaveLength(10);
+    expect(catalogue[0]).toMatchObject({ name: "مصرف الراجحي", type: "bank" });
+    expect(catalogue[0]!.products.map((p) => p.financeType)).toEqual(["personal", "mortgage", "auto"]);
+  });
+
+  it("records a correction, who confirmed it and when", async () => {
+    const product = (await listProducts(c.db)).find((p) => p.lenderName === "دار التمليك")!;
+    const id = Number(product.id);
+    await updateProductTerms(c.db, { productId: id, terms: { ...termsOf(product), rate: 6.1, settledDefaultWaitMonths: 6, verified: true }, actor: SYSTEM, now });
+    const [row] = await c.db.select().from(products).where(eq(products.id, id));
+    expect(row).toMatchObject({ rate: 6.1, settledDefaultWaitMonths: 6, verifiedAt: now });
+    const [entry] = await c.db.select().from(auditLog).where(eq(auditLog.action, "lender.product_update"));
+    expect(entry).toMatchObject({ entity: "product", entityId: id, details: { changed: ["rate", "settledDefaultWaitMonths"], verified: true } });
+
+    // Saving the same terms again changes nothing. Changing a confirmed term confirms it as of that day.
+    const later = new Date(now.getTime() + 86400000);
+    await updateProductTerms(c.db, { productId: id, terms: { ...termsOf(product), rate: 6.1, settledDefaultWaitMonths: 6, verified: true }, actor: SYSTEM, now: later });
+    expect((await c.db.select().from(products).where(eq(products.id, id)))[0]!.verifiedAt).toEqual(now);
+    await updateProductTerms(c.db, { productId: id, terms: { ...termsOf(product), rate: 6.2, settledDefaultWaitMonths: 6, verified: true }, actor: SYSTEM, now: later });
+    expect((await c.db.select().from(products).where(eq(products.id, id)))[0]!.verifiedAt).toEqual(later);
+
+    // Back to what the catalogue started with, unconfirmed.
+    await updateProductTerms(c.db, { productId: id, terms: termsOf(product), actor: SYSTEM, now: later });
+    expect((await c.db.select().from(products).where(eq(products.id, id)))[0]).toMatchObject({ rate: 6.4, settledDefaultWaitMonths: null, verifiedAt: null });
+  });
+
+  it("keeps the share of the property's value to mortgages, and refuses terms out of range", async () => {
+    const personal = (await listProducts(c.db)).find((p) => p.financeType === "personal")!;
+    await updateProductTerms(c.db, { productId: Number(personal.id), terms: { ...termsOf(personal), maxLtv: 80 }, actor: SYSTEM, now });
+    expect((await c.db.select().from(products).where(eq(products.id, Number(personal.id))))[0]!.maxLtv).toBeNull();
+    await expect(updateProductTerms(c.db, { productId: Number(personal.id), terms: { ...termsOf(personal), rate: 45 }, actor: SYSTEM, now })).rejects.toMatchObject({ code: "INVALID_INPUT" });
+    await expect(updateProductTerms(c.db, { productId: 999999, terms: termsOf(personal), actor: SYSTEM, now })).rejects.toMatchObject({ code: "NOT_FOUND" });
   });
 });
 
