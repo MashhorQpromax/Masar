@@ -15,6 +15,10 @@ import { contractOf } from "@/domain/eligibility";
 import { requireActor } from "@/server/auth/actor";
 import { getClientCard } from "@/server/clients/directory";
 import { getDb } from "@/server/db/client";
+import { getOpportunities } from "@/server/opportunities/service";
+import { cardLenders, CONFIDENCE, OPPORTUNITY_CLASS, PLAN_STATE } from "@/copy/opportunity";
+import { cardOf } from "@/domain/opportunity";
+import { Num } from "@/ui/Num";
 import { isProjectFile, projectOf } from "@/server/projects/service";
 import { BackIcon, PenIcon, PlusIcon } from "@/ui/icons";
 import { ContactForm } from "./ContactForm";
@@ -33,7 +37,8 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
   if (!Number.isInteger(clientId) || clientId <= 0) notFound();
 
   const now = new Date();
-  const card = await getClientCard(await getDb(), clientId);
+  const db = await getDb();
+  const card = await getClientCard(db, clientId);
   if (!card) notFound();
   const { client, deals, notes } = card;
   const deal = deals[0] ?? null;
@@ -45,6 +50,9 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
   const age = client.birthYear != null ? now.getFullYear() - client.birthYear : null;
   const service = client.serviceMonths != null ? Math.round((client.serviceMonths / 12) * 10) / 10 : null;
 
+  // The open deal's opportunities, ranked, with the plan it holds and the state of its approval.
+  const study = deal && state.kind === "open" && !project ? await getOpportunities(db, { dealId: deal.id, now }) : null;
+  const opportunities = study ? study.list.map(cardOf) : [];
   const stations = deal ? stationsFor(deal.structure) : [];
   const position = state.kind === "open" ? stations.indexOf(state.station) : -1;
   const why = state.kind === "rejected" ? (notes.find((note) => note.kind === "status")?.body ?? null) : null;
@@ -273,6 +281,48 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
                 </div>
               ))}
             </dl>
+          </section>
+        )}
+
+        {study && deal && (
+          <section className="tile tile--wide file-opps">
+            <div className="facts-head">
+              <p className="label">الفرص</p>
+              <Link className="note-link" href={`/deals/${deal.id}/opportunities`}>
+                افتح الدراسة
+              </Link>
+            </div>
+            {opportunities.length === 0 ? (
+              <p className="thread-none">لا جهات في القائمة بعد، فلا فرص تُدرس.</p>
+            ) : (
+              <ol className="file-opps-list">
+                {opportunities.slice(0, 5).map((o, index) => {
+                  const names = cardLenders(o);
+                  return (
+                    <li key={o.key} data-class={o.class} data-chosen={o.chosen || undefined}>
+                      <span className="opp-rank num" aria-hidden="true">
+                        {index + 1}
+                      </span>
+                      <div className="file-opps-who">
+                        <b>{names.main}</b>
+                        <small>{[names.also, o.chosen && `الخطة المختارة · ${PLAN_STATE[study.plan]}`].filter(Boolean).join(" · ")}</small>
+                      </div>
+                      <span className="opp-class" data-class={o.class}>
+                        {OPPORTUNITY_CLASS[o.class]}
+                      </span>
+                      <span className="opp-confidence" data-confidence={o.confidence}>
+                        {CONFIDENCE[o.confidence]}
+                      </span>
+                      <p className="file-opps-keep" data-short={o.net.net < 0 || undefined}>
+                        <small>{o.net.net >= 0 ? "يبقى للعميل" : "عجز"}</small>
+                        <Num value={Math.abs(o.net.net)} />
+                      </p>
+                    </li>
+                  );
+                })}
+              </ol>
+            )}
+            {opportunities.length > 0 && !opportunities.some((o) => o.chosen) && <p className="file-opps-none">لم تُختر خطة بعد: الصفقة ليست على شروط جهة من القائمة.</p>}
           </section>
         )}
 

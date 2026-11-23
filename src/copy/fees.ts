@@ -50,9 +50,11 @@ export const PLAN_FIGURE: Record<PlanFigure, string> = {
 const NOBODY = "حساب محذوف";
 
 /** What moved in a plan since it was approved. */
-export function movesText(moves: { figures: { name: PlanFigure; then: number; now: number }[]; fee: readonly FeePart[] }): string {
-  if (moves.figures.length) return moves.figures.map((f) => `${PLAN_FIGURE[f.name]} من ${money(f.then)} إلى ${money(f.now)}`).join("، و");
-  return moves.fee.length ? "الأتعاب نفسها" : "رقم في الصفقة لم يغيّر الأتعاب ولا ما يبقى للعميل";
+export function movesText(moves: { figures: { name: PlanFigure; then: number; now: number }[]; fee: readonly FeePart[]; lenders?: boolean }): string {
+  const lenders = moves.lenders ? "شروط الجهة التي تقوم عليها الصفقة" : "";
+  if (moves.figures.length) return [...moves.figures.map((f) => `${PLAN_FIGURE[f.name]} من ${money(f.then)} إلى ${money(f.now)}`), lenders].filter(Boolean).join("، و");
+  if (moves.fee.length) return lenders ? `الأتعاب نفسها، و${lenders}` : "الأتعاب نفسها";
+  return lenders || "رقم في الصفقة لم يغيّر الأتعاب ولا ما يبقى للعميل";
 }
 
 /** The fee plan tile: its title and the line under it, for the latest approval, or none. */
@@ -67,7 +69,7 @@ export function planState(args: {
     return {
       state: "stands",
       title: "خطة الأتعاب معتمدة",
-      text: `اعتمدها ${latest.by ?? NOBODY} في ${dayFull(latest.at)}: أتعاب ${money(latest.plan.amounts.total)}، ويبقى للعميل ${money(latest.plan.clientNet)}. تسقط إن تغيّر رقم في الصفقة.`,
+      text: `اعتمدها ${latest.by ?? NOBODY} في ${dayFull(latest.at)}: أتعاب ${money(latest.plan.amounts.total)}، ويبقى للعميل ${money(latest.plan.clientNet)}. تسقط إن تغيّر رقم في الصفقة أو شرط جهتها.`,
     };
   }
   const after = !args.closing
@@ -86,6 +88,7 @@ export function planLine(approval: { by: string | null; at: Date; plan: Pick<Fee
 
 const PLAN_REFUSAL: Record<PlanRefusal, string> = {
   NOT_CLOSING: "الصفقة لا تُغلق، فلا تُعتمد أتعابها.",
+  BLOCKED: "على جهة الصفقة شرط مؤكد يمنع العميل أو رفضٌ منها، فلا تُعتمد الخطة عليها.",
   STANDS: "هذه الخطة معتمدة كما هي.",
 };
 

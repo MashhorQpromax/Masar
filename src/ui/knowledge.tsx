@@ -84,7 +84,7 @@ export function DecisionRow({ line, now, sub }: { line: DecisionLine; now: Date;
       <time>{dayOf(line.createdAt, now)}</time>
       <div className="latest-who">
         <b>{line.lenderName}</b>
-        <small>{sub}</small>
+        <small>{[sub, line.written && "رد مكتوب"].filter(Boolean).join(" · ")}</small>
       </div>
       <span className="decision" data-decision={line.decision}>
         {DECISION[line.decision]}

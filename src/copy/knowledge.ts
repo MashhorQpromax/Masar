@@ -103,6 +103,7 @@ const SAVE_ERROR: Record<string, string> = {
   NOT_FOUND: "لم يعد هذا موجوداً. حدّث الصفحة.",
   DEAL_ENDED: "الصفقة انتهت، وأرقامها لا تُعدَّل. احفظ القرار بلا حساب الصفقة عليه.",
   FORBIDDEN: "لا تملك صلاحية هذا.",
+  REPLY_PAPER: "الرد المكتوب يُختار من مستندات الملف التي فيها ملف ولم تُرد.",
 };
 
 export const knowledgeError = (code: string): string => SAVE_ERROR[code] ?? "تعذر الحفظ. حاول مرة أخرى.";

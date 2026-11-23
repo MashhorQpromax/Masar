@@ -151,3 +151,28 @@ export const feeApprovals = masar.table(
   },
   (t) => [index("fee_approvals_deal_idx").on(t.dealId)],
 );
+
+/**
+ * A study of a deal's opportunities as it was made on a day: what each one costs, what the office takes,
+ * what the client keeps, its class and where each figure comes from. A copy that never changes, made only
+ * for a client whose consent is recorded. A later report is a new copy.
+ */
+export const opportunityReports = masar.table(
+  "opportunity_reports",
+  {
+    id: id(),
+    dealId: integer()
+      .notNull()
+      .references(() => deals.id, { onDelete: "cascade" }),
+    clientId: integer()
+      .notNull()
+      .references(() => clients.id, { onDelete: "cascade" }),
+    userId: integer().references(() => users.id, { onDelete: "set null" }),
+    /** Who made it, as their name was, so the copy reads the same after their account is gone. */
+    author: text(),
+    /** The report as it was made: `OpportunityReport`. */
+    body: jsonb().$type<Record<string, unknown>>().notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [index("opportunity_reports_deal_idx").on(t.dealId), index("opportunity_reports_client_idx").on(t.clientId)],
+);

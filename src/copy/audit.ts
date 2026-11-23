@@ -59,6 +59,7 @@ const AUDIT_ACTION: Record<AuditAction, string> = {
   "deal.save": "حفظ أرقام الصفقة",
   "deal.fee": "تعديل أتعاب الصفقة",
   "deal.fee_approve": "اعتماد خطة الأتعاب",
+  "deal.report": "حفظ تقرير الفرص",
   "settings.fees": "تغيير سياسة الأتعاب",
   "deal.stage": "نقل الصفقة",
   "deal.route": "اعتماد جهة التمويل",
@@ -273,6 +274,10 @@ export function auditDetail(action: string, details: Record<string, unknown> | n
       const net = number(d.clientNet);
       return joined([amount != null && `أتعاب ${money(amount)}`, net != null && `يبقى للعميل ${money(net)}`, fee && feeText(fee)]);
     }
+    case "deal.report": {
+      const count = number(d.opportunities);
+      return count != null ? counted(count, { one: "فرصة واحدة", two: "فرصتان", few: "فرص", many: "فرصة" }) : "";
+    }
     case "settings.fees": {
       const before = keptPolicy(d.before);
       const after = keptPolicy(d.after);
@@ -334,7 +339,7 @@ export function auditDetail(action: string, details: Record<string, unknown> | n
     case "lender.rule_archive":
       return text(d.title) ?? "";
     case "lender.decision":
-      return joined([isDecision(d.decision) && DECISION[d.decision], text(d.lender), isPart(d.part) && PART[d.part], d.onDeal === true && "حُسبت الصفقة عليه"]);
+      return joined([isDecision(d.decision) && DECISION[d.decision], text(d.lender), isPart(d.part) && PART[d.part], d.written === true && "برد مكتوب", d.onDeal === true && "حُسبت الصفقة عليه"]);
     default:
       return "";
   }

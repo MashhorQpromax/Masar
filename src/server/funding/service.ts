@@ -1,13 +1,13 @@
 import "server-only";
 import { eq } from "drizzle-orm";
 import type { Standing } from "@/domain/credit";
-import type { DealInput, DealStudy, Stage } from "@/domain/deal";
+import type { CreditFlags, DealInput, DealStudy, Stage } from "@/domain/deal";
 import { contractOf, type Nationality } from "@/domain/eligibility";
 import { fundingRoutes, knownRecord, recordAfterSettlement, type FundingRoute, type RecordAfter } from "@/domain/funding";
 import type { Db, Tx } from "../db/client";
 import { clients, lenders } from "../db/schema";
 import { answersOf } from "../clients/conditions";
-import { amendDeal, getDeal } from "../deals/service";
+import { amendDeal, getDeal, type DealView } from "../deals/service";
 import { fileStanding } from "../documents/facts";
 import { borrowerOf, type ClientRow, type DealRow } from "../deals/mapping";
 import { listProducts } from "../lenders/service";
@@ -24,6 +24,8 @@ export interface FundingView {
   input: DealInput;
   /** The deal as it stands, on the numbers it holds now. */
   study: DealStudy;
+  /** What the credit record says, as far as the deal engine reads it. */
+  credit: CreditFlags | null;
   /** What a lender will read on the credit record after the settlement. */
   record: RecordAfter;
   /** The credit record in one word, as it reads today. Null when no report was read. */
@@ -47,7 +49,12 @@ function holds(input: DealInput, route: FundingRoute): boolean {
 /** The same view inside a transaction that is already open, for a change that has to read it first. */
 export async function fundingIn(db: Tx, args: { dealId: number; now: Date }): Promise<FundingView | null> {
   const view = await getDeal(db as Db, args);
-  if (!view) return null;
+  return view ? fundingOf(db, view, args.now) : null;
+}
+
+/** The lenders' view of a deal already read: every route, worked out on the deal as it stands. */
+export async function fundingOf(db: Tx, view: DealView, now: Date): Promise<FundingView> {
+  const args = { now };
   const { deal, client, input } = view;
   const record = recordAfterSettlement(input, view.credit ? knownRecord(view.credit.report, view.credit.analysis) : null);
   const routes = fundingRoutes({
@@ -70,6 +77,7 @@ export async function fundingIn(db: Tx, args: { dealId: number; now: Date }): Pr
     client,
     input,
     study: view.study,
+    credit: view.creditFlags,
     record,
     standing: view.credit?.analysis.standing ?? null,
     routes,

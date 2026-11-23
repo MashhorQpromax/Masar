@@ -248,10 +248,15 @@ export const outcomes = masar.table(
     conditions: jsonb().$type<string[]>().notNull().default([]),
     reason: text(),
     note: text(),
+    /**
+     * The paper in the client's file that holds the lender's answer in writing. Only a written answer
+     * confirms an opportunity. Null: the answer was recorded from what the lender said.
+     */
+    replyPaperId: integer().references(() => documents.id, { onDelete: "set null" }),
     userId: integer().references(() => users.id, { onDelete: "set null" }),
     createdAt: createdAt(),
   },
-  (t) => [index("outcomes_lender_idx").on(t.lenderId, t.financeType)],
+  (t) => [index("outcomes_lender_idx").on(t.lenderId, t.financeType), index("outcomes_client_idx").on(t.clientId)],
 );
 
 /**

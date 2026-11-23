@@ -24,6 +24,12 @@ export interface FeePlan {
   capital: number;
   afterSettle: number;
   clientNet: number;
+  /**
+   * The print of the lenders' terms the deal's route rests on: each product's values, sources and
+   * special conditions. Null when the deal holds no route of the catalogue. A copy made before it was
+   * kept has none.
+   */
+  lenders?: string | null;
 }
 
 export function feePlan(input: DealInput, study: DealStudy): FeePlan {
@@ -44,10 +50,15 @@ export function feePlan(input: DealInput, study: DealStudy): FeePlan {
  * - `NOT_CLOSING`: the deal has a deficit, or lacks what it needs to be judged.
  * - `STANDS`: an approval of exactly this plan stands.
  */
-export type PlanRefusal = "NOT_CLOSING" | "STANDS";
+export type PlanRefusal = "NOT_CLOSING" | "BLOCKED" | "STANDS";
 
-export function planRefusal(plan: Pick<FeePlan, "verdict">, args: { now: string; standing: string | null }): PlanRefusal | null {
+/**
+ * `blocked`: a condition a lender confirmed, or the lender's own refusal, stands against the route the
+ * deal is on. No approval passes over it.
+ */
+export function planRefusal(plan: Pick<FeePlan, "verdict">, args: { now: string; standing: string | null; blocked?: boolean }): PlanRefusal | null {
   if (plan.verdict !== "go" && plan.verdict !== "tight") return "NOT_CLOSING";
+  if (args.blocked) return "BLOCKED";
   if (args.standing === args.now) return "STANDS";
   return null;
 }
@@ -63,9 +74,11 @@ const figure = (plan: FeePlan, name: PlanFigure): number => (name === "fee" ? pl
  * the parts of the fee itself that were set otherwise. Both empty while only something behind the
  * figures changed (the approval still falls: the print is of everything).
  */
-export function planMoves(then: FeePlan, now: FeePlan): { figures: { name: PlanFigure; then: number; now: number }[]; fee: FeePart[] } {
+export function planMoves(then: FeePlan, now: FeePlan): { figures: { name: PlanFigure; then: number; now: number }[]; fee: FeePart[]; lenders: boolean } {
   return {
     figures: PLAN_FIGURES.flatMap((name) => (figure(then, name) !== figure(now, name) ? [{ name, then: figure(then, name), now: figure(now, name) }] : [])),
     fee: feeChanges(then.fee, now.fee),
+    // A copy made before the lenders were printed says nothing about them.
+    lenders: then.lenders !== undefined && (then.lenders ?? null) !== (now.lenders ?? null),
   };
 }

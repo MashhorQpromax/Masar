@@ -415,6 +415,20 @@ A lender's terms say what it publishes. `src/domain/knowledge` holds what the of
 - **`/deals/[id]/lenders`** shows the same knowledge where it is used: a tile for the best route with its lenders' records and notes, one line under each other route, and a tile where the lender's answer is recorded (`DecisionForm`, `saveDecision`). Recording needs `app.manage`; putting the amount on the deal needs `deal.edit` as well, and the box starts ticked only when the answer comes from the lender the deal is on.
 - The rows are shared by both pages (`src/ui/knowledge.tsx`), and the wording is in `src/copy/knowledge.ts`.
 - The demo holds three made-up notes and eighteen made-up decisions beside the catalogue's eight starting notes. They show how the screens read and say nothing true about any lender.
+- **A written answer.** A decision can name the paper of the client's file that holds the lender's reply (`replyPaperId` on `outcomes`, migration `0013`). Only a paper of that client's own file, received or verified, with a file in it, can (`replyPapers`; anything else is `REPLY_PAPER`). A decision without one is what the employee was told: it is kept and shown, and it confirms nothing. `lenderReplies` reads a client's answers newest first, and an answer is written only while its paper still stands: a paper sent back takes the confirmation with it.
+
+## Opportunities
+
+Every funding route of a deal, read as an opportunity and ranked (`src/domain/opportunity`, `src/server/opportunities`). It is the roadmap's third phase.
+
+- **The class.** `not_viable` when the lender refused in the last three months, a confirmed condition blocks the client, or the deal leaves a deficit. `confirmed` only when every part has a fresh written approval and nothing is missing. `theoretical` when a fact is missing, a refusal is older than three months, or a condition has no source. `ready` otherwise: every condition that applies is met on documented terms and no lender has answered yet. A settled default never moves the class; it carries the warning that paying it guarantees nothing, and each lender's wait.
+- **The confidence** is the weakest of what it rests on: each part's conditions and amount, conflicts between the file and a checked paper, and the obligations' letters. Written is high, verbal or estimated is medium, no source is low. The costs are said and not weighed.
+- **The figures.** The chosen route is read on the deal as it stands. Every other route is read on its own terms, with the amount a lender approved where one stands. Each card shows the cost, the change to the financing, the office's fee, the client's net with what is confirmed and what is estimated, and the source and date of every assumption.
+- **The plan.** The fee plan's print now holds the terms of the chosen route's lenders, so a lender's term changing drops the approval and says so (`planMoves.lenders`). A plan is not approved on a route a lender refused or a confirmed condition blocks (`BLOCKED`).
+- **The report** (`makeReport`, table `opportunity_reports`) saves the study as it stands, worked out again on the server, with its day and author. It is refused until the client's consent is recorded (`NO_CONSENT`) or when there is nothing to report. It never changes. Its PDF is the browser's print of its page. It shows the office's fee, so it is for the office and not for the client.
+- **Where it shows.** `/deals/[id]/opportunities` (the cards, the classes and the reports), `/deals/[id]/opportunities/reports/[reportId]`, and a section of the client's file with the first five, the chosen plan and its state. In the demo one invented client has a written approval from the made-up bank and another a refusal from the made-up finance company (`seedDemoReplies`).
+
+Choices the owner has not reviewed: a lender's answer holds three months, as a term does; a mortgage amount stays an estimate until a lender's offer, since it rests on the expected valuation; a refusal older than three months caps the opportunity at theoretical rather than barring it; a doubt about an amount term lowers the confidence and not the class.
 
 ## Project studies
 

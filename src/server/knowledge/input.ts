@@ -38,6 +38,8 @@ export const decisionSchema = z
     note: said(500),
     /** The approved amount becomes the deal's own figure for this part. */
     onDeal: z.boolean(),
+    /** The paper in the client's file that holds the answer in writing. Null: it was said, not written. */
+    replyPaperId: id.nullable().default(null),
   })
   .superRefine((value, context) => {
     // A yes says how much. A no says nothing about an amount.

@@ -39,6 +39,7 @@ import { getDb } from "@/server/db/client";
 import { borrowerOf } from "@/server/deals/mapping";
 import { planApprovalsOf, planOf } from "@/server/deals/plan";
 import { getDeal } from "@/server/deals/service";
+import { fundingOf } from "@/server/funding/service";
 import { papersOf } from "@/server/documents/service";
 import { Certain } from "@/ui/Certain";
 import { BackIcon, ChevronIcon, PenIcon } from "@/ui/icons";
@@ -88,7 +89,9 @@ export default async function DealPage({ params }: { params: Promise<{ id: strin
 
   // The fee plan is held against the deal as it stands: an approval stands only while its numbers print the same.
   const mayApprovePlan = can(me.role, "fee.approve");
-  const current = planOf(input, study);
+  // The print includes the terms of the lenders whose route the deal holds: a change to one of them drops the approval.
+  const funding = await fundingOf(db, view, now);
+  const current = planOf(input, study, funding.routes.find((route) => route.key === funding.chosen) ?? null);
   const planLog = await planApprovalsOf(db, { dealId: deal.id, now: current });
   const planSaid = planState({ latest: planLog[0] ?? null, closing: closes, may: mayApprovePlan });
 
@@ -153,6 +156,9 @@ export default async function DealPage({ params }: { params: Promise<{ id: strin
           </Link>
           <Link className="edit-link" data-soft href={`/deals/${deal.id}/lenders`}>
             جهات التمويل
+          </Link>
+          <Link className="edit-link" data-soft href={`/deals/${deal.id}/opportunities`}>
+            دراسة الفرص
           </Link>
           {!ended && (
             <Link className="edit-link" data-soft href={`/deals/${deal.id}/compare`}>

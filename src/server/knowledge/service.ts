@@ -1,12 +1,14 @@
 import "server-only";
-import { and, asc, desc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, ne, sql } from "drizzle-orm";
 import { ZodError, type ZodType } from "zod";
 import { STRUCTURES, structureOf, type DealStudy } from "@/domain/deal";
-import { FINANCE_TYPES, type FinanceType } from "@/domain/eligibility";
+import { INBOX_PAPER } from "@/domain/documents";
+import { dayOf, FINANCE_TYPES, type FinanceType } from "@/domain/eligibility";
 import type { FundingRoute } from "@/domain/funding";
 import { DECISIONS, RULE_KINDS, type Decision, type DecisionFact, type Rule, type RuleKind } from "@/domain/knowledge";
+import type { LenderReply } from "@/domain/opportunity";
 import type { Db, Tx } from "../db/client";
-import { lenderRules, lenders, outcomes, users } from "../db/schema";
+import { documentFiles, documents, lenderRules, lenders, outcomes, users } from "../db/schema";
 import { borrowerOf } from "../deals/mapping";
 import { amendDeal } from "../deals/service";
 import { fundingIn } from "../funding/service";
@@ -115,6 +117,9 @@ export async function recordDecision(db: Db, args: { dealId: number; decision: u
     if (!STRUCTURES[structureOf(view.input)][input.part]) throw new DomainError("INVALID_INPUT", `part: the deal has no ${input.part}`);
     const lender = await activeLender(tx, input.lenderId);
     const { client, study } = view;
+    if (input.replyPaperId != null && !(await replyPapers(tx, client.id)).some((paper) => paper.id === input.replyPaperId)) {
+      throw new DomainError("REPLY_PAPER", `paper ${input.replyPaperId}`);
+    }
     const [row] = await tx
       .insert(outcomes)
       .values({
@@ -132,6 +137,7 @@ export async function recordDecision(db: Db, args: { dealId: number; decision: u
         conditions: input.asks,
         reason: input.reason,
         note: input.note,
+        replyPaperId: input.replyPaperId,
         userId: args.actor.userId,
         createdAt: now,
       })
@@ -141,9 +147,46 @@ export async function recordDecision(db: Db, args: { dealId: number; decision: u
       input.onDeal && input.approvedAmount != null
         ? await amendDeal(tx, { dealId: args.dealId, terms: input.part === "mortgage" ? { bankMortgage: input.approvedAmount } : { bankPersonal: input.approvedAmount }, actor: args.actor, now })
         : null;
-    await audit(tx, args.actor, "lender.decision", "client", client.id, { lender: lender.name, part: input.part, decision: input.decision, onDeal: amended != null });
+    await audit(tx, args.actor, "lender.decision", "client", client.id, { lender: lender.name, part: input.part, decision: input.decision, onDeal: amended != null, written: input.replyPaperId != null });
     return { id: row!.id, study: amended?.study ?? null };
   });
+}
+
+/**
+ * The papers of a client's file that can hold a lender's written answer: each has a file, and nobody
+ * sent it back. What waits unsorted in the WhatsApp tray is not one yet.
+ */
+export async function replyPapers(db: Tx, clientId: number): Promise<{ id: number; code: string; label: string | null }[]> {
+  return db
+    .select({ id: documents.id, code: documents.code, label: documents.label })
+    .from(documents)
+    .where(
+      and(
+        eq(documents.clientId, clientId),
+        inArray(documents.status, ["received", "verified"]),
+        ne(documents.code, INBOX_PAPER),
+        sql`exists (select 1 from ${documentFiles} where ${documentFiles.docId} = ${documents.id})`,
+      ),
+    )
+    .orderBy(desc(documents.updatedAt), desc(documents.id));
+}
+
+/**
+ * What lenders answered about a client, newest first, as the opportunities read them. An answer is
+ * written while the paper it points to still holds a file and was not sent back.
+ */
+export async function lenderReplies(db: Tx, clientId: number): Promise<LenderReply[]> {
+  const rows = await db
+    .select({ lenderId: outcomes.lenderId, part: outcomes.financeType, decision: outcomes.decision, amount: outcomes.approvedAmount, at: outcomes.createdAt, paper: outcomes.replyPaperId })
+    .from(outcomes)
+    .where(eq(outcomes.clientId, clientId))
+    .orderBy(desc(outcomes.createdAt), desc(outcomes.id));
+  const papers = new Set((await replyPapers(db, clientId)).map((paper) => paper.id));
+  return rows.flatMap((row) =>
+    (row.part === "mortgage" || row.part === "personal") && (DECISIONS as readonly string[]).includes(row.decision)
+      ? [{ lenderId: String(row.lenderId), part: row.part, decision: row.decision, amount: row.amount, on: dayOf(row.at), written: row.paper != null && papers.has(row.paper) }]
+      : [],
+  );
 }
 
 /** A recorded decision as a person reads it. It names no client. */
@@ -160,6 +203,8 @@ export interface DecisionLine {
   asks: string[];
   reason: string | null;
   note: string | null;
+  /** A paper in the file holds the answer in writing. */
+  written: boolean;
   createdAt: Date;
 }
 
@@ -178,6 +223,7 @@ const lineOf = (row: OutcomeRow, lenderName: string): DecisionLine => ({
   asks: row.conditions,
   reason: row.reason,
   note: row.note,
+  written: row.replyPaperId != null,
   createdAt: row.createdAt,
 });
 

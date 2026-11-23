@@ -9,6 +9,8 @@ import { saveDecision, type DecisionAnswer } from "./actions";
 
 type Part = "mortgage" | "personal";
 const UNSAID = "unsaid";
+/** The answer was said, not written: no paper holds it. */
+const SAID = "said";
 
 /** Where the form starts for one part of the deal: the lender the deal is on, and the amount it expects. */
 export interface PartStart {
@@ -20,7 +22,20 @@ export interface PartStart {
  * What a lender answered for this client. It is kept as experience about the lender, and an approved
  * amount can become the deal's own figure in the same step.
  */
-export function DecisionForm({ dealId, lenders, parts, mayAmend }: { dealId: number; lenders: { id: number; name: string }[]; parts: Partial<Record<Part, PartStart>>; mayAmend: boolean }) {
+export function DecisionForm({
+  dealId,
+  lenders,
+  parts,
+  mayAmend,
+  papers,
+}: {
+  dealId: number;
+  lenders: { id: number; name: string }[];
+  parts: Partial<Record<Part, PartStart>>;
+  mayAmend: boolean;
+  /** The papers of the client's file that can hold the lender's answer in writing. */
+  papers: { id: number; name: string }[];
+}) {
   const offered = (Object.keys(PART) as Part[]).filter((part) => parts[part]);
   /** The lender the deal is on for a part. Only its amount goes on the deal without being asked. */
   const dealOn = (part: Part, lender: string): boolean => mayAmend && parts[part]?.lenderId != null && lender === `l${parts[part].lenderId}`;
@@ -31,6 +46,7 @@ export function DecisionForm({ dealId, lenders, parts, mayAmend }: { dealId: num
   const [asks, setAsks] = useState<Ask[]>([]);
   const [reason, setReason] = useState<Refusal | typeof UNSAID>(UNSAID);
   const [note, setNote] = useState("");
+  const [paper, setPaper] = useState(SAID);
   const [onDeal, setOnDeal] = useState(() => dealOn(part, lender));
   const [answer, setAnswer] = useState<DecisionAnswer>({});
   const [busy, start] = useTransition();
@@ -42,6 +58,7 @@ export function DecisionForm({ dealId, lenders, parts, mayAmend }: { dealId: num
   const refused = decision === "rejected";
   const lenderOptions = Object.fromEntries(lenders.map((l) => [`l${l.id}`, l.name])) as Record<string, string>;
   const partOptions = Object.fromEntries(offered.map((p) => [p, PART[p]])) as Record<Part, string>;
+  const paperOptions = { [SAID]: "لا رد مكتوب", ...Object.fromEntries(papers.map((p) => [`d${p.id}`, p.name])) } as Record<string, string>;
   const reasonOptions = { [UNSAID]: "لم تذكر السبب", ...Object.fromEntries(REFUSALS.map((code) => [code, refusalText(code)])) } as Record<Refusal | typeof UNSAID, string>;
   const ready = refused || (amount != null && amount > 0);
 
@@ -60,12 +77,14 @@ export function DecisionForm({ dealId, lenders, parts, mayAmend }: { dealId: num
             reason: refused && reason !== UNSAID ? reason : null,
             note: note || null,
             onDeal: !refused && mayAmend && onDeal,
+            replyPaperId: paper === SAID ? null : Number(paper.slice(1)),
           });
           setAnswer(said);
           if (said.saved) {
             setAsks([]);
             setNote("");
             setReason(UNSAID);
+            setPaper(SAID);
           }
         });
       }}
@@ -125,6 +144,7 @@ export function DecisionForm({ dealId, lenders, parts, mayAmend }: { dealId: num
             ))}
           </fieldset>
         )}
+        <SelectField label="الرد المكتوب" value={paper} onChange={touched(setPaper)} options={paperOptions} />
         <TextField label="ملاحظة" value={note} onChange={touched(setNote)} placeholder={refused ? "ما قالته الجهة" : "ما يفيد من يقدّم لها بعدك"} maxLength={500} />
       </div>
       <div className="ruling-save">

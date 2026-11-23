@@ -75,7 +75,7 @@ const stating = (stated: Stated, paper: DemoPaper["paper"], ...files: string[]):
  * A one-page PDF that says it is made up. The demo's papers open like real ones, and nothing in them
  * belongs to anyone.
  */
-function madeUpPdf(serial: string): Uint8Array {
+export function madeUpPdf(serial: string): Uint8Array {
   const page = `BT /F1 20 Tf 60 760 Td (Masar demo paper ${serial}) Tj 0 -30 Td /F1 13 Tf (Made-up data. It belongs to no one.) Tj ET`;
   const objects = [
     "<< /Type /Catalog /Pages 2 0 R >>",

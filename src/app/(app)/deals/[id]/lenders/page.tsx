@@ -13,7 +13,9 @@ import { experience, knownFor, type Bearing, type Rule } from "@/domain/knowledg
 import { requireActor } from "@/server/auth/actor";
 import { getDb } from "@/server/db/client";
 import { getFunding } from "@/server/funding/service";
-import { decisionFacts, listLenders, listRules, recentDecisions } from "@/server/knowledge/service";
+import { decisionFacts, listLenders, listRules, recentDecisions, replyPapers } from "@/server/knowledge/service";
+import { whoOf } from "@/server/documents/service";
+import { paperLabel } from "@/copy/documents";
 import { AnswerRow, DecisionRow, NoteRow } from "@/ui/knowledge";
 import { BackIcon } from "@/ui/icons";
 import { Num } from "@/ui/Num";
@@ -109,6 +111,7 @@ export default async function LendersPage({ params, searchParams }: { params: Pr
   const facts = await decisionFacts(db);
   const lenders = await listLenders(db);
   const answered = await recentDecisions(db, { clientId: view.client.id });
+  const papers = (await replyPapers(db, view.client.id)).map((paper) => ({ id: paper.id, name: paperLabel(paper, whoOf(view.client)) }));
   const now = new Date();
 
   const { deal, client, routes, chosen } = view;
@@ -145,6 +148,9 @@ export default async function LendersPage({ params, searchParams }: { params: Pr
         <p className="where">
           <span className="num">{client.fileNo}</span> · <b>{client.fullName}</b> · {STRUCTURE[deal.structure]}
         </p>
+        <Link className="note-link" href={`/deals/${deal.id}/opportunities`}>
+          دراسة الفرص
+        </Link>
         {mayEditClient && view.banks.length > 0 && <SalaryBank dealId={deal.id} clientId={client.id} value={client.salaryBank} banks={view.banks} />}
       </div>
     </div>
@@ -433,7 +439,7 @@ export default async function LendersPage({ params, searchParams }: { params: Pr
             {mayRecord && (
               <details className="ruling-new">
                 <summary>سجّل قرار جهة</summary>
-                <DecisionForm dealId={deal.id} lenders={lenders} parts={parts} mayAmend={can(me.role, "deal.edit") && !view.ended} />
+                <DecisionForm dealId={deal.id} lenders={lenders} parts={parts} mayAmend={can(me.role, "deal.edit") && !view.ended} papers={papers} />
               </details>
             )}
           </section>

@@ -1,10 +1,14 @@
 import "server-only";
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq, isNotNull } from "drizzle-orm";
 import { addMonths, dayOf, termsOf, type FinanceType, type SourceKind } from "@/domain/eligibility";
 import type { Db } from "../db/client";
 import { answerCondition } from "../clients/conditions";
-import { clients, lenders, termSources, users } from "../db/schema";
+import { clients, deals, lenders, outcomes, termSources, users } from "../db/schema";
+import { addPaper, keepFile } from "../documents/service";
+import { getFunding } from "../funding/service";
+import { recordDecision } from "../knowledge/service";
 import { addCondition, addLender, addProduct, confirmTerms } from "../lenders/service";
+import { madeUpPdf } from "./seed";
 import type { Actor } from "../shared/actor";
 
 /**
@@ -118,4 +122,59 @@ export async function seedDemoLenders(db: Db, now: Date): Promise<void> {
     .update(termSources)
     .set({ confirmedOn: addMonths(dayOf(now), -4) })
     .where(and(eq(termSources.productId, ids[`${DEMO_BANK}:mortgage`]!), eq(termSources.term, "rate")));
+}
+
+/** The invented client a lender said yes to in writing, and the one an example lender turned down. */
+export const DEMO_REPLIED = "C-017";
+export const DEMO_REFUSED = "C-014";
+
+/**
+ * What the example lenders answered about two invented clients. The bank said yes to one in a letter
+ * kept in her file, so her opportunity with it reads as confirmed by the lender. The finance company
+ * turned the other down, so his opportunity with it cannot be carried out. Both lenders and both
+ * answers are made up. Does nothing when an answer with a written reply is already there.
+ */
+export async function seedDemoReplies(db: Db, now: Date): Promise<void> {
+  const [known] = await db.select({ id: outcomes.id }).from(outcomes).where(isNotNull(outcomes.replyPaperId)).limit(1);
+  if (known) return;
+  const [admin] = await db.select({ id: users.id }).from(users).where(eq(users.role, "admin")).orderBy(users.id).limit(1);
+  const actor: Actor = { userId: admin?.id ?? null };
+  const lenderOf = new Map((await db.select({ id: lenders.id, name: lenders.name }).from(lenders)).map((l) => [l.name, l.id]));
+  const dealOf = async (fileNo: string) => {
+    const [row] = await db.select({ dealId: deals.id, clientId: clients.id }).from(deals).innerJoin(clients, eq(clients.id, deals.clientId)).where(eq(clients.fileNo, fileNo)).orderBy(desc(deals.id)).limit(1);
+    return row ?? null;
+  };
+  const at = new Date(now.getTime() - 2 * 86_400_000);
+
+  const replied = await dealOf(DEMO_REPLIED);
+  const bank = lenderOf.get(DEMO_BANK);
+  if (replied && bank) {
+    const funding = await getFunding(db, { dealId: replied.dealId, now });
+    const route = funding?.routes.find((r) => [r.mortgage, r.personal].every((leg) => !leg || leg.product.lenderName === DEMO_BANK));
+    if (route) {
+      const { code } = await addPaper(db, { clientId: replied.clientId, label: `رد ${DEMO_BANK} المكتوب`, actor, now: at });
+      const { paperId } = await db.transaction((tx) => keepFile(tx, { clientId: replied.clientId, code, name: "رد الجهة.pdf", bytes: madeUpPdf(`${DEMO_REPLIED} reply`), actor, now: at }));
+      for (const part of ["mortgage", "personal"] as const) {
+        const leg = route[part];
+        if (!leg) continue;
+        await recordDecision(db, {
+          dealId: replied.dealId,
+          decision: { lenderId: bank, part, decision: "approved", approvedAmount: leg.amount, asks: [], reason: null, note: "رد تجريبي للعرض فقط", onDeal: false, replyPaperId: paperId },
+          actor,
+          now: at,
+        });
+      }
+    }
+  }
+
+  const refused = await dealOf(DEMO_REFUSED);
+  const company = lenderOf.get(DEMO_COMPANY);
+  if (refused && company) {
+    await recordDecision(db, {
+      dealId: refused.dealId,
+      decision: { lenderId: company, part: "personal", decision: "rejected", approvedAmount: null, asks: [], reason: "simah", note: "رفض تجريبي للعرض فقط", onDeal: false, replyPaperId: null },
+      actor,
+      now: at,
+    });
+  }
 }

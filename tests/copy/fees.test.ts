@@ -47,11 +47,15 @@ describe("the wording of fees", () => {
     const plan = { amounts: { settle: 14000, finance: 92000, fixed: 0, total: 106000 }, clientNet: 222000 };
     const stands = planState({ latest: { by: "سارة", at, plan, stands: true, moves: { figures: [], fee: [] } }, closing: true, may: true });
     expect(stands.state).toBe("stands");
-    expect(plain(stands.text)).toMatch(/^اعتمدها سارة في .+: أتعاب 106,000، ويبقى للعميل 222,000\. تسقط إن تغيّر رقم في الصفقة\.$/);
+    expect(plain(stands.text)).toMatch(/^اعتمدها سارة في .+: أتعاب 106,000، ويبقى للعميل 222,000\. تسقط إن تغيّر رقم في الصفقة أو شرط جهتها\.$/);
     const moves = { figures: [{ name: "fee" as const, then: 106000, now: 104000 }, { name: "clientNet" as const, then: 222000, now: 204000 }], fee: [] };
     const fell = planState({ latest: { by: null, at, plan, stands: false, moves }, closing: true, may: true });
     expect(plain(fell.text)).toBe("تغيّر منذ اعتمادها أتعاب المكتب من 106,000 إلى 104,000، وما يبقى للعميل من 222,000 إلى 204,000. الاعتماد يحفظ منها نسخة لا تتغير.");
     expect(movesText({ figures: [], fee: ["settlePct"] })).toBe("الأتعاب نفسها");
+    // A lender's term moved under the deal's route, and nothing on the deal did.
+    expect(movesText({ figures: [], fee: [], lenders: true })).toBe("شروط الجهة التي تقوم عليها الصفقة");
+    expect(movesText({ figures: [], fee: ["settlePct"], lenders: true })).toBe("الأتعاب نفسها، وشروط الجهة التي تقوم عليها الصفقة");
+    expect(plain(movesText({ figures: [{ name: "fee", then: 106000, now: 104000 }], fee: [], lenders: true }))).toBe("أتعاب المكتب من 106,000 إلى 104,000، وشروط الجهة التي تقوم عليها الصفقة");
     expect(planState({ latest: null, closing: false, may: true }).text).toBe("لا تُعتمد صفقة لا تُغلق: فيها عجز، أو ينقصها ما يُحكم به.");
     expect(planState({ latest: null, closing: true, may: false })).toEqual({ state: "none", title: "خطة الأتعاب غير معتمدة", text: "يعتمدها مدير النظام." });
     expect(plain(planLine({ by: null, at, plan, stands: false }))).toMatch(/^.+ · حساب محذوف · أتعاب 106,000 · للعميل 222,000 · سقط$/);
