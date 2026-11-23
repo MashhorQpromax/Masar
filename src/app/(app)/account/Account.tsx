@@ -1,15 +1,15 @@
 "use client";
 
-import { useEffect, useId, useRef, useState, useTransition, type FormEvent, type ReactNode } from "react";
+import Link from "next/link";
+import { useEffect, useId, useState, useTransition, type ReactNode } from "react";
 import { accountError, GUARD, passkeyProblem } from "@/copy/auth";
 import { PASSWORD_MIN } from "@/domain/auth";
 import { digitsOf } from "@/domain/shared/phone";
 import { initial } from "@/copy/format";
-import { CheckIcon, CopyIcon, FingerprintIcon } from "@/ui/icons";
+import { BackIcon, CheckIcon, CopyIcon, FingerprintIcon } from "@/ui/icons";
 import { PasswordField } from "@/ui/PasswordField";
 import {
   changePassword,
-  confirmPassword,
   deletePasskey,
   finishAuthenticator,
   finishPasskey,
@@ -20,6 +20,7 @@ import {
   type AccountAnswer,
   type AuthenticatorStart,
 } from "./actions";
+import { Gate } from "./Gate";
 
 /** What the page shows, already worded: the screen formats nothing itself. */
 export interface AccountView {
@@ -35,6 +36,8 @@ export interface AccountView {
   passkeysOn: boolean;
   passkeys: { id: number; name: string; added: string; used: string | null }[];
   devices: { name: string; since: string; how: string; current: boolean }[];
+  /** The screens that run the office, for a person who may open them. */
+  office: { users: boolean; audit: boolean };
 }
 
 type Way = "password" | "authenticator" | "passkey" | "devices";
@@ -70,54 +73,6 @@ function WayRow({ on, name, state, say, action, children }: { on: boolean; name:
       </div>
       {children}
     </li>
-  );
-}
-
-/** The password is asked again before a sign-in method changes. Closing the box changes nothing. */
-function Gate({ onDone, onClose }: { onDone: () => void; onClose: () => void }) {
-  const box = useRef<HTMLDialogElement>(null);
-  const title = useId();
-  const [typed, setTyped] = useState("");
-  const [refused, setRefused] = useState<string | null>(null);
-  const [busy, start] = useTransition();
-
-  useEffect(() => {
-    box.current?.showModal();
-  }, []);
-
-  function submit(event: FormEvent) {
-    event.preventDefault();
-    setRefused(null);
-    start(async () => {
-      const answer = await confirmPassword(typed);
-      if (answer.error) return setRefused(accountError(answer.error));
-      onDone();
-    });
-  }
-
-  return (
-    <dialog ref={box} className="ask" aria-labelledby={title} onClose={onClose}>
-      <form onSubmit={submit} className="ask-form">
-        <h2 id={title} className="ask-title">
-          أكّد أنك أنت
-        </h2>
-        <p className="ask-say">اكتب كلمة المرور لتغيّر طرق الدخول.</p>
-        <PasswordField label="كلمة المرور" autoComplete="current-password" required autoFocus value={typed} onChange={(event) => setTyped(event.target.value)} />
-        {refused && (
-          <p key={refused} role="alert" className="said" data-bad>
-            {refused}
-          </p>
-        )}
-        <div className="ask-actions">
-          <button type="submit" className="btn btn--navy" disabled={busy} aria-busy={busy}>
-            تأكيد
-          </button>
-          <button type="button" className="btn btn--ghost" onClick={() => box.current?.close()}>
-            إلغاء
-          </button>
-        </div>
-      </form>
-    </dialog>
   );
 }
 
@@ -537,8 +492,31 @@ export function Account({ view }: { view: AccountView }) {
         <Note said={said} way="devices" />
       </section>
 
+      {(view.office.users || view.office.audit) && (
+        <nav className="tile tile--office" aria-label="إدارة المكتب">
+          <p className="label">إدارة المكتب</p>
+          <div className="office">
+            {view.office.users && (
+              <Link className="office-door" href="/users">
+                <b>الحسابات</b>
+                <span>من يدخل مسار، وما يحق لكل واحد.</span>
+                <BackIcon />
+              </Link>
+            )}
+            {view.office.audit && (
+              <Link className="office-door" href="/audit">
+                <b>سجل التدقيق</b>
+                <span>كل ما جرى في النظام ومن قام به.</span>
+                <BackIcon />
+              </Link>
+            )}
+          </div>
+        </nav>
+      )}
+
       {gate && (
         <Gate
+          say="اكتب كلمة المرور لتغيّر طرق الدخول."
           onClose={() => setGate(null)}
           onDone={() => {
             const { retry } = gate;

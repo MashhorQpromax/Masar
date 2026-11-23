@@ -31,6 +31,7 @@ export class DomainError extends Error {
       | "ID_TAKEN"
       | "NOTE_EMPTY"
       | "NUMBER_KNOWN"
+      | "OWN_ACCOUNT"
       | "FORBIDDEN"
       | "EMAIL_TAKEN"
       | "WRONG_PASSWORD"

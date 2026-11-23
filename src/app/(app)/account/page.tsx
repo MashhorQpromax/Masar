@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import Link from "next/link";
 import { methodText, ROLE } from "@/copy/auth";
 import { dayShort } from "@/copy/format";
+import { can } from "@/domain/auth";
 import { deviceName } from "@/domain/auth/device";
 import { securityState } from "@/server/auth/account";
 import { requireActor } from "@/server/auth/actor";
@@ -20,6 +21,7 @@ export default async function AccountPage() {
   const session = me.demo ? null : await currentSession();
   const { userAgent } = await requestOrigin();
   const now = new Date();
+  const office = { users: can(me.role, "user.manage"), audit: can(me.role, "audit.view") };
 
   let view: AccountView;
   if (!session) {
@@ -35,6 +37,7 @@ export default async function AccountPage() {
       passkeysOn: false,
       passkeys: [],
       devices: [{ name: deviceName(userAgent), since: dayShort(now), how: "", current: true }],
+      office,
     };
   } else {
     const state = await securityState(await getDb(), { userId: session.user.id, sessionToken: (await cookies()).get(SESSION_COOKIE)?.value, now });
@@ -59,6 +62,7 @@ export default async function AccountPage() {
         how: methodText(line.method),
         current: line.current,
       })),
+      office,
     };
   }
 

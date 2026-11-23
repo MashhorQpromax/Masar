@@ -449,7 +449,7 @@ describe("accounts", () => {
     await expect(createUser(c.db, { ...base, role: "owner" })).rejects.toMatchObject({ code: "INVALID_INPUT" });
     await expect(createUser(c.db, { ...base, email: "not-an-email" })).rejects.toMatchObject({ code: "INVALID_INPUT" });
     await expect(createUser(c.db, { ...base, name: "  " })).rejects.toMatchObject({ code: "INVALID_INPUT" });
-    await expect(createUser(c.db, { ...base, phone: "123" })).rejects.toMatchObject({ code: "INVALID_INPUT" });
+    await expect(createUser(c.db, { ...base, phone: "123" })).rejects.toMatchObject({ code: "BAD_PHONE" });
     expect(await c.db.select().from(users).where(eq(users.email, "fresh@test.local"))).toHaveLength(0);
   });
 

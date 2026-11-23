@@ -18,6 +18,12 @@ src/
                means for banks and finance companies.
     auth/      The four roles, what each may do, and the rule a new password must meet.
     clients/   Where a file stands, and the check of an identity number.
+    eligibility/ What SAMA's rules leave in an income, and what each lender's product would give.
+    funding/   Which lender funds the new financing of a bridge deal.
+    documents/ What a client's file needs today and where each paper stands.
+    messages/  What may be said to a client and what a client may be told.
+    audit/     The kinds of event the audit log holds, the part of the office each belongs to,
+               and which of them deserve a second look.
   copy/        Arabic wording for every code the domain returns, the choices a form offers,
                and number, date and count formatting.
   server/      Everything that touches the outside world (database, auth, WhatsApp). Server only.
@@ -28,7 +34,13 @@ src/
                file numbering, and the list and the card the people screens read.
     auth/      Who is acting. Every route and action asks here first. Passwords, sessions,
                authenticator codes, one-time codes, passkeys, lockouts, and the accounts themselves.
-    demo/      Fictional deals for a build that has no database.
+    credit/    A client's credit reports: the upload, the reading, the stored record.
+    lenders/   The catalogue of lenders and products, and its terms.
+    funding/   The funding routes of a deal.
+    documents/ A client's papers and their files.
+    messages/  The conversation with a client, the client's link, the line to WhatsApp, the inbox.
+    audit/     The reader of the audit log. Writing an event stays with the service that did the work.
+    demo/      A fictional office for a build that has no database: its deals, its people and its log.
   app/         Next.js routes. Thin: read through services, render, call server actions.
   ui/          Design system for the "الخريطة" identity: the road, tiles, dock, figures, form fields.
 db/migrations/ Versioned SQL migrations. The only way the schema changes.
@@ -75,7 +87,7 @@ A person signs in with their email and password, and with the six digits of thei
 - **Passkeys** are WebAuthn credentials checked by `@simplewebauthn/server`. The site they belong to comes from `MASAR_ORIGINS`, a list of the exact addresses of the site with its own first (`https://masarfin.com,https://www.masarfin.com`); a production build without it has no passkeys, because taking the address from the request would let a forged host name choose it. The device must have verified its person, a challenge is a row in `auth_steps` answered once, and "remember me" is fixed when the challenge is asked. The tests sign real challenges with a software device (`tests/helpers/authenticator.ts`).
 - **The account screen** (`/account`, any role) changes the password, links or stops the authenticator, adds or removes passkeys and signs other devices out. A sign-in method changes only from a session whose person typed the password within the last ten minutes (`requireConfirmed`); a session opened by a code or a passkey is asked for the password first, and wrong passwords there count against the account as they do at the door. The rule lives in the services, so no screen can skip it.
 - **Codes over WhatsApp** are issued and checked here (`sendLoginCode`), with limits per person and per address. The sender itself arrives with the WhatsApp module; until then the form does not offer it.
-- **The first account** is made with `npm run user:create`. The screen that manages people comes with the remaining screens.
+- **The first account** is made with `npm run user:create`. Every account after it is made on `/users` (see The office below).
 
 ## The deal editor
 
@@ -203,6 +215,19 @@ Worth a decision before the switch: files live in Postgres, so the database grow
 - The inbox and a stranger's messages ask for `client.view_pii`. A person without it does not see the place in the dock.
 - The demo has six files (four on the road, one completed, one rejected) and one unknown number with two messages.
 
+## The office: accounts and the audit log
+
+`/users` is everyone who may enter the system and `/audit` is everything that happened in it. Both are for the admin alone (`user.manage`, `audit.view`). The dock keeps its five places: a person who holds either permission finds the two doors in a tile on `/account`, and nobody else sees it.
+
+- **Accounts.** `src/server/auth/users.ts` makes an account (`createUser`), changes a role, the sign-in mobile or whether the account works (`updateUser`), gives a new password to a person who lost theirs (`resetPassword`), leaves a person who lost their phone with the password as their only way in (`resetSignIn`), and lifts a lock (`unlockUser`). `listUsers` reads the list with each person's ways in, last sign-in, open sessions and lock.
+- **The password is asked first.** Every one of those changes needs a session whose person typed their password within the last ten minutes, the same rule as a change to one's own ways in. The services check it themselves (`requireManagerConfirmed`), so a new screen or action cannot skip it; an action only hands over the session cookie. What was typed is checked before the password is asked for, and nothing is read or said about another account before it is given. The script that makes the first account acts as the system and has no session to confirm.
+- **Nobody locks themselves out.** A person cannot change their own role or stop their own account, so the office always has an admin who can act. A new password and a reset of ways in for one's own account belong to `/account`, where the current password is asked, and are refused here (`OWN_ACCOUNT`). One's own sign-in mobile can be set.
+- **Stopping is immediate.** A stopped account's sessions end in the same transaction, and so do the sessions of an account whose password or ways in were reset. A role change applies to open sessions on their next request, because the role is read from the account each time.
+- **The log.** `src/domain/audit` lists every event the system writes, in seven parts of the office (sign-in, accounts, clients, deals, papers, messages, lenders). `tests/domain/audit.test.ts` reads the source of `src/server` and fails when a service writes an event the list does not know or the list holds one nothing writes, so the log's wording cannot fall behind the code. `src/server/audit/log.ts` reads the log newest first, sixty lines a page, with the doer and what the event was about (a deal, a client, an account, a paper), and still reads a line whose subject is gone.
+- **What deserves a look.** A failed sign-in, a private file that was opened, and every change to who may enter (`WATCHED_ACTIONS`). The screen marks those lines and offers them as one choice beside the seven parts and the choice of a person. A failed sign-in shows the address it came from.
+- **Words, not values.** `src/copy/audit.ts` turns an event and its details into a sentence. A detail names what changed (the role, the mobile) and never holds a private value: no phone, no identity number, nothing typed at the door. The choices of the screen live in the address, and anything else typed there reads as no choice.
+- **The demo office** has five fictional people (one of them stopped) and a log of its own work, laid over office hours in the order the work happened. A build without a database refuses every change to an account (`DEMO`).
+
 ## Porting checklist
 
 Old module (under `legacy/lib`) and its state in the rebuild:
@@ -233,7 +258,8 @@ Old module (under `legacy/lib`) and its state in the rebuild:
 - [x] opening a client file and revising its facts, from `data.ts` and `actions.ts`: `src/server/clients`
 - [x] the client portal, where the client follows their file and uploads their own papers: `/s/[token]`, `src/server/messages/portal.ts`
 - [x] screens: clients, a client's file, the inbox
-- [ ] screens still to build: calculator, knowledge, users, audit
+- [x] managing accounts from `auth.ts` and `actions.ts`, and the audit log: `src/server/auth/users.ts`, `src/domain/audit`, `src/server/audit`, `/users`, `/audit`
+- [ ] screens still to build: calculator, knowledge
 - [ ] data migration from the live database, then the domain switch (only after the owner approves)
 
 To regenerate a golden file while `legacy/` still exists: `npm run golden:deal`, `npm run golden:credit`, `npm run golden:simah`. Each generator is seeded, so it writes the same file every time.

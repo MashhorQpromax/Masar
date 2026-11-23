@@ -1,0 +1,212 @@
+/** Wording of the audit log: what each event is called, and the detail worth reading beside it. */
+import type { AuditAction, AuditArea } from "@/domain/audit";
+import { isRole } from "@/domain/auth";
+import { ROLE } from "./auth";
+import { STAGE } from "./deal";
+import { PAPER_STATUS, paperLabel } from "./documents";
+import { counted, dayFull, dayLong, days, ltr, type CountForms } from "./format";
+import { MESSAGE_KIND } from "./messages";
+
+export const AUDIT_AREA: Record<AuditArea, string> = {
+  signin: "الدخول",
+  users: "الحسابات",
+  clients: "العملاء",
+  deals: "الصفقات",
+  papers: "المستندات",
+  messages: "الرسائل",
+  lenders: "الجهات",
+};
+
+const AUDIT_ACTION: Record<AuditAction, string> = {
+  login: "دخول",
+  login_failed: "محاولة دخول فاشلة",
+  logout: "خروج",
+  login_code_sent: "طلب رمز دخول بواتساب",
+  "user.create": "حساب جديد",
+  "user.update": "تعديل حساب",
+  "user.password_reset": "كلمة مرور جديدة من المدير",
+  "user.signin_reset": "تصفير طرق الدخول",
+  "user.unlock": "فتح قفل حساب",
+  "user.confirm": "تأكيد كلمة المرور",
+  "user.password": "تغيير كلمة المرور",
+  "user.authenticator_on": "ربط تطبيق المصادقة",
+  "user.authenticator_off": "إيقاف تطبيق المصادقة",
+  "user.passkey_add": "إضافة مفتاح مرور",
+  "user.passkey_remove": "حذف مفتاح مرور",
+  "user.sessions_end": "إخراج الأجهزة الأخرى",
+  "client.create": "فتح ملف عميل",
+  "client.update": "تعديل بيانات العميل",
+  "client.contact": "تعديل بيانات التواصل",
+  "client.note": "ملاحظة على الملف",
+  "client.reject": "رفض الملف",
+  "client.reopen": "إعادة الملف إلى الدراسة",
+  "credit.report_add": "قراءة تقرير سمة",
+  "credit.report_review": "مراجعة تقرير سمة",
+  "deal.save": "حفظ أرقام الصفقة",
+  "deal.stage": "نقل الصفقة",
+  "deal.route": "اعتماد جهة التمويل",
+  "doc.upload": "رفع ملف",
+  "doc.remove": "حذف ملف",
+  "doc.move": "وضع ملف تحت مستنده",
+  "doc.review": "مراجعة مستند",
+  "doc.add": "إضافة مستند مطلوب",
+  "doc.drop": "حذف مستند مطلوب",
+  "doc.open": "الاطلاع على ملف مرفوع",
+  "wa.send": "رسالة إلى العميل",
+  "wa.handled": "محادثة لا تحتاج رداً",
+  "link.open": "فتح رابط العميل",
+  "link.close": "إغلاق رابط العميل",
+  "lender.product_update": "تعديل شروط منتج",
+};
+
+/** What an event is called. An event from a newer build than this wording still gets a name. */
+export const auditAction = (action: string): string => AUDIT_ACTION[action as AuditAction] ?? "حدث آخر";
+
+/** Who did a thing when nobody was signed in: the system itself, a client, or someone at the door. */
+export const NOBODY = "بلا حساب";
+
+const METHOD: Record<string, string> = {
+  password: "بكلمة المرور",
+  "password+totp": "بكلمة المرور ورمز التطبيق",
+  passkey: "بالبصمة",
+  totp: "برمز التطبيق",
+  whatsapp: "برمز واتساب",
+  code: "برمز واتساب",
+  confirm: "عند تأكيد كلمة المرور",
+};
+
+const FIELD: Record<string, string> = {
+  phone: "الجوال",
+  nationality: "الجنسية",
+  nationalId: "رقم الهوية",
+  employer: "جهة العمل",
+  city: "المدينة",
+  email: "البريد",
+  fullName: "الاسم",
+  birthYear: "سنة الميلاد",
+  sector: "القطاع",
+  basicSalary: "الراتب الأساسي",
+  totalSalary: "الراتب الإجمالي",
+  serviceMonths: "مدة الخدمة",
+  salaryBank: "بنك الراتب",
+  role: "الدور",
+  active: "حالة الحساب",
+};
+
+const TERMS: CountForms = { one: "شرط واحد", two: "شرطان", few: "شروط", many: "شرطاً" };
+const MESSAGES: CountForms = { one: "رسالة واحدة", two: "رسالتان", few: "رسائل", many: "رسالة" };
+const LINKS: CountForms = { one: "رابط واحد", two: "رابطان", few: "روابط", many: "رابطاً" };
+const KEYS: CountForms = { one: "مفتاح مرور واحد", two: "مفتاحا مرور", few: "مفاتيح مرور", many: "مفتاح مرور" };
+
+// What the log keeps beside an event is read as found: it was written by many hands over time, so nothing in it is taken on trust.
+const text = (value: unknown): string | null => (typeof value === "string" && value.trim() ? value.trim() : null);
+const number = (value: unknown): number | null => (typeof value === "number" && Number.isFinite(value) ? value : null);
+const strings = (value: unknown): string[] => (Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : []);
+const record = (value: unknown): Record<string, unknown> => (value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {});
+const joined = (parts: (string | null | false | undefined)[]): string => parts.filter(Boolean).join("، ");
+
+const fields = (value: unknown): string => joined(strings(value).map((name) => FIELD[name]));
+const role = (value: unknown): string | null => (isRole(value) ? ROLE[value] : null);
+
+function paper(code: unknown): string | null {
+  const known = text(code);
+  if (!known) return null;
+  if (known.startsWith("custom:")) return "مستند أضفناه";
+  const label = paperLabel({ code: known, label: null }, { sector: "gov", nationality: "saudi" });
+  // A code with no wording comes back as it went in, and a code is not something to show a person.
+  return label === known || /^[a-z0-9_:]+$/.test(label) ? null : label;
+}
+
+/**
+ * The detail worth reading beside an event: where a deal moved to, which fields changed, why a file
+ * was rejected. Empty when the name of the event already says everything. Values the log was told
+ * to leave out, a phone or a password, are never here to show.
+ */
+export function auditDetail(action: string, details: Record<string, unknown> | null | undefined): string {
+  const d = details ?? {};
+  switch (action) {
+    case "login":
+      return METHOD[text(d.method) ?? ""] ?? "";
+    case "login_failed":
+      return joined([METHOD[text(d.method) ?? ""], d.inactive === true && "الحساب موقوف", d.stopped === true && "الرمز موقوف لكثرة الخطأ", text(d.email) && `بريد لا حساب له: ${ltr(text(d.email)!)}`]);
+    case "login_code_sent":
+      return text(d.failed) ? "لم يُرسل" : "";
+    case "user.create":
+      return role(d.role) ?? "";
+    case "user.update": {
+      const change = record(d.role);
+      const roles = role(change.from) && role(change.to) ? `من ${role(change.from)} إلى ${role(change.to)}` : null;
+      return joined([roles, d.active === false && "أُوقف", d.active === true && "عاد يعمل", strings(d.changed).includes("phone") && "الجوال"]);
+    }
+    case "user.signin_reset":
+      return joined([d.authenticator === true && "تطبيق المصادقة", (number(d.passkeys) ?? 0) > 0 && counted(number(d.passkeys)!, KEYS)]);
+    case "client.update":
+      return fields(d.changed);
+    case "client.contact":
+      return joined([fields(d.changed), (number(d.adopted) ?? 0) > 0 && `انضمت ${counted(number(d.adopted)!, MESSAGES)}`, d.via === "inbox" && "من الوارد"]);
+    case "client.reject":
+      return text(d.reason) ?? "";
+    case "credit.report_review":
+      return joined([d.suspension === true && "إيقاف خدمات", d.travelBan === true && "منع سفر"]);
+    case "deal.stage": {
+      const to = text(d.to);
+      return to && to in STAGE ? `إلى ${STAGE[to as keyof typeof STAGE]}` : "";
+    }
+    case "deal.route":
+      return joined([...new Set([text(record(d.mortgage).lender), text(record(d.personal).lender)])]);
+    case "doc.upload": {
+      // A file that came by WhatsApp and waits to be put under its paper says so in its own name.
+      const label = paper(d.paper);
+      return joined([label, d.via === "whatsapp" && !label?.includes("واتساب") && "من واتساب", d.via === "portal" && "من صفحة العميل"]);
+    }
+    case "doc.review": {
+      const verdict = text(d.verdict);
+      return joined([paper(d.paper), verdict && verdict in PAPER_STATUS ? PAPER_STATUS[verdict as keyof typeof PAPER_STATUS] : null]);
+    }
+    case "doc.move":
+      return paper(d.to) ? `إلى ${paper(d.to)}` : "";
+    case "doc.remove":
+    case "doc.add":
+    case "doc.drop":
+    case "doc.open":
+      return paper(d.paper) ?? "";
+    case "wa.send": {
+      const kind = text(d.kind);
+      return joined([kind && kind in MESSAGE_KIND ? MESSAGE_KIND[kind as keyof typeof MESSAGE_KIND].label : null, d.via === "manual" && "من الجوال", d.ok === false && "لم تُرسل"]);
+    }
+    case "wa.handled":
+      return (number(d.messages) ?? 0) > 0 ? counted(number(d.messages)!, MESSAGES) : "";
+    case "link.open":
+      return (number(d.days) ?? 0) > 0 ? `صالح ${days(number(d.days)!)}` : "";
+    case "link.close":
+      return (number(d.links) ?? 0) > 0 ? counted(number(d.links)!, LINKS) : "";
+    case "lender.product_update":
+      return joined([strings(d.changed).length > 0 && counted(strings(d.changed).length, TERMS), d.verified === true && "مؤكدة"]);
+    default:
+      return "";
+  }
+}
+
+const EVENTS: CountForms = { one: "حدث واحد", two: "حدثان", few: "أحداث", many: "حدثاً" };
+
+/** "60 حدثاً" */
+export const eventsCount = (n: number): string => counted(n, EVENTS);
+
+
+const riyadhDate = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Riyadh" });
+
+/** The Riyadh day a moment falls on, as a key to gather the events of one day under. */
+export const logDayKey = (at: Date): string => riyadhDate.format(at);
+
+/** The heading of a day in the log: "اليوم", "أمس", "الأحد 22 نوفمبر", and with its year when that is not this year. */
+export function logDay(at: Date, now: Date): string {
+  const day = logDayKey(at);
+  const today = logDayKey(now);
+  if (day === today) return "اليوم";
+  // Riyadh keeps one clock all year, so yesterday is always a whole day back.
+  if (day === logDayKey(new Date(now.getTime() - 24 * 3_600_000))) return "أمس";
+  return day.slice(0, 4) === today.slice(0, 4) ? dayLong(at) : dayFull(at);
+}
+
+/** Where an event came from, for a way in that failed: an address reads left to right. */
+export const fromAddress = (ip: string): string => `من ${ltr(ip)}`;

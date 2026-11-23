@@ -6,7 +6,10 @@ import { LINK_DAYS } from "@/domain/messages";
 import { addCreditReport } from "../credit/service";
 import type { Db } from "../db/client";
 import { tokenHash } from "../auth/secret";
-import { clients, shareLinks, waMessages } from "../db/schema";
+import { asc, eq, gt } from "drizzle-orm";
+import type { Role } from "@/domain/auth";
+import { DECOY_HASH } from "../auth/password";
+import { auditLog, clients, passkeys, shareLinks, users, waMessages } from "../db/schema";
 import { getDeal, rejectDeal, saveDeal, setDealStage } from "../deals/service";
 import { addPaper, keepFile, reviewPaper } from "../documents/service";
 import { seedCatalogue } from "../lenders/service";
@@ -406,10 +409,116 @@ const STRANGERS = [
   },
 ];
 
+/**
+ * The people of the made-up office. Nobody can sign in as one of them: a demo has no door, and the
+ * password kept for each is the hash of a text nobody knows.
+ */
+const PEOPLE: { name: string; email: string; role: Role; phone: string | null; joinedDaysAgo: number; lastSeenHoursAgo: number; method: string; active?: false; authenticator?: true }[] = [
+  { name: "عبدالله", email: "abdullah@masar.example", role: "admin", phone: "966500000101", joinedDaysAgo: 150, lastSeenHoursAgo: 3, method: "passkey", authenticator: true },
+  { name: "منى", email: "mona@masar.example", role: "analyst", phone: "966500000102", joinedDaysAgo: 146, lastSeenHoursAgo: 5, method: "password+totp", authenticator: true },
+  { name: "خالد", email: "khalid@masar.example", role: "officer", phone: "966500000103", joinedDaysAgo: 144, lastSeenHoursAgo: 1, method: "password" },
+  { name: "سارة", email: "sara@masar.example", role: "viewer", phone: null, joinedDaysAgo: 31, lastSeenHoursAgo: 70, method: "password" },
+  { name: "فيصل", email: "faisal@masar.example", role: "officer", phone: null, joinedDaysAgo: 143, lastSeenHoursAgo: 24 * 19, method: "password", active: false },
+];
+
+/** Who in the made-up office would have done a thing, by what the thing is. Null is the client or the system. */
+function doerOf(action: string, details: Record<string, unknown> | null): string | null {
+  if (details?.via === "whatsapp") return null;
+  if (action === "client.reject" || action === "client.reopen") return "عبدالله";
+  if (action === "doc.review" || action.startsWith("credit.") || action.startsWith("lender.") || action === "deal.route") return "منى";
+  return "خالد";
+}
+
+const RIYADH = 3 * 3_600_000;
+const OPENING = 9 * 3_600_000;
+const BETWEEN = 17 * 60_000;
+const LAST = 8 * 3_600_000 + 40 * 60_000;
+
+/**
+ * Gives the log of the demo its people and its hours. The services wrote every event in nobody's
+ * name and `dated` gave each the day it stands for, so here the events of a day are laid out over
+ * the office's hours in the order they happened, and the sign-ins and account changes of an office
+ * are added around them.
+ */
+async function seedLog(db: Db, now: Date): Promise<void> {
+  const hours = (n: number) => new Date(now.getTime() - n * 3_600_000);
+
+  // What happened in the last day keeps its minute. Anything older happened at some hour of a working
+  // day, one thing after another from the morning on.
+  const placed = new Map<number, number>();
+  const inOfficeHours = (at: Date): Date => {
+    if (now.getTime() - at.getTime() < DAY) return at;
+    const day = Math.floor((at.getTime() + RIYADH) / DAY) * DAY - RIYADH;
+    const nth = placed.get(day) ?? 0;
+    placed.set(day, nth + 1);
+    return new Date(day + OPENING + Math.min(nth * BETWEEN, LAST));
+  };
+
+  // A day starts with people coming in, so the accounts and the sign-ins take their hour first.
+  const id: Record<string, number> = {};
+  const joined: Record<string, Date> = {};
+  const seen: Record<string, Date> = {};
+  for (const person of PEOPLE) {
+    joined[person.name] = inOfficeHours(new Date(now.getTime() - person.joinedDaysAgo * DAY));
+    seen[person.name] = inOfficeHours(hours(person.lastSeenHoursAgo));
+    const [row] = await db
+      .insert(users)
+      .values({
+        name: person.name,
+        email: person.email,
+        role: person.role,
+        phone: person.phone,
+        passwordHash: DECOY_HASH,
+        active: person.active ?? true,
+        totpEnabled: person.authenticator ?? false,
+        lastLoginAt: seen[person.name],
+        createdAt: joined[person.name],
+        updatedAt: joined[person.name],
+      })
+      .returning({ id: users.id });
+    id[person.name] = row!.id;
+  }
+  const admin = id["عبدالله"]!;
+  // A passkey that opens nothing: its key is not a key. It is here so the list shows what one looks like.
+  await db.insert(passkeys).values({ userId: admin, credentialId: "demo-passkey", publicKey: "demo", name: "iPhone", createdAt: joined["عبدالله"], lastUsedAt: seen["عبدالله"] });
+  const stopped = inOfficeHours(hours(24 * 19 - 2));
+
+  const written = await db.select().from(auditLog).orderBy(asc(auditLog.createdAt), asc(auditLog.id));
+  type Line = typeof auditLog.$inferInsert;
+  const about = (userId: number | null) => ({ entity: userId == null ? null : "user", entityId: userId });
+  const lines: Line[] = [
+    ...written.map(({ id: _, ...event }): Line => {
+      const doer = doerOf(event.action, event.details);
+      return { ...event, userId: doer ? id[doer]! : null, createdAt: inOfficeHours(event.createdAt) };
+    }),
+    ...PEOPLE.map((person): Line => ({ createdAt: joined[person.name], userId: person.name === "عبدالله" ? null : admin, action: "user.create", ...about(id[person.name]!), details: { role: person.role } })),
+    { createdAt: stopped, userId: admin, action: "user.update", ...about(id["فيصل"]!), details: { changed: ["active"], active: false } },
+    // Someone trying a guessed address in the night, from an address kept for examples.
+    { createdAt: hours(26), userId: null, action: "login_failed", ...about(null), details: { email: "admin@masar.example" }, ip: "198.51.100.23" },
+    { createdAt: hours(25.9), userId: null, action: "login_failed", ...about(null), details: { email: "admin@masar.example" }, ip: "198.51.100.23" },
+    ...PEOPLE.filter((person) => person.active !== false).map((person): Line => ({ createdAt: seen[person.name], userId: id[person.name]!, action: "login", ...about(id[person.name]!), details: { method: person.method } })),
+  ];
+  // The log is read in the order its lines were written, so it is written again in the order of time.
+  // Events of one moment keep the order they came in: the sort is stable.
+  lines.sort((a, b) => a.createdAt!.getTime() - b.createdAt!.getTime());
+  await db.delete(auditLog);
+  for (let from = 0; from < lines.length; from += 50) await db.insert(auditLog).values(lines.slice(from, from + 50));
+}
+
 /** Fills an empty database with the demo deals, dated relative to `now` so the map always looks alive. */
 export async function seedDemo(db: Db, now: Date): Promise<void> {
   const ago = (days: number) => new Date(now.getTime() - days * DAY);
   await seedCatalogue(db);
+
+  // The log takes the clock of the database, which here is the moment of seeding. After each step
+  // of a deal's story, the events it wrote are moved to the time that step stands for.
+  let stamped = 0;
+  const dated = async (at: Date): Promise<void> => {
+    const fresh = await db.select({ id: auditLog.id }).from(auditLog).where(gt(auditLog.id, stamped)).orderBy(asc(auditLog.id));
+    for (const row of fresh) await db.update(auditLog).set({ createdAt: at }).where(eq(auditLog.id, row.id));
+    stamped = fresh.at(-1)?.id ?? stamped;
+  };
+  await dated(ago(90));
   for (const demo of DEALS) {
     const [client] = await db
       .insert(clients)
@@ -435,8 +544,10 @@ export async function seedDemo(db: Db, now: Date): Promise<void> {
       actor: SYSTEM,
       now: ago(demo.startedDaysAgo),
     });
+    await dated(ago(demo.startedDaysAgo));
     for (const [stage, daysAgo] of demo.path) {
       await setDealStage(db, { dealId, stage, actor: SYSTEM, now: ago(daysAgo) });
+      await dated(ago(daysAgo));
     }
     if (demo.credit) {
       const { report, ...rest } = demo.credit.reading((daysAgo) => riyadhDay(ago(daysAgo)));
@@ -446,6 +557,7 @@ export async function seedDemo(db: Db, now: Date): Promise<void> {
         actor: SYSTEM,
         now: ago(demo.credit.readDaysAgo),
       });
+      await dated(ago(demo.credit.readDaysAgo));
     }
     for (const [index, entry] of (demo.papers ?? []).entries()) {
       const at = ago(Math.max(0, demo.startedDaysAgo - 1));
@@ -459,12 +571,14 @@ export async function seedDemo(db: Db, now: Date): Promise<void> {
         const review = entry.verdict === "verified" ? { verdict: "verified" } : { verdict: "rejected", note: entry.verdict.sentBack };
         await reviewPaper(db, { clientId: client!.id, paperId, review, actor: SYSTEM, now: at });
       }
+      await dated(at);
     }
     for (const [index, said] of (demo.thread ?? []).entries()) {
       const at = new Date(now.getTime() - said.hoursAgo * 3_600_000);
       const fileId = said.file
         ? (await db.transaction((tx) => keepFile(tx, { clientId: client!.id, code: INBOX_PAPER, name: said.file!, bytes: madeUpPdf(`${demo.fileNo} wa.${index + 1}`), actor: SYSTEM, now: at, via: "whatsapp" }))).fileId
         : null;
+      await dated(at);
       await db.insert(waMessages).values({
         clientId: client!.id,
         direction: said.from === "client" ? "in" : "out",
@@ -479,7 +593,10 @@ export async function seedDemo(db: Db, now: Date): Promise<void> {
         updatedAt: at,
       });
     }
-    if (demo.rejected) await rejectDeal(db, { clientId: client!.id, reason: demo.rejected.reason, actor: SYSTEM, now: ago(demo.rejected.daysAgo) });
+    if (demo.rejected) {
+      await rejectDeal(db, { clientId: client!.id, reason: demo.rejected.reason, actor: SYSTEM, now: ago(demo.rejected.daysAgo) });
+      await dated(ago(demo.rejected.daysAgo));
+    }
     // A client the office may write to has a link. Its token is the same on every copy of the demo.
     const view = await getDeal(db, { dealId, now });
     if (view && reachable(view)) {
@@ -501,4 +618,5 @@ export async function seedDemo(db: Db, now: Date): Promise<void> {
       await db.insert(waMessages).values({ clientId: null, direction: "in", waId: `demo.${stranger.phone}.${index + 1}`, phone: stranger.phone, name: stranger.name, type: "text", body: said.body, status: "received", createdAt: at, updatedAt: at });
     }
   }
+  await seedLog(db, now);
 }

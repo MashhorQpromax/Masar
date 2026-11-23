@@ -40,6 +40,11 @@ export const dayFull = (date: Date): string => yearDay.format(date);
 /** A day as short as it can be said without doubt: with its year only when that is not this year. */
 export const dayOf = (date: Date, now: Date): string => (yearDay.formatToParts(date).find((p) => p.type === "year")?.value === yearDay.formatToParts(now).find((p) => p.type === "year")?.value ? dayShort(date) : dayFull(date));
 
+const clock = new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: TIME_ZONE });
+
+/** A time of day in Riyadh, safe inside a sentence: "14:05". */
+export const timeText = (at: Date): string => ltr(clock.format(at));
+
 const fullDay = new Intl.DateTimeFormat("ar-SA-u-ca-gregory-nu-latn", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
 
 /** A day written as yyyy/mm/dd, the way SIMAH prints it, read out: "20 نوفمبر 2026". Returned as it came when it is not one. */
