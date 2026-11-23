@@ -3,6 +3,7 @@ import { emptyReport, type CreditReport, type ParsedReport } from "@/domain/cred
 import { EMPTY_PROJECT, type ProjectFacts } from "@/domain/project";
 import { defaultDealInput, type DealInput, type Stage } from "@/domain/deal";
 import { INBOX_PAPER, type PaperCode } from "@/domain/documents";
+import type { Sector } from "@/domain/eligibility";
 import { LINK_DAYS } from "@/domain/messages";
 import { addCreditReport } from "../credit/service";
 import type { Db } from "../db/client";
@@ -34,6 +35,8 @@ interface DemoDeal {
   serviceMonths: number;
   /** The code of the bank the salary is paid into, when it is known. */
   salaryBank?: string;
+  /** Who the client works for, when it is not the government. */
+  sector?: Sector;
   input: DealInput;
   /** Stages the deal has entered after the study, with how many days ago each one started. */
   path: [Stage, number][];
@@ -380,7 +383,9 @@ const DEALS: DemoDeal[] = [
     name: "هند",
     phone: "0500000011",
     city: "مكة المكرمة",
-    employer: "جامعة أم القرى",
+    // The one client the two example lenders do not take: what stands between her and a lender is a question nobody asked yet.
+    employer: "مدرسة أهلية",
+    sector: "private",
     birthYear: 1979,
     basicSalary: 8900,
     totalSalary: 11800,
@@ -662,7 +667,7 @@ export async function seedDemo(db: Db, now: Date): Promise<void> {
         totalSalary: demo.totalSalary,
         serviceMonths: demo.serviceMonths,
         salaryBank: demo.salaryBank ?? null,
-        sector: "gov",
+        sector: demo.sector ?? "gov",
         createdAt: ago(demo.startedDaysAgo),
         updatedAt: ago(demo.startedDaysAgo),
       })

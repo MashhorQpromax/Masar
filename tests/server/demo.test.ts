@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { draftLabel } from "@/copy/credit";
 import { dealTimeline, fundsFlow, pendingDrafts, reportDrafts, stationTimeline } from "@/domain/deal";
+import { getAnalysis } from "@/server/analysis/service";
 import { getClientCard, listClients } from "@/server/clients/directory";
 import { getCredit } from "@/server/credit/service";
 import type { Connection } from "@/server/db/client";
@@ -215,5 +216,24 @@ describe("the two example lenders of the demonstration", () => {
     // No credit record was read for him: even confirmed terms cannot answer for a fact that is missing.
     expect([...seen.get("فهد")!]).not.toContain("eligible");
     expect([...seen.get("فهد")!]).not.toContain("conditional");
+  });
+
+  it("leaves one invented client to the real lenders, where the plan asks before anything is paid", async () => {
+    const people = (await listClients(c.db, {})).rows;
+    const analysisOf = async (name: string) => (await getAnalysis(c.db, { clientId: people.find((client) => client.name === name)!.id, now }))!.analysis!;
+    // She works in the private sector and neither example lender takes it: that is confirmed, and it settles nothing about the others.
+    const hind = await analysisOf("هند");
+    expect([hind.verdict, hind.afterClearing]).toEqual(["not_eligible", "needs_verification"]);
+    const steps = hind.steps.map((step) => step.code);
+    expect(steps).toContain("CONFIRM_TERMS");
+    expect(steps.indexOf("CONFIRM_TERMS")).toBeLessThan(steps.indexOf("CREDIT"));
+    for (const step of hind.steps) {
+      if (step.code === "CONFIRM_TERMS") expect(step).toMatchObject({ beforePaying: true });
+      if (step.code === "CONFIRM_TERMS" || step.code === "APPLY") expect([DEMO_BANK, DEMO_COMPANY]).not.toContain(step.lender);
+    }
+    // Everyone else is answered by an example lender, so the two kinds of plan are both on show.
+    const noura = await analysisOf("نورة");
+    expect(noura.afterClearing).toBe("eligible");
+    expect(noura.steps.map((step) => step.code)).not.toContain("CONFIRM_TERMS");
   });
 });

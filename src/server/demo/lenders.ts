@@ -13,7 +13,8 @@ import type { Actor } from "../shared/actor";
  * made-up confirmation of a real lender's terms would be an invented policy. These two are named as
  * examples, with made-up terms and made-up sources that say so, so that every result of the strict
  * reading can be seen on invented deals: a confirmed answer in writing, one that rests on a word, a
- * confirmed refusal, and a confirmation that ran out.
+ * confirmed refusal, and a confirmation that ran out. Neither takes a client of the private sector, so
+ * one invented client is left with the real lenders alone, where every answer is still a question.
  */
 export const DEMO_BANK = "بنك المثال";
 export const DEMO_COMPANY = "المثال للتمويل";
@@ -55,7 +56,7 @@ const PRODUCTS: Record<string, DemoProduct[]> = {
     {
       financeType: "personal",
       name: "تمويل نقدي",
-      sectors: [...SALARIED, "private"],
+      sectors: SALARIED,
       terms: { rate: 6.9, rateType: "flat", maxAmount: 300_000, maxTenor: 60, maxAgeAtMaturity: 65, minSalary: 3000, minServiceMonths: 3, maxLtv: null, requiresSalaryTransfer: false, acceptsLateSimah: true, settledDefaultWaitMonths: 0 },
       source: { kind: "lender_staff", reference: DEMO_WORD },
     },
@@ -63,7 +64,7 @@ const PRODUCTS: Record<string, DemoProduct[]> = {
     {
       financeType: "mortgage",
       name: "تمويل المسكن",
-      sectors: [...SALARIED, "private"],
+      sectors: SALARIED,
       terms: { rate: 6.2, rateType: "reducing", maxAmount: 3_000_000, maxTenor: 300, maxAgeAtMaturity: 70, minSalary: 5000, minServiceMonths: 6, maxLtv: 85, requiresSalaryTransfer: false, acceptsLateSimah: false, settledDefaultWaitMonths: 12 },
       source: { kind: "lender_document", reference: DEMO_PAPER },
     },
