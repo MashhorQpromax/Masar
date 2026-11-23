@@ -34,14 +34,16 @@ const contact = (over: Record<string, unknown> = {}) => ({ phone: "", nationalit
 describe("the list of everyone", () => {
   it("shows every file with its newest deal, the last moved first", async () => {
     const { rows, total } = await listClients(c.db);
-    expect(total).toBe(6);
-    expect(rows.map((found) => found.name)).toEqual(["ريم", "نورة", "سالم", "فهد", "هند", "ماجد"]);
+    expect(total).toBe(7);
+    expect(rows.map((found) => found.name)).toEqual(["ريم", "نورة", "بندر", "سالم", "فهد", "هند", "ماجد"]);
     const by = Object.fromEntries(rows.map((found) => [found.name, found]));
     expect(by["سالم"]).toMatchObject({ fileNo: "C-014", city: "جدة", deal: { stage: "payoff", verdict: "go" } });
     expect(by["هند"]!.deal).toMatchObject({ stage: "lost" });
     expect(by["ماجد"]!.deal).toMatchObject({ stage: "closed" });
+    expect(by["بندر"]).toMatchObject({ fileNo: "C-022", deal: null, project: { type: "hotel", city: "جدة", requested: 66_000_000, verdict: "feasible_restructure" } });
+    expect(rows.filter((found) => found.project)).toHaveLength(1);
     expect((await listClients(c.db, { limit: 2 })).rows).toHaveLength(2);
-    expect((await listClients(c.db, { limit: 2 })).total).toBe(6);
+    expect((await listClients(c.db, { limit: 2 })).total).toBe(7);
   });
 
   it("finds a person by name, file number, employer or city of work", async () => {
@@ -167,11 +169,11 @@ describe("a new file", () => {
     await c.db.insert(waMessages).values({ clientId: null, direction: "in", waId: "wamid.before-file", phone: "966550000077", name: "تركي", body: "السلام عليكم", status: "received" });
     const opened = await startDeal(c.db, { borrower, input: defaultDealInput(), phone: "055 000 0077", actor, now });
     const [client] = await c.db.select().from(clients).where(eq(clients.id, opened.clientId));
-    expect(client).toMatchObject({ fullName: "تركي", phone: "966550000077", fileNo: "C-022" });
+    expect(client).toMatchObject({ fullName: "تركي", phone: "966550000077", fileNo: "C-023" });
     const [message] = await c.db.select().from(waMessages).where(eq(waMessages.waId, "wamid.before-file"));
     expect(message!.clientId).toBe(opened.clientId);
     const [created] = await c.db.select().from(auditLog).where(eq(auditLog.action, "client.create")).orderBy(desc(auditLog.id)).limit(1);
-    expect(created).toMatchObject({ entityId: opened.clientId, details: { fileNo: "C-022", adopted: 1 } });
+    expect(created).toMatchObject({ entityId: opened.clientId, details: { fileNo: "C-023", adopted: 1 } });
   });
 
   it("is not opened on a number another file holds, or on one that is no number", async () => {

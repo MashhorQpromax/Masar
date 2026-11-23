@@ -1,5 +1,6 @@
 import "server-only";
 import { emptyReport, type CreditReport, type ParsedReport } from "@/domain/credit";
+import { EMPTY_PROJECT, type ProjectFacts } from "@/domain/project";
 import { defaultDealInput, type DealInput, type Stage } from "@/domain/deal";
 import { INBOX_PAPER, type PaperCode } from "@/domain/documents";
 import { LINK_DAYS } from "@/domain/messages";
@@ -14,6 +15,7 @@ import { getDeal, rejectDeal, saveDeal, setDealStage } from "../deals/service";
 import { addPaper, keepFile, reviewPaper } from "../documents/service";
 import { seedCatalogue } from "../lenders/service";
 import { DEMO_LINK_SECRET, linkToken, reachable } from "../messages/links";
+import { openProject, saveProject } from "../projects/service";
 import { SYSTEM } from "../shared/actor";
 import { riyadhDay } from "../shared/clock";
 
@@ -574,6 +576,39 @@ async function seedKnowledge(db: Db, now: Date, people: Record<string, number>):
   return lines;
 }
 
+/**
+ * An invented project: a hotel on land its owner holds, asking for more than the build costs. Its
+ * file is nearly complete, so the study reaches an answer and every part of its page has something
+ * to show. No real land, owner or valuation is used.
+ */
+const PROJECT: { owner: string; phone: string; requested: number; openedDaysAgo: number; changedDaysAgo: number; facts: ProjectFacts } = {
+  owner: "بندر",
+  phone: "0500000022",
+  requested: 66_000_000,
+  openedDaysAgo: 9,
+  changedDaysAgo: 2,
+  facts: {
+    ...EMPTY_PROJECT,
+    borrowerType: "individual",
+    city: "جدة",
+    district: "أبحر الشمالية",
+    landArea: 4800,
+    landValue: 96_000_000,
+    valuer: "مكتب تقييم معتمد",
+    deed: "registered",
+    projectType: "hotel",
+    purpose: "build_cashout",
+    constructionCost: 62_000_000,
+    gfa: 21_500,
+    keys: 180,
+    adr: 420,
+    occupancy: 64,
+    equityCash: 6_000_000,
+    hasFeasibility: true,
+    hasPermit: true,
+  },
+};
+
 /** Fills an empty database with the demo deals, dated relative to `now` so the map always looks alive. */
 export async function seedDemo(db: Db, now: Date): Promise<void> {
   const ago = (days: number) => new Date(now.getTime() - days * DAY);
@@ -681,6 +716,21 @@ export async function seedDemo(db: Db, now: Date): Promise<void> {
       });
     }
   }
+  // The project's file was opened before its permit came, and the permit was added when it did.
+  const project = await openProject(db, {
+    input: { owner: PROJECT.owner, requested: PROJECT.requested, facts: { ...PROJECT.facts, hasPermit: false, valuationDate: riyadhDay(ago(PROJECT.openedDaysAgo + 12)).replaceAll("/", "-") } },
+    phone: PROJECT.phone,
+    actor: SYSTEM,
+    now: ago(PROJECT.openedDaysAgo),
+  });
+  await dated(ago(PROJECT.openedDaysAgo));
+  await saveProject(db, {
+    clientId: project.clientId,
+    input: { owner: PROJECT.owner, requested: PROJECT.requested, facts: { ...PROJECT.facts, valuationDate: riyadhDay(ago(PROJECT.openedDaysAgo + 12)).replaceAll("/", "-") } },
+    actor: SYSTEM,
+    now: ago(PROJECT.changedDaysAgo),
+  });
+  await dated(ago(PROJECT.changedDaysAgo));
   for (const stranger of STRANGERS) {
     for (const [index, said] of stranger.said.entries()) {
       const at = new Date(now.getTime() - said.hoursAgo * 3_600_000 + index * 40_000);

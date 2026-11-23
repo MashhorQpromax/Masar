@@ -22,7 +22,8 @@
     "golden:simah": "tsx legacy/tools/gen-simah-golden.ts",
     "golden:eligibility": "tsx legacy/tools/gen-eligibility-golden.ts",
     "golden:advisor": "tsx legacy/tools/gen-advisor-golden.ts",
-    "golden:experience": "DATABASE_URL=pglite: tsx --conditions=react-server legacy/tools/gen-experience-golden.ts"
+    "golden:experience": "DATABASE_URL=pglite: tsx --conditions=react-server legacy/tools/gen-experience-golden.ts",
+    "golden:project": "tsx legacy/tools/gen-project-golden.ts"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.3.7",

@@ -3,13 +3,14 @@ import Link from "next/link";
 import { filesCount, fileStateText, foundText, phoneText } from "@/copy/clients";
 import { STAGE } from "@/copy/deal";
 import { dayShort, initial, ltr } from "@/copy/format";
+import { PROJECT_VERDICT_SHORT, projectLine } from "@/copy/project";
 import { can } from "@/domain/auth";
 import { fileState } from "@/domain/clients";
 import { stationsFor } from "@/domain/deal";
 import { requireActor } from "@/server/auth/actor";
 import { listClients } from "@/server/clients/directory";
 import { getDb } from "@/server/db/client";
-import { SearchIcon } from "@/ui/icons";
+import { PlusIcon, SearchIcon } from "@/ui/icons";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "العملاء · مسار" };
@@ -19,6 +20,7 @@ const SHOWN = 60;
 export default async function ClientsPage({ searchParams }: { searchParams: Promise<{ q?: string | string[] }> }) {
   const me = await requireActor();
   const maySeeNumbers = can(me.role, "client.view_pii");
+  const mayOpen = can(me.role, "client.create");
   const typed = (await searchParams).q;
   const q = (Array.isArray(typed) ? typed[0] : typed)?.trim().slice(0, 80) ?? "";
   const { rows, total } = await listClients(await getDb(), { q, byPhone: maySeeNumbers, limit: SHOWN });
@@ -40,11 +42,19 @@ export default async function ClientsPage({ searchParams }: { searchParams: Prom
             )}
           </p>
         </div>
-        <form className="search" action="/clients" role="search">
-          <SearchIcon />
-          <input name="q" defaultValue={q} placeholder={maySeeNumbers ? "اسم، رقم ملف أو جوال" : "اسم أو رقم ملف"} aria-label="ابحث في العملاء" autoComplete="off" enterKeyHint="search" maxLength={80} />
-          <button type="submit">ابحث</button>
-        </form>
+        <div className="head-side head-side--find">
+          <form className="search" action="/clients" role="search">
+            <SearchIcon />
+            <input name="q" defaultValue={q} placeholder={maySeeNumbers ? "اسم، رقم ملف أو جوال" : "اسم أو رقم ملف"} aria-label="ابحث في العملاء" autoComplete="off" enterKeyHint="search" maxLength={80} />
+            <button type="submit">ابحث</button>
+          </form>
+          {mayOpen && (
+            <Link className="edit-link" data-soft href="/projects/new">
+              <PlusIcon size={16} />
+              مشروع جديد
+            </Link>
+          )}
+        </div>
       </div>
 
       {rows.length === 0 ? (
@@ -69,7 +79,14 @@ export default async function ClientsPage({ searchParams }: { searchParams: Prom
                   </span>
                 </span>
                 <span>
-                  {state.kind === "open" ? (
+                  {person.project ? (
+                    <>
+                      <span className="state" data-kind="project">
+                        مشروع
+                      </span>
+                      <small>{PROJECT_VERDICT_SHORT[person.project.verdict]}</small>
+                    </>
+                  ) : state.kind === "open" ? (
                     <>
                       <span className="dots" role="img" aria-label={`المحطة ${ltr(position + 1)} من ${ltr(stations.length)}`}>
                         {stations.map((key, i) => (
@@ -86,8 +103,8 @@ export default async function ClientsPage({ searchParams }: { searchParams: Prom
                   )}
                 </span>
                 <span className="row-where">
-                  {person.employer ?? "-"}
-                  <small>{person.city ?? ""}</small>
+                  {person.project ? projectLine({ projectType: person.project.type, city: null, district: null }) || "-" : (person.employer ?? "-")}
+                  <small>{person.project ? [person.project.district, person.project.city].filter(Boolean).join("، ") : (person.city ?? "")}</small>
                 </span>
                 {maySeeNumbers && <span className="row-phone num">{phoneText(person.phone) || "-"}</span>}
                 <span className="row-when">

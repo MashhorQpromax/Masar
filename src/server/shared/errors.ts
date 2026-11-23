@@ -7,6 +7,7 @@ export class DomainError extends Error {
       | "INVALID_STAGE"
       | "DEAL_ALREADY_OPEN"
       | "DEAL_ENDED"
+      | "NOT_A_PROJECT"
       | "OFFER_RECORDED"
       | "ROUTE_GONE"
       | "ROUTE_REFUSED"

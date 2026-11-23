@@ -1,10 +1,12 @@
 import "server-only";
 import { and, count, desc, eq, or, sql, type AnyColumn, type SQL } from "drizzle-orm";
 import type { Stage, Structure, Verdict } from "@/domain/deal";
+import type { ProjectType, ProjectVerdict } from "@/domain/project";
 import { digitsOf } from "@/domain/shared/phone";
 import { FOLD_DROP, FOLD_FROM, FOLD_TO, foldText } from "@/domain/shared/text";
 import type { Db } from "../db/client";
 import { clients, deals, notes, users } from "../db/schema";
+import { isProjectFile, projectOf } from "../projects/service";
 import type { ClientRow } from "./service";
 
 /** One person in the list of everyone the office opened a file for. */
@@ -17,6 +19,8 @@ export interface DirectoryRow {
   city: string | null;
   /** Their newest deal. Null for a file with no deal. */
   deal: { id: number; stage: Stage; structure: Structure; verdict: Verdict | null } | null;
+  /** The project the file is for, when it is a project's file: what it is, where, and what its study says. */
+  project: { type: ProjectType | null; city: string | null; district: string | null; requested: number; verdict: ProjectVerdict } | null;
   /** When the file last moved: its newest deal's last change, or its own. */
   movedAt: Date;
 }
@@ -52,18 +56,12 @@ export async function listClients(db: Db, args: { q?: string | null; byPhone?: b
   const movedAt = sql<Date>`coalesce(${deals.updatedAt}, ${clients.updatedAt})`;
   const found = await db
     .select({
-      id: clients.id,
-      fileNo: clients.fileNo,
-      name: clients.fullName,
-      phone: clients.phone,
-      employer: clients.employer,
-      city: clients.city,
+      client: clients,
       dealId: deals.id,
       stage: deals.stage,
       structure: deals.structure,
       verdict: deals.verdict,
       dealAt: deals.updatedAt,
-      clientAt: clients.updatedAt,
     })
     .from(clients)
     .leftJoin(deals, eq(deals.id, newestDeal))
@@ -73,16 +71,20 @@ export async function listClients(db: Db, args: { q?: string | null; byPhone?: b
 
   return {
     total,
-    rows: found.map((row) => ({
-      id: row.id,
-      fileNo: row.fileNo,
-      name: row.name,
-      phone: row.phone,
-      employer: row.employer,
-      city: row.city,
-      deal: row.dealId != null && row.stage && row.structure ? { id: row.dealId, stage: row.stage, structure: row.structure, verdict: row.verdict } : null,
-      movedAt: row.dealAt ?? row.clientAt,
-    })),
+    rows: found.map(({ client, ...row }) => {
+      const project = isProjectFile(client) ? projectOf(client) : null;
+      return {
+        id: client.id,
+        fileNo: client.fileNo,
+        name: client.fullName,
+        phone: client.phone,
+        employer: client.employer,
+        city: client.city,
+        deal: row.dealId != null && row.stage && row.structure ? { id: row.dealId, stage: row.stage, structure: row.structure, verdict: row.verdict } : null,
+        project: project && { type: project.facts.projectType, city: project.facts.city, district: project.facts.district, requested: project.requested, verdict: project.study.verdict },
+        movedAt: row.dealAt ?? client.updatedAt,
+      };
+    }),
   };
 }
 

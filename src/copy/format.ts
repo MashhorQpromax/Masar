@@ -19,6 +19,17 @@ export const plainMoney = (amount: number): string => grouped.format(Math.round(
 /** Whole riyals with thousands separators, safe inside a sentence. */
 export const money = (amount: number): string => ltr(plainMoney(amount));
 
+const inMillions = (amount: number): string => (Math.round(amount / 10_000) / 100).toLocaleString("en-US");
+
+/** A large amount the way it is said, without direction marks: "64.4 مليون". Under a million it is written in full. */
+export const plainMillions = (amount: number): string => (Math.abs(amount) >= 1_000_000 ? `${inMillions(amount)} مليون` : plainMoney(amount));
+
+/** A large amount as a figure and its unit, for a figure set large beside a small unit: "64.4" and "مليون ريال". */
+export const amountParts = (amount: number): { figure: string; unit: string } => (Math.abs(amount) >= 1_000_000 ? { figure: inMillions(amount), unit: "مليون ريال" } : { figure: plainMoney(amount), unit: "ريال" });
+
+/** The same, safe inside a sentence. */
+export const millions = (amount: number): string => (Math.abs(amount) >= 1_000_000 ? `${ltr(inMillions(amount))} مليون` : money(amount));
+
 /** A percentage, safe inside a sentence. Whole numbers show without decimals. */
 export const percent = (value: number): string => ltr(`${Number.isInteger(value) ? value : value.toFixed(1)}%`);
 

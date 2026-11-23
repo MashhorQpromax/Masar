@@ -44,6 +44,7 @@ const AUDIT_ACTION: Record<AuditAction, string> = {
   "client.reopen": "إعادة الملف إلى الدراسة",
   "credit.report_add": "قراءة تقرير سمة",
   "credit.report_review": "مراجعة تقرير سمة",
+  "project.save": "حفظ دراسة مشروع",
   "deal.save": "حفظ أرقام الصفقة",
   "deal.stage": "نقل الصفقة",
   "deal.route": "اعتماد جهة التمويل",
@@ -101,6 +102,7 @@ const FIELD: Record<string, string> = {
 const TERMS: CountForms = { one: "شرط واحد", two: "شرطان", few: "شروط", many: "شرطاً" };
 const MESSAGES: CountForms = { one: "رسالة واحدة", two: "رسالتان", few: "رسائل", many: "رسالة" };
 const LINKS: CountForms = { one: "رابط واحد", two: "رابطان", few: "روابط", many: "رابطاً" };
+const FACTS: CountForms = { one: "بيان واحد", two: "بيانان", few: "بيانات", many: "بياناً" };
 const KEYS: CountForms = { one: "مفتاح مرور واحد", two: "مفتاحا مرور", few: "مفاتيح مرور", many: "مفتاح مرور" };
 
 // What the log keeps beside an event is read as found: it was written by many hands over time, so nothing in it is taken on trust.
@@ -157,6 +159,8 @@ export function auditDetail(action: string, details: Record<string, unknown> | n
       return text(d.reason) ?? "";
     case "credit.report_review":
       return joined([d.suspension === true && "إيقاف خدمات", d.travelBan === true && "منع سفر"]);
+    case "project.save":
+      return d.created === true ? "مشروع جديد" : strings(d.changed).length > 0 ? `تغيّر ${counted(strings(d.changed).length, FACTS)}` : "";
     case "deal.stage": {
       const to = text(d.to);
       return to && to in STAGE ? `إلى ${STAGE[to as keyof typeof STAGE]}` : "";

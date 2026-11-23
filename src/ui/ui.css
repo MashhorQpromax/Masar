@@ -6207,6 +6207,366 @@
     }
   }
 
+  /* ---------- Project study ---------- */
+  /* The answer and what was asked for on one side, what a lender reads first on the other. */
+  .pj-verdict {
+    grid-row: auto;
+    gap: 26px;
+  }
+  /* The building at the road's end goes up as the page opens, the tower first. */
+  .site-rise {
+    transform-box: fill-box;
+    transform-origin: 50% 100%;
+    animation: build 0.9s 0.5s var(--ease-out) backwards;
+  }
+  .site-rise[data-late] {
+    animation-delay: 0.75s;
+  }
+  .pj-verdict .verdict-say {
+    font-size: clamp(34px, 4vw, 56px);
+  }
+  .pj-verdict[data-verdict="weak"] .verdict-keep b {
+    color: #ff8168;
+  }
+  .pj-ask {
+    display: grid;
+    gap: 18px;
+  }
+  .pj-ask .verdict-keep {
+    margin-top: 0;
+  }
+  /* What is asked for, drawn on the land's value: a line that fills, and the two marks a lender holds it to. */
+  .reach {
+    display: grid;
+    gap: 8px;
+    padding-top: 18px;
+    border-top: 1px solid rgba(255, 255, 255, 0.13);
+  }
+  .reach-head {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    font-size: 14px;
+    color: var(--color-navy-mist);
+  }
+  .reach-head b {
+    font-size: 19px;
+    font-weight: 700;
+    color: #fff;
+  }
+  .reach-track {
+    position: relative;
+    height: 16px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.14);
+  }
+  .reach-fill {
+    position: absolute;
+    inset-block: 0;
+    inset-inline-start: 0;
+    border-radius: 999px;
+    background: var(--color-sun);
+    transform-origin: right center;
+    animation: grow 1.1s 0.25s var(--ease-out) backwards;
+  }
+  .reach[data-over] .reach-fill {
+    background: #ff8168;
+  }
+  .reach-mark {
+    position: absolute;
+    inset-block: -5px;
+    width: 2px;
+    margin-inline-start: -1px;
+    border-radius: 2px;
+    background: #fff;
+  }
+  .reach-scale {
+    position: relative;
+    height: 18px;
+    font-size: 12.5px;
+    color: var(--color-navy-mist);
+  }
+  .reach-scale span {
+    position: absolute;
+    top: 0;
+    translate: 50% 0;
+  }
+  .reach-say {
+    max-width: 560px;
+    font-size: 14px;
+    line-height: 1.8;
+    color: #dbe3ea;
+  }
+  .pj-figures {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px 40px;
+    padding-top: 18px;
+    border-top: 1px solid rgba(255, 255, 255, 0.13);
+  }
+  .pj-figures dt {
+    font-size: 13px;
+    color: #8fa1b3;
+  }
+  .pj-figures dd b {
+    font-size: clamp(24px, 2.5vw, 32px);
+    font-weight: 700;
+    line-height: 1.35;
+  }
+  .pj-figures dd small {
+    font-size: 13px;
+    color: var(--color-navy-mist);
+  }
+  .pj-side {
+    grid-column: span 5;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    min-width: 0;
+  }
+  .pj-side > .tile {
+    flex: 1 1 auto;
+    animation-delay: 0.08s;
+  }
+  .pj-side > .tile + .tile {
+    animation-delay: 0.16s;
+  }
+  .pj-ratio-list,
+  .pj-steps {
+    display: grid;
+    margin-top: 8px;
+  }
+  .pj-ratio-list li,
+  .pj-steps li {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 14px 0;
+    font-size: 15.5px;
+    font-weight: 500;
+    line-height: 1.6;
+  }
+  .pj-ratio-list li + li,
+  .pj-steps li + li {
+    border-top: 1px solid var(--color-line);
+  }
+  .pj-ratio-list small,
+  .pj-steps small {
+    display: block;
+    font-size: 13px;
+    font-weight: 400;
+    line-height: 1.7;
+    color: var(--color-muted);
+  }
+  .pj-ratio-list b {
+    flex: none;
+    font-size: 30px;
+    font-weight: 700;
+    line-height: 1.2;
+  }
+  .pj-steps {
+    counter-reset: step;
+  }
+  .pj-steps li {
+    align-items: flex-start;
+    padding: 12px 0;
+    font-size: 15px;
+  }
+  .pj-steps li > span {
+    position: relative;
+    padding-inline-start: 34px;
+  }
+  .pj-steps li > span::before {
+    counter-increment: step;
+    content: counter(step);
+    position: absolute;
+    inset-inline-start: 0;
+    top: 1px;
+    display: grid;
+    place-items: center;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: var(--color-ground);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--color-navy);
+  }
+  .pj-steps b {
+    flex: none;
+    font-size: 17px;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+  /* The last step is the answer: how many times the income covers the debt. */
+  .pj-steps li:last-child b {
+    padding: 2px 12px;
+    border-radius: 999px;
+    background: var(--color-sun-soft);
+    color: var(--color-sun-ink);
+  }
+  .pj-income[data-low] .pj-steps li:last-child b {
+    background: var(--color-coral-soft);
+    color: var(--color-coral-ink);
+  }
+  .pj-none {
+    margin-top: 10px;
+    font-size: 15px;
+    line-height: 1.8;
+    color: var(--color-body);
+  }
+  .tile--notes.pj-alerts {
+    grid-column: span 5;
+    gap: 6px;
+    animation-delay: 0.24s;
+  }
+  .pj-ways {
+    grid-column: span 7;
+    animation-delay: 0.3s;
+  }
+  .pj-ways > .label {
+    margin-bottom: 4px;
+  }
+  .pj-ways .lift-gain {
+    min-width: 96px;
+  }
+  .pj-ways .lift-what small[data-fit="high"] {
+    font-weight: 600;
+    color: var(--color-sun-ink);
+  }
+  .pj-needs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .pj-needs li {
+    padding: 4px 12px;
+    border-radius: 999px;
+    background: var(--color-ground);
+    font-size: 13px;
+    line-height: 1.7;
+    color: var(--color-navy);
+  }
+  .pj-askwho {
+    font-size: 13.5px;
+    color: var(--color-body);
+  }
+  .pj-askwho b {
+    font-weight: 600;
+    color: var(--color-ink);
+  }
+  .pj-gaps {
+    grid-column: span 7;
+    animation-delay: 0.36s;
+  }
+  .pj-count {
+    padding: 4px 14px;
+    border-radius: 999px;
+    background: var(--color-coral-soft);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--color-coral-ink);
+  }
+  .pj-sub {
+    margin-top: 18px;
+    padding-top: 16px;
+    border-top: 1px solid var(--color-line);
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--color-muted);
+  }
+  .pj-gap-list {
+    display: grid;
+    gap: 14px;
+    margin-top: 14px;
+  }
+  .pj-gap-list li {
+    position: relative;
+    padding-inline-start: 22px;
+    font-size: 15px;
+    font-weight: 500;
+    line-height: 1.7;
+  }
+  .pj-gap-list li::before {
+    content: "";
+    position: absolute;
+    inset-inline-start: 0;
+    top: 9px;
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: var(--color-navy-mist);
+  }
+  .pj-gap-list li[data-critical]::before {
+    background: var(--color-coral);
+  }
+  .pj-gap-list small {
+    display: block;
+    font-size: 13px;
+    font-weight: 400;
+    color: var(--color-muted);
+  }
+  .pj-facts {
+    grid-column: span 5;
+    animation-delay: 0.42s;
+  }
+  /* The project form: the owner's three facts in a row, and the yes-or-no facts side by side. */
+  .fields.fields--owner {
+    grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr));
+  }
+  .checks {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 28px;
+  }
+  /* The people list's head: the search takes the room, and the way to a new project sits beside it. */
+  .head-side--find {
+    flex: 0 1 600px;
+  }
+  .head-side--find .search {
+    flex: 1 1 260px;
+    width: auto;
+  }
+  .head-side--find .edit-link {
+    min-height: 58px;
+    animation: rise 0.8s 0.16s var(--ease-out) backwards;
+  }
+  .state[data-kind="project"] {
+    background: var(--color-navy);
+    color: #fff;
+  }
+  .state[data-kind="project"]::before {
+    background: var(--color-sun);
+  }
+  @media (max-width: 1100px) {
+    .pj-side,
+    .tile--notes.pj-alerts,
+    .pj-ways,
+    .pj-gaps,
+    .pj-facts {
+      grid-column: 1 / -1;
+    }
+    .pj-verdict {
+      grid-column: 1 / -1;
+    }
+  }
+  @media (max-width: 560px) {
+    /* A calendar field keeps its own width, so on a phone it takes the row. */
+    .field:has(> .field-box > input[type="date"]) {
+      grid-column: 1 / -1;
+    }
+    .pj-ratio-list b {
+      font-size: 26px;
+    }
+    .pj-ways .lift-gain {
+      min-width: 0;
+    }
+    .pj-figures {
+      gap: 10px 26px;
+    }
+  }
+
   /* ---------- Small screens ---------- */
   @media (max-width: 900px) {
     .page {
@@ -6558,6 +6918,14 @@
   }
   to {
     transform: scaleX(1);
+  }
+}
+@keyframes build {
+  from {
+    transform: scaleY(0);
+  }
+  to {
+    transform: scaleY(1);
   }
 }
 @keyframes pulse {

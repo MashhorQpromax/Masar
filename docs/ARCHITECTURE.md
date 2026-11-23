@@ -24,6 +24,8 @@ src/
     funding/   Which lender funds the new financing of a bridge deal.
     knowledge/ What the office learned about lenders beyond their terms: the notes people wrote down,
                and what lenders actually answered, added up lender by lender.
+    project/   The study of a project that asks for finance against its land and its income: its ratios,
+               what stands in its way, the ways to finance it, and the papers its file still needs.
     documents/ What a client's file needs today and where each paper stands.
     messages/  What may be said to a client and what a client may be told.
     audit/     The kinds of event the audit log holds, the part of the office each belongs to,
@@ -42,6 +44,7 @@ src/
     lenders/   The catalogue of lenders and products, and its terms.
     funding/   The funding routes of a deal.
     knowledge/ Notes about lenders and the decisions lenders gave: writing them down and reading them back.
+    projects/  A project's file: opening it, changing it, and its study worked out on every read.
     documents/ A client's papers and their files.
     messages/  The conversation with a client, the client's link, the line to WhatsApp, the inbox.
     audit/     The reader of the audit log. Writing an event stays with the service that did the work.
@@ -200,6 +203,32 @@ A lender's terms say what it publishes. `src/domain/knowledge` holds what the of
 - The rows are shared by both pages (`src/ui/knowledge.tsx`), and the wording is in `src/copy/knowledge.ts`.
 - The demo holds three made-up notes and eighteen made-up decisions beside the catalogue's eight starting notes. They show how the screens read and say nothing true about any lender.
 
+## Project studies
+
+Some files are not a salary and a deal. A hotel, a residential or a commercial building asks for finance against its land and what it will earn. `src/domain/project` studies one: `projectStudy(facts, requested)` takes twenty facts (`ProjectFacts`, any of which may be unknown) and the amount asked for, and answers with the ratios a lender looks at first (the request over the land's value, over the whole cost, and the owner's share), a hotel's income against a year of its debt, what stands in the way (`ProjectAlert`, eight kinds, each with a level), the ways it could be financed (`ProjectStructure`, six, each with how well it fits and the amount it could raise when that can be estimated), the papers the file still needs (`ProjectGap`, fourteen, critical or not) and one of four verdicts. It is locked to the old `project.ts` by `npm run golden:project`: 320 generated projects, every ratio, alert, way and paper.
+
+The shares and rates the study uses (a bank's 60 percent of the whole cost, cash against land at 45 percent, a rate of 7.5 percent over ten years for the cover) are estimates from market practice, as the old study used them. They size a first answer. They are named constants at the top of the module, and the wording never presents them as a lender's terms.
+
+Old behaviours kept as they were, each worth a decision before the switch:
+
+- Bank statements, the credit report and a plan for the use of the money are always asked for and always critical. No file starts with fewer than three critical gaps, and four hold the verdict back.
+- A borrower nobody described is treated as an individual, and a deed nobody described as one outside the property register. The alert is the same one; the wording says the fact is not known and does not name the worse answer.
+- The tourism fund's way shows 60 percent of the whole cost even when that is more than was asked for.
+
+One thing changed on purpose: the old wording named one city and one request's amount in places. The new wording names no city and no amount of its own, and a lender's name stands only under who to ask, never as a promise that it accepts.
+
+**Storage.** A project is a client's file with `financeType` `"project"`, the amount in `requestedAmount` and the facts in `extra`: the same twenty keys the old system kept there as text, so its rows move as they are. `projectFactsOf` reads each value on its own, from an object or from the old text, and what is not what it should be reads as not known. The file has no salary (sector `self`), no deal and, for now, no list of papers to upload. No migration was needed.
+
+`src/server/projects` opens and changes one. `openProject` opens the owner's file through `createClient`, so the rules of a phone, the file number and the messages a number already wrote are the ones every file has. `saveProject` changes it. Both validate with `projectInputSchema`, where nothing and zero both read as not known. Each writes `project.save` in the clients' part of the log: that the project was new, or the names of the facts that changed, never a value. A save that changes nothing writes nothing. The verdict is not stored: `projectOf` works the study out on every read, so it cannot go stale when a rule changes.
+
+- **`/projects/new`** and **`/clients/[id]/project/edit`** are one form (`ProjectEditor`) in four steps. The study runs in the browser as each number is typed, and the server works it out again on saving. Opening needs `client.create`; changing needs `client.edit`. The dock steps aside on both, as it does for the deal editor.
+- **`/clients/[id]/project`** is the study: the verdict with the request drawn against the land's value and the two lines lenders draw at 50 and 70 percent, the three ratios each with the division behind it, a hotel's income one step at a time, what stands in the way with the way out of each, the ways to finance it, what the file still needs, and what is known.
+- The list of everyone marks a project's file and shows what it is, where it is and its verdict. The owner's file shows the project in place of a deal. `/projects` leads to the list.
+- The wording is in `src/copy/project.ts`. An amount in the millions is said in millions (`millions`, `amountParts` in `src/copy/format.ts`).
+- The demo holds one made-up project, a hotel on land in Jeddah. No real land, owner or valuation is in the repository.
+
+Not built yet for a project: uploading its papers, rejecting or reopening its file, and turning a salary file into a project.
+
 ## Documents
 
 `src/domain/documents` answers what a client's file needs today and where each paper stands. `src/server/documents` keeps the papers and their files, and `/deals/[id]/documents` is the screen.
@@ -271,7 +300,7 @@ Old module (under `legacy/lib`) and its state in the rebuild:
 - [x] storing a client's credit report, the upload of the PDF, the Najiz check and the credit screen: `src/server/credit`, `/clients/[id]/credit`
 - [x] keeping the uploaded PDF with the client's documents: `keepFile` under the `simah` paper
 - [ ] importing commitments from a report, and suggesting a new deal's items from it in the editor (`itemDrafts` is ready)
-- [ ] `project.ts` project finance
+- [x] `project.ts` project finance: `src/domain/project`, `src/copy/project.ts`, `src/server/projects`, locked by `tests/golden/project.json` (320 projects); the screens `/projects/new`, `/clients/[id]/project`, `/clients/[id]/project/edit`
 - [x] `advisor.ts` hidden conditions and ways to a larger amount: `src/domain/eligibility/advisor.ts`, `src/copy/advisor.ts`, locked by `tests/golden/advisor.json` (360 clients). Its alerts from a credit report were left to the credit record screen
 - [x] `whatsapp.ts`, `wa-cloud.ts` messages and Meta Cloud API: `src/domain/messages`, `src/copy/messages.ts`, `src/server/messages`, `/deals/[id]/messages`, `/api/wa/webhook` (migration `0004_messages_links`)
 - [x] `auth.ts`, `totp.ts` sign-in with a password, sessions, roles and permissions, lockouts, the authenticator as a second step and as a code: `src/domain/auth`, `src/server/auth`, the `/login` screen
@@ -294,4 +323,4 @@ Old module (under `legacy/lib`) and its state in the rebuild:
 - [x] the knowledge screen and a lender's decision on a deal: `/lenders/knowledge`, the knowledge and decision tiles on `/deals/[id]/lenders`
 - [ ] data migration from the live database, then the domain switch (only after the owner approves)
 
-To regenerate a golden file while `legacy/` still exists: `npm run golden:deal`, `npm run golden:credit`, `npm run golden:simah`, `npm run golden:eligibility`, `npm run golden:advisor`, `npm run golden:experience`. Each generator is seeded, so it writes the same file every time.
+To regenerate a golden file while `legacy/` still exists: `npm run golden:deal`, `npm run golden:credit`, `npm run golden:simah`, `npm run golden:eligibility`, `npm run golden:advisor`, `npm run golden:experience`, `npm run golden:project`. Each generator is seeded, so it writes the same file every time.

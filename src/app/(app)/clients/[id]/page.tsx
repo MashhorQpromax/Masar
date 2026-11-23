@@ -4,14 +4,16 @@ import { notFound } from "next/navigation";
 import { fileStateText, NATIONALITY, NOTE_KIND, phoneText, phoneTyped, ID_LABEL } from "@/copy/clients";
 import { STAGE, STATION, STRUCTURE, VERDICT } from "@/copy/deal";
 import { SECTOR } from "@/copy/editor";
-import { dayFull, dayOf, ltr, plainMoney } from "@/copy/format";
+import { amountParts, dayFull, dayOf, ltr, percent, plainMoney } from "@/copy/format";
 import { agoText } from "@/copy/messages";
+import { PROJECT_VERDICT, projectLine, verdictSay } from "@/copy/project";
 import { can } from "@/domain/auth";
 import { fileState, type ClientNationality } from "@/domain/clients";
 import { SECTORS, stationsFor, type Sector } from "@/domain/deal";
 import { requireActor } from "@/server/auth/actor";
 import { getClientCard } from "@/server/clients/directory";
 import { getDb } from "@/server/db/client";
+import { isProjectFile, projectOf } from "@/server/projects/service";
 import { BackIcon, PenIcon, PlusIcon } from "@/ui/icons";
 import { ContactForm } from "./ContactForm";
 import { DecideFile } from "./DecideFile";
@@ -34,6 +36,8 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
   const { client, deals, notes } = card;
   const deal = deals[0] ?? null;
   const state = fileState(deal?.stage ?? null);
+  // A project's file is studied on its land and its income. It has no deal and no salary.
+  const project = isProjectFile(client) ? projectOf(client) : null;
   const nationality: ClientNationality = client.nationality === "non_saudi" ? "non_saudi" : "saudi";
   const sector = (SECTORS as readonly string[]).includes(client.sector) ? SECTOR[client.sector as Sector] : null;
   const age = client.birthYear != null ? now.getFullYear() - client.birthYear : null;
@@ -69,74 +73,111 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
         </div>
         <div className="head-side">
           <p className="where">
-            <span className="num">{client.fileNo}</span> · <b>{fileStateText(state)}</b> · فُتح ملفه {dayOf(client.createdAt, now)}
+            <span className="num">{client.fileNo}</span> · <b>{project ? "مشروع" : fileStateText(state)}</b> · فُتح ملفه {dayOf(client.createdAt, now)}
           </p>
         </div>
       </div>
 
       <div className="bento bento--file">
-        <section className="tile tile--verdict tile--file" data-state={state.kind}>
-          <div>
-            <p className="label">{state.kind === "open" ? "الصفقة الجارية" : state.kind === "none" ? "الصفقة" : "آخر صفقة"}</p>
-            <h2 className="compose-title">
-              {state.kind === "open" ? STAGE[state.stage] : state.kind === "done" ? "اكتملت الصفقة" : state.kind === "rejected" ? "الملف مرفوض" : "لا صفقة بعد"}
-            </h2>
-            <p className="file-say">
-              {state.kind === "open" && deal
-                ? `${deal.verdict ? VERDICT[deal.verdict] : "قيد الدراسة"} · ${STRUCTURE[deal.structure]}`
-                : state.kind === "done" && deal
-                  ? `أُغلقت ${dayFull(deal.movedAt)}، واستُرد رأس المال والأتعاب.`
-                  : state.kind === "rejected"
-                    ? (why ?? "أُغلق الملف بلا صفقة.")
-                    : "فُتح الملف ولم تُدرس له صفقة."}
-            </p>
-          </div>
-
-          {figures.length > 0 && (
+        {project ? (
+          <section className="tile tile--verdict tile--file" data-state="project">
+            <div>
+              <p className="label">دراسة المشروع</p>
+              <h2 className="compose-title">{PROJECT_VERDICT[project.study.verdict]}</h2>
+              <p className="file-say">{[projectLine(project.facts), verdictSay(project.study)].filter(Boolean).join(". ")}</p>
+            </div>
             <dl className="file-figures">
-              {figures.map((figure) => (
-                <div key={figure.label} data-bad={figure.bad || undefined}>
-                  <dt>{figure.label}</dt>
-                  <dd className="num">{plainMoney(figure.value)}</dd>
+              {project.requested > 0 && (
+                <div>
+                  <dt>المطلوب، {amountParts(project.requested).unit}</dt>
+                  <dd className="num">{amountParts(project.requested).figure}</dd>
                 </div>
-              ))}
+              )}
+              {project.facts.landValue && (
+                <div>
+                  <dt>قيمة الأرض، {amountParts(project.facts.landValue).unit}</dt>
+                  <dd className="num">{amountParts(project.facts.landValue).figure}</dd>
+                </div>
+              )}
+              {project.study.ltv != null && project.requested > 0 && (
+                <div data-bad={project.study.verdict === "weak" || undefined}>
+                  <dt>المطلوب من قيمة الأرض</dt>
+                  <dd className="num">{percent(project.study.ltv)}</dd>
+                </div>
+              )}
             </dl>
-          )}
-
-          {state.kind === "open" && (
-            <ol className="steps" aria-label="محطات الصفقة">
-              {stations.map((key, index) => (
-                <li key={key} data-state={index < position ? "done" : index === position ? "current" : "ahead"} aria-current={index === position ? "step" : undefined}>
-                  {STATION[key]}
-                </li>
-              ))}
-            </ol>
-          )}
-
-          <div className="file-doors">
-            {deal ? (
-              <>
-                <Link className="btn btn--white" href={`/deals/${deal.id}`}>
-                  افتح الصفقة
-                </Link>
-                <Link href={`/deals/${deal.id}/documents`}>المستندات</Link>
-                {maySee && <Link href={`/deals/${deal.id}/messages`}>الرسائل</Link>}
-                {maySee && <Link href={`/clients/${client.id}/credit`}>سمة</Link>}
-                <Link href={`/deals/${deal.id}/lenders`}>جهات التمويل</Link>
-              </>
-            ) : (
-              maySee && <Link href={`/clients/${client.id}/credit`}>سمة</Link>
-            )}
-            {mayDecide && (state.kind === "none" || state.kind === "done") && (
-              <Link className={deal ? undefined : "btn btn--white"} href={`/deals/new?client=${client.id}`}>
-                {!deal && <PlusIcon />}
-                صفقة جديدة
+            <div className="file-doors">
+              <Link className="btn btn--white" href={`/clients/${client.id}/project`}>
+                افتح الدراسة
               </Link>
+              {mayEdit && <Link href={`/clients/${client.id}/project/edit`}>عدّل المشروع</Link>}
+              {maySee && <Link href={`/clients/${client.id}/credit`}>سمة</Link>}
+            </div>
+          </section>
+        ) : (
+          <section className="tile tile--verdict tile--file" data-state={state.kind}>
+            <div>
+              <p className="label">{state.kind === "open" ? "الصفقة الجارية" : state.kind === "none" ? "الصفقة" : "آخر صفقة"}</p>
+              <h2 className="compose-title">
+                {state.kind === "open" ? STAGE[state.stage] : state.kind === "done" ? "اكتملت الصفقة" : state.kind === "rejected" ? "الملف مرفوض" : "لا صفقة بعد"}
+              </h2>
+              <p className="file-say">
+                {state.kind === "open" && deal
+                  ? `${deal.verdict ? VERDICT[deal.verdict] : "قيد الدراسة"} · ${STRUCTURE[deal.structure]}`
+                  : state.kind === "done" && deal
+                    ? `أُغلقت ${dayFull(deal.movedAt)}، واستُرد رأس المال والأتعاب.`
+                    : state.kind === "rejected"
+                      ? (why ?? "أُغلق الملف بلا صفقة.")
+                      : "فُتح الملف ولم تُدرس له صفقة."}
+              </p>
+            </div>
+
+            {figures.length > 0 && (
+              <dl className="file-figures">
+                {figures.map((figure) => (
+                  <div key={figure.label} data-bad={figure.bad || undefined}>
+                    <dt>{figure.label}</dt>
+                    <dd className="num">{plainMoney(figure.value)}</dd>
+                  </div>
+                ))}
+              </dl>
             )}
-          </div>
-          {mayDecide && state.kind === "open" && <DecideFile clientId={client.id} decision="reject" />}
-          {mayDecide && state.kind === "rejected" && <DecideFile clientId={client.id} decision="reopen" />}
-        </section>
+
+            {state.kind === "open" && (
+              <ol className="steps" aria-label="محطات الصفقة">
+                {stations.map((key, index) => (
+                  <li key={key} data-state={index < position ? "done" : index === position ? "current" : "ahead"} aria-current={index === position ? "step" : undefined}>
+                    {STATION[key]}
+                  </li>
+                ))}
+              </ol>
+            )}
+
+            <div className="file-doors">
+              {deal ? (
+                <>
+                  <Link className="btn btn--white" href={`/deals/${deal.id}`}>
+                    افتح الصفقة
+                  </Link>
+                  <Link href={`/deals/${deal.id}/documents`}>المستندات</Link>
+                  {maySee && <Link href={`/deals/${deal.id}/messages`}>الرسائل</Link>}
+                  {maySee && <Link href={`/clients/${client.id}/credit`}>سمة</Link>}
+                  <Link href={`/deals/${deal.id}/lenders`}>جهات التمويل</Link>
+                </>
+              ) : (
+                maySee && <Link href={`/clients/${client.id}/credit`}>سمة</Link>
+              )}
+              {mayDecide && (state.kind === "none" || state.kind === "done") && (
+                <Link className={deal ? undefined : "btn btn--white"} href={`/deals/new?client=${client.id}`}>
+                  {!deal && <PlusIcon />}
+                  صفقة جديدة
+                </Link>
+              )}
+            </div>
+            {mayDecide && state.kind === "open" && <DecideFile clientId={client.id} decision="reject" />}
+            {mayDecide && state.kind === "rejected" && <DecideFile clientId={client.id} decision="reopen" />}
+          </section>
+        )}
 
         <section className="tile tile--contact">
           <p className="label">بيانات التواصل</p>
@@ -203,7 +244,7 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
           )}
         </section>
 
-        {maySee && facts.length > 0 && (
+        {maySee && !project && facts.length > 0 && (
           <section className="tile tile--five tile--facts">
             <div className="facts-head">
               <p className="label">ما تُحسب عليه الصفقة</p>

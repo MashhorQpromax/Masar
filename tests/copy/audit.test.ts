@@ -66,6 +66,16 @@ describe("the detail beside an event", () => {
     expect(auditDetail("credit.report_review", { suspension: false })).toBe("");
   });
 
+  it("says a project was opened, or how much of it changed, and never a figure of it", () => {
+    expect(auditDetail("project.save", { created: true })).toBe("مشروع جديد");
+    expect(auditDetail("project.save", { changed: ["hasPermit"] })).toBe("تغيّر بيان واحد");
+    expect(auditDetail("project.save", { changed: ["landValue", "requested"] })).toBe("تغيّر بيانان");
+    expect(auditDetail("project.save", { changed: ["owner", "requested", "landValue", "purpose"] })).toBe("تغيّر 4 بيانات");
+    expect(auditDetail("project.save", { changed: Array.from({ length: 12 }, (_, i) => `fact${i}`) })).toBe("تغيّر 12 بياناً");
+    expect(auditDetail("project.save", { changed: [] })).toBe("");
+    expect(auditDetail("project.save", {})).toBe("");
+  });
+
   it("says where a deal moved to and which lender was chosen", () => {
     for (const [stage] of STAGES) {
       const text = auditDetail("deal.stage", { from: "study", to: stage });

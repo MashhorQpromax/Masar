@@ -39,12 +39,22 @@ async function nextFileNo(tx: Tx): Promise<string> {
  * Opens a file for a new client. Runs inside the caller's transaction. A phone given here is checked
  * like any other, and what that number wrote before it had a file joins the new file.
  */
-export async function createClient(tx: Tx, args: { input: BorrowerInput; phone?: string | null; actor: Actor; now: Date }): Promise<ClientRow> {
+export async function createClient(
+  tx: Tx,
+  args: {
+    input: BorrowerInput;
+    phone?: string | null;
+    /** What a file that is not a salary file starts with: its kind, what it asks for, and its own facts. */
+    file?: { financeType: string; requestedAmount: number | null; extra: Record<string, unknown> };
+    actor: Actor;
+    now: Date;
+  },
+): Promise<ClientRow> {
   const phone = args.phone?.trim() ? await phoneFor(tx, { phone: args.phone, clientId: null }) : null;
   const fileNo = await nextFileNo(tx);
   const [client] = await tx
     .insert(clients)
-    .values({ ...args.input, phone, fileNo, ownerId: args.actor.userId, createdAt: args.now, updatedAt: args.now })
+    .values({ ...args.input, ...args.file, phone, fileNo, ownerId: args.actor.userId, createdAt: args.now, updatedAt: args.now })
     .returning();
   const adopted = phone ? await adoptMessages(tx, { clientId: client!.id, phone }) : 0;
   await audit(tx, args.actor, "client.create", "client", client!.id, { fileNo, ...(adopted ? { adopted } : {}) });

@@ -14,7 +14,7 @@ export interface DockItem {
 }
 
 /** Pages where a person is filling a form. The dock steps aside so the form's own bar has the bottom of the screen. */
-const FOCUSED = /^\/deals\/(new|\d+\/edit)$/;
+const FOCUSED = /^\/(deals\/(new|\d+\/edit)|projects\/new|clients\/\d+\/project\/edit)$/;
 const COUNT = { one: "واحدة تنتظر", two: "اثنتان تنتظران", few: "تنتظر", many: "تنتظر" };
 
 /**
