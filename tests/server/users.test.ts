@@ -37,7 +37,11 @@ afterAll(async () => {
 const admin = () => ({ userId: id["عبدالله"]!, ip: "10.0.0.7" });
 /** The admin, acting from a session that typed its password a moment ago. */
 let adminToken = "";
-const manager = () => ({ actor: admin(), sessionToken: adminToken });
+/**
+ * A call that names no time of its own happens late in the made-up day, after everything the tests set
+ * up and inside the stretched confirmation. It never falls back on the clock of the machine running it.
+ */
+const manager = () => ({ actor: admin(), sessionToken: adminToken, now: later(23 * 60) });
 const code = async (run: () => Promise<unknown>) => run().then(() => "ok", (error) => error.code ?? String(error));
 const row = async (name: string) => (await c.db.select().from(users).where(eq(users.id, id[name]!)))[0]!;
 const lastAudit = async () => (await c.db.select().from(auditLog).orderBy(desc(auditLog.id)).limit(1))[0]!;
