@@ -112,13 +112,34 @@ export async function saveDeal(
  */
 export async function startDeal(
   db: Db,
-  args: { borrower: unknown; input: unknown; actor: Actor; now?: Date },
+  args: { borrower: unknown; input: unknown; phone?: string | null; actor: Actor; now?: Date },
 ): Promise<{ clientId: number; dealId: number; study: DealStudy }> {
   const borrower = parseBorrower(args.borrower);
   const input = validated(args.input);
   const now = args.now ?? new Date();
   return db.transaction(async (tx) => {
-    const client = await createClient(tx, { input: borrower, actor: args.actor, now });
+    const client = await createClient(tx, { input: borrower, phone: args.phone, actor: args.actor, now });
+    const saved = await writeDeal(tx, { client, deal: undefined, input, actor: args.actor, now });
+    return { clientId: client.id, ...saved };
+  });
+}
+
+/**
+ * Starts a deal for a client who already has a file and no deal in progress: one whose earlier deal
+ * ended, or whose file was opened without one. A rejected file goes back under study with it.
+ */
+export async function startDealFor(
+  db: Db,
+  args: { clientId: number; borrower: unknown; input: unknown; actor: Actor; now?: Date },
+): Promise<{ clientId: number; dealId: number; study: DealStudy }> {
+  const borrower = parseBorrower(args.borrower);
+  const input = validated(args.input);
+  const now = args.now ?? new Date();
+  return db.transaction(async (tx) => {
+    const before = await clientById(tx, args.clientId);
+    if (await openDealOf(tx, before.id)) throw new DomainError("DEAL_ALREADY_OPEN", `client ${before.id}`);
+    const client = await updateBorrower(tx, { clientId: before.id, input: borrower, actor: args.actor, now });
+    if (client.status === "rejected") await tx.update(clients).set({ status: "study", updatedAt: now }).where(eq(clients.id, client.id));
     const saved = await writeDeal(tx, { client, deal: undefined, input, actor: args.actor, now });
     return { clientId: client.id, ...saved };
   });

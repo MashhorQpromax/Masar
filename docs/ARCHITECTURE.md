@@ -17,13 +17,15 @@ src/
     credit/    The SIMAH credit record: reading it from the report's text, grading it, and what it
                means for banks and finance companies.
     auth/      The four roles, what each may do, and the rule a new password must meet.
+    clients/   Where a file stands, and the check of an identity number.
   copy/        Arabic wording for every code the domain returns, the choices a form offers,
                and number, date and count formatting.
   server/      Everything that touches the outside world (database, auth, WhatsApp). Server only.
     db/        Drizzle schema (one file per area) and the connection.
     deals/     Deal service: validate, compute with the engine, store, move stages, audit. Read views for screens.
                A new client's first deal and a revision of a deal's numbers are each one transaction.
-    clients/   Client files: the facts a deal is computed from, and file numbering.
+    clients/   Client files: the facts a deal is computed from, how a client is reached, notes,
+               file numbering, and the list and the card the people screens read.
     auth/      Who is acting. Every route and action asks here first. Passwords, sessions,
                authenticator codes, one-time codes, passkeys, lockouts, and the accounts themselves.
     demo/      Fictional deals for a build that has no database.
@@ -187,6 +189,20 @@ Worth a decision before the switch: files live in Postgres, so the database grow
 - The sign-in code by WhatsApp uses the same line (`codeSender`) and the approved authentication template `masar_login_code`. The form answers with the same words whether the email has an account or not.
 - A build without a database sends nothing and records nothing. Its client numbers are invented, so "open in WhatsApp" opens with no number chosen, and its links are fixed so the same link opens on every copy of the demo.
 
+## People and the inbox
+
+`/clients` lists every file, `/clients/[id]` is one person's file, and `/inbox` holds what was written to the company's number. `src/server/clients/directory.ts` reads the first two and `src/server/messages/inbox.ts` the third.
+
+- A file's state is the stage of its newest deal (`fileState`): at a station of the road, completed, rejected, or a file with no deal. The list shows the file that moved last first, and its search looks at the name, the employer and the file number. A phone is searched only for a person who may see one (`client.view_pii`). Letters that are written more than one way are read as one (`foldText`).
+- A phone is kept in one form, `9665` and eight digits, and belongs to one file. Saving a number another file holds is refused, and the refusal names that file. A file takes what its number wrote before it was on the file (`adoptMessages`).
+- An identity number is ten digits, starts with 1 for a citizen and 2 for a resident, and its last digit is a check digit (`idProblem`). It belongs to one file too. The audit log records which fields of a contact changed and never their values.
+- The decision on a file is taken from the file itself: rejecting it, or putting a rejected file back under study, each with a reason of at least three letters that stays on the file as a note. Rejection closes the client's link, as before.
+- A client whose last deal ended can get another on the same file (`startDealFor`). A deal in progress refuses a second one, and a rejected file goes back under study with the new deal.
+- A conversation waits when its last message came in and nobody has dealt with it (`wa_messages.seen_at`, migration `0005_inbox_seen`). Answering ends the wait, and so does saying it needs no answer (`markHandled`), which is written to the audit log. The dock carries the count of waiting conversations for a person who may read them.
+- A number the office does not know has three ways out: open a file for it (the new deal form arrives with the number and the name WhatsApp gave), say it is an existing client's number (`claimNumber`: it replaces that client's phone and its messages join the file), or say it needs no answer.
+- The inbox and a stranger's messages ask for `client.view_pii`. A person without it does not see the place in the dock.
+- The demo has six files (four on the road, one completed, one rejected) and one unknown number with two messages.
+
 ## Porting checklist
 
 Old module (under `legacy/lib`) and its state in the rebuild:
@@ -210,11 +226,14 @@ Old module (under `legacy/lib`) and its state in the rebuild:
 - [x] deal storage and stages from `data.ts` and `actions.ts`: `src/server/deals` (save, stage, reject, reopen, read), tested on a real Postgres engine in memory
 - [x] the lender catalogue and its terms: `src/server/lenders`, the `/lenders` page; funding routes for a deal: `src/domain/funding`, `src/server/funding`, `/deals/[id]/lenders` (migration `0002_lender_routes`)
 - [x] a client's papers and their files from `data.ts` and `actions.ts`: `src/domain/documents`, `src/server/documents`, `/deals/[id]/documents`, `/files/[id]` (migration `0003_documents_files`)
-- [ ] the rest of `data.ts` and `actions.ts`: clients, notes, adding and removing lenders and products, lender rules
+- [x] clients, their contact details and notes from `data.ts` and `actions.ts`: `src/domain/clients`, `src/server/clients` (`directory.ts`, `updateContact`, `addNote`), `/clients`, `/clients/[id]`
+- [x] the inbox and numbers the office does not know: `src/server/messages/inbox.ts`, `/inbox`, `/inbox/[phone]` (migration `0005_inbox_seen`)
+- [ ] the rest of `data.ts` and `actions.ts`: adding and removing lenders and products, lender rules
 - [x] screens on the "الخريطة" direction: the road (home), the deals list, the deal file with stage moves and the step by step calculation, the deal editor
 - [x] opening a client file and revising its facts, from `data.ts` and `actions.ts`: `src/server/clients`
 - [x] the client portal, where the client follows their file and uploads their own papers: `/s/[token]`, `src/server/messages/portal.ts`
-- [ ] screens still to build: clients, inbox (messages from numbers the office does not know wait for it), calculator, knowledge, users, audit
+- [x] screens: clients, a client's file, the inbox
+- [ ] screens still to build: calculator, knowledge, users, audit
 - [ ] data migration from the live database, then the domain switch (only after the owner approves)
 
 To regenerate a golden file while `legacy/` still exists: `npm run golden:deal`, `npm run golden:credit`, `npm run golden:simah`. Each generator is seeded, so it writes the same file every time.

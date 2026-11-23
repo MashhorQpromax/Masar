@@ -54,6 +54,36 @@ export function LendersIcon({ size = 22 }: { size?: number }) {
   );
 }
 
+/** Two people, one a step behind: everyone the office has a file for. */
+export function ClientsIcon({ size = 22 }: { size?: number }) {
+  return (
+    <svg {...base(size)}>
+      <circle cx="9.5" cy="8.5" r="3.2" />
+      <path d="M3.5 19c.5-3.2 2.9-5 6-5s5.5 1.8 6 5" />
+      <path d="M16 5.8a3 3 0 0 1 0 5.4" />
+      <path d="M18 14.6c1.4.7 2.3 2.2 2.5 4.4" />
+    </svg>
+  );
+}
+
+/** A speech bubble: what clients wrote. */
+export function InboxIcon({ size = 22 }: { size?: number }) {
+  return (
+    <svg {...base(size)}>
+      <path d="M7.5 4.5h9A3.5 3.5 0 0 1 20 8v4.5a3.5 3.5 0 0 1-3.5 3.5H12l-4.5 3.5V16A3.5 3.5 0 0 1 4 12.5V8a3.5 3.5 0 0 1 3.5-3.5z" />
+    </svg>
+  );
+}
+
+export function SearchIcon({ size = 20 }: { size?: number }) {
+  return (
+    <svg {...base(size)}>
+      <circle cx="11" cy="11" r="6" />
+      <path d="M15.5 15.5 20 20" />
+    </svg>
+  );
+}
+
 /** Points back along the reading direction: to the right in Arabic. */
 export function BackIcon({ size = 18 }: { size?: number }) {
   return (

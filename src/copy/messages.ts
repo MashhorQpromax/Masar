@@ -10,7 +10,7 @@ import type { ClientFacts, GateReason, MessageKind } from "@/domain/messages";
 import { LINK_DAYS } from "@/domain/messages";
 import { STRUCTURE } from "./deal";
 import { owedLines } from "./documents";
-import { counted, dayShort, plainMoney } from "./format";
+import { counted, dayShort, plainMoney, type CountForms } from "./format";
 
 /** The name the office signs with. */
 export const OFFICE_NAME = "مسار للحلول التمويلية";
@@ -290,3 +290,20 @@ export function waRuns(text: string): { text: string; mark: "bold" | "soft" | nu
     .map((part, index) => (index % 2 === 0 ? { text: part, mark: null } : { text: part.slice(1, -1), mark: part.startsWith("*") ? ("bold" as const) : ("soft" as const) }))
     .filter((run) => run.text.length > 0);
 }
+
+/** A message in one line, for a list of conversations. */
+export function excerpt(message: { type: string; body: string | null }, max = 96): string {
+  if (message.type === "template") return "قالب المتابعة برابط ملفه";
+  const line = waRuns(message.body ?? "")
+    .map((run) => run.text)
+    .join("")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!line) return MESSAGE_TYPE[message.type] ?? "رسالة";
+  return line.length > max ? `${line.slice(0, max).trimEnd()}…` : line;
+}
+
+const WAITING: CountForms = { one: "محادثة واحدة تنتظر ردك", two: "محادثتان تنتظران ردك", few: "محادثات تنتظر ردك", many: "محادثة تنتظر ردك" };
+
+/** How many conversations wait for an answer, as the head of the inbox says it. */
+export const waitingText = (n: number): string => (n === 0 ? "لا أحد ينتظر رداً." : `${counted(n, WAITING)}.`);

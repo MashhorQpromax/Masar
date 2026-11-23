@@ -7,6 +7,7 @@ import { getDb } from "@/server/db/client";
 import { clientOfDeal } from "@/server/documents/service";
 import { closeLinks, openLink } from "@/server/messages/links";
 import { linkPath, linkSecret, siteOrigin, whatsapp } from "@/server/messages/request";
+import { markHandled } from "@/server/messages/inbox";
 import { noteSent, sendMessage } from "@/server/messages/service";
 import { DomainError } from "@/server/shared/errors";
 
@@ -19,7 +20,11 @@ export interface MessageAnswer {
 const id = z.coerce.number().int().positive();
 const text = z.string().max(5000);
 
-const refresh = (dealId: number): void => revalidatePath(`/deals/${dealId}/messages`);
+/** The conversation changed: its page, and the count of who waits for an answer on every page. */
+const refresh = (dealId: number): void => {
+  revalidatePath("/", "layout");
+  revalidatePath(`/deals/${dealId}/messages`);
+};
 
 async function answer(run: () => Promise<MessageAnswer>): Promise<MessageAnswer> {
   try {
@@ -94,5 +99,17 @@ export async function shutLinks(formData: FormData): Promise<void> {
   const clientId = await clientOfDeal(db, deal.data);
   if (clientId == null) return;
   await closeLinks(db, { clientId, actor });
+  refresh(deal.data);
+}
+
+/** Says what the client last wrote needs no answer, so the conversation stops waiting. */
+export async function needsNoAnswer(formData: FormData): Promise<void> {
+  const actor = await requireActor("client.edit");
+  const deal = id.safeParse(formData.get("dealId"));
+  if (!deal.success) return;
+  const db = await getDb();
+  const clientId = await clientOfDeal(db, deal.data);
+  if (clientId == null) return;
+  await markHandled(db, { clientId }, actor);
   refresh(deal.data);
 }

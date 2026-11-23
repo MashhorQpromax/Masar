@@ -4,17 +4,17 @@ import { notFound } from "next/navigation";
 import { STAGE } from "@/copy/deal";
 import { owedBrief, paperLabel } from "@/copy/documents";
 import { counted, dayShort } from "@/copy/format";
-import { agoText, CLIENT_STEP, firstName, GATE_REASON, internalText, MESSAGE_KIND, MESSAGE_STATUS, MESSAGE_TYPE, papersText, progressText, studyText, type MessageExtras } from "@/copy/messages";
+import { agoText, CLIENT_STEP, excerpt, firstName, GATE_REASON, internalText, MESSAGE_KIND, MESSAGE_TYPE, papersText, progressText, studyText, type MessageExtras } from "@/copy/messages";
 import { can } from "@/domain/auth";
 import { clientReachable, isClientMessage, isMessageKind, type MessageKind } from "@/domain/messages";
 import { requireActor } from "@/server/auth/actor";
 import { getDb } from "@/server/db/client";
 import { linkPath, linkSecret, siteOrigin, whatsapp } from "@/server/messages/request";
-import { getMessages, type ThreadMessage } from "@/server/messages/service";
+import { getMessages } from "@/server/messages/service";
 import { BackIcon } from "@/ui/icons";
 import { SubmitButton } from "@/ui/SubmitButton";
-import { WaText } from "@/ui/WaText";
-import { makeLink, shutLinks } from "./actions";
+import { ThreadBubble } from "@/ui/ThreadBubble";
+import { makeLink, needsNoAnswer, shutLinks } from "./actions";
 import { Composer, type Choice } from "./Composer";
 import { CopyLink } from "./CopyLink";
 
@@ -22,54 +22,6 @@ export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "الرسائل · مسار" };
 
 const TIMES = { one: "مرة واحدة", two: "مرتين", few: "مرات", many: "مرة" };
-/** A message longer than this is folded in the conversation, and opens whole when asked. */
-const LONG = 280;
-
-const brief = (text: string, max = 110): string => {
-  const line = text.replace(/[*_]/g, "").replace(/\s+/g, " ").trim();
-  return line.length > max ? `${line.slice(0, max).trimEnd()}…` : line;
-};
-
-/** One message of the conversation, as a bubble on its side. */
-function Bubble({ message, clientName, now }: { message: ThreadMessage; clientName: string; now: Date }) {
-  const out = message.direction === "out";
-  const template = message.type === "template";
-  const kind = MESSAGE_TYPE[message.type];
-  const body = template ? null : message.body;
-  const failed = message.status === "failed";
-  return (
-    <li data-dir={message.direction} data-bad={failed || undefined}>
-      <div className="thread-bubble">
-        {template && <p className="thread-kind">{MESSAGE_TYPE.template} برابط ملفه</p>}
-        {body && body.length > LONG ? (
-          <details className="thread-long">
-            <summary>
-              <span>{brief(body, 150)}</span>
-              <b>اقرأها كاملة</b>
-            </summary>
-            <WaText text={body} />
-          </details>
-        ) : (
-          body && <WaText text={body} />
-        )}
-        {message.fileId != null && (
-          <a className="file" href={`/files/${message.fileId}`} target="_blank" rel="noreferrer">
-            <span>
-              <small>{kind ?? "ملف"}</small>
-              <bdi>افتحه</bdi>
-            </span>
-          </a>
-        )}
-        {message.fileId == null && !body && !template && <p className="thread-kind">{message.error ? `${kind ?? "ملف"} لم يُحفظ. اطلبه من العميل مرة أخرى.` : (kind ?? "رسالة")}</p>}
-      </div>
-      <small className="thread-meta">
-        {out ? (message.by ? firstName(message.by) : "المكتب") : firstName(clientName)}
-        {out && message.status && MESSAGE_STATUS[message.status] ? ` · ${MESSAGE_STATUS[message.status]}` : ""} · {agoText(message.at, now)}
-      </small>
-    </li>
-  );
-}
-
 export default async function MessagesPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ kind?: string | string[] }> }) {
   // The conversation is the client's own words and number: only who may see a client's details reads it.
   const me = await requireActor("client.view_pii");
@@ -100,7 +52,7 @@ export default async function MessagesPage({ params, searchParams }: { params: P
   const choices: Choice[] = gate.allowed.map((kind) => ({ kind, ...MESSAGE_KIND[kind], ...written[kind](), forClient: isClientMessage(kind) }));
 
   const last = thread.at(-1);
-  const waiting = toClient && last?.direction === "in";
+  const waiting = toClient && view.waiting;
   const wroteBefore = thread.some((message) => message.direction === "out");
   const allowed = (kind: MessageKind) => gate.allowed.includes(kind);
   const asked = [(await searchParams).kind].flat()[0];
@@ -158,9 +110,15 @@ export default async function MessagesPage({ params, searchParams }: { params: P
               <p className="label">الخطوة التالية</p>
               <h2>رد على {first}</h2>
               <p className="due">
-                {last.body ? `كتب ${agoText(last.at, now)}: «${brief(last.body)}»` : `أرسل ${MESSAGE_TYPE[last.type] ?? "ملفاً"} ${agoText(last.at, now)}.`}
+                {last.body ? `كتب ${agoText(last.at, now)}: «${excerpt(last, 110)}»` : `أرسل ${MESSAGE_TYPE[last.type] ?? "ملفاً"} ${agoText(last.at, now)}.`}
               </p>
             </div>
+            {maySend && (
+              <form action={needsNoAnswer} className="actions">
+                <input type="hidden" name="dealId" value={deal.id} />
+                <SubmitButton className="btn btn--ghost">لا يحتاج رداً</SubmitButton>
+              </form>
+            )}
           </section>
         ) : owed.length > 0 && allowed("papers") ? (
           <section className="tile tile--next">
@@ -257,7 +215,7 @@ export default async function MessagesPage({ params, searchParams }: { params: P
             ) : (
               <ol className="thread">
                 {thread.map((message) => (
-                  <Bubble key={message.id} message={message} clientName={client.fullName} now={now} />
+                  <ThreadBubble key={message.id} message={message} from={first} now={now} />
                 ))}
               </ol>
             )}

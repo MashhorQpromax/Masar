@@ -36,6 +36,13 @@
       "when": 1795394267630,
       "tag": "0004_messages_links",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1795396473695,
+      "tag": "0005_inbox_seen",
+      "breakpoints": true
     }
   ]
 }

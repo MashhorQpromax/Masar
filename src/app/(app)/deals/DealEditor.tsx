@@ -81,13 +81,19 @@ const toItem = (row: Row): DealItem => {
 
 export function DealEditor({
   dealId,
+  clientId = null,
+  phone: knownPhone = "",
   year,
   borrower,
   input,
   credit = null,
 }: {
-  /** The deal being revised, or null for a new client. */
+  /** The deal being revised, or null for a new deal. */
   dealId: number | null;
+  /** The client a new deal is for, when they already have a file. Null opens a new file. */
+  clientId?: number | null;
+  /** The mobile a new file starts with, when the person wrote to the office before having one. */
+  phone?: string;
   /** The current year, from the server, so both sides compute the same age. */
   year: number;
   borrower: BorrowerDraft;
@@ -97,6 +103,8 @@ export function DealEditor({
 }) {
   const [who, setWho] = useState(borrower);
   const [born, setBorn] = useState(borrower.birthYear);
+  const [phone, setPhone] = useState(knownPhone);
+  const opensFile = dealId == null && clientId == null;
   const [x, setX] = useState<DealInput>(() => ({ ...input, items: [] }));
   const [rows, setRows] = useState<Row[]>(() => input.items.map(toRow));
   const [error, setError] = useState<string | null>(null);
@@ -165,8 +173,8 @@ export function DealEditor({
     }
     setError(null);
     startTransition(async () => {
-      const result = await saveDealForm({ dealId, borrower: { ...facts, fullName: who.fullName.trim() }, input: full });
-      if (result?.error) setError(saveError(result.error));
+      const result = await saveDealForm({ dealId, clientId, phone: opensFile ? phone.trim() || null : null, borrower: { ...facts, fullName: who.fullName.trim() }, input: full });
+      if (result?.error) setError(saveError(result.error, result.params));
     });
   }
 
@@ -226,6 +234,11 @@ export function DealEditor({
             <NumberField label="الراتب الأساسي" money value={who.basicSalary} onChange={(basicSalary) => setWho({ ...who, basicSalary })} max={10_000_000} />
             <NumberField label="الراتب الإجمالي" money value={who.totalSalary} onChange={(totalSalary) => setWho({ ...who, totalSalary })} max={10_000_000} />
           </div>
+          {opensFile && (
+            <div className="fields fields--reach">
+              <TextField label="الجوال" typed="tel" value={phone} onChange={setPhone} placeholder="05xxxxxxxx" maxLength={20} hint="اختياري. عليه تصله رسائل ملفه في واتساب." />
+            </div>
+          )}
         </section>
 
         <section className="tile form-tile">

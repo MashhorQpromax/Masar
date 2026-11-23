@@ -114,14 +114,29 @@ export function TextField({
   placeholder,
   maxLength = 120,
   autoFocus,
+  name,
+  typed = "text",
   ...field
-}: FieldProps & { value: string; onChange: (value: string) => void; placeholder?: string; maxLength?: number; autoFocus?: boolean }) {
+}: FieldProps & {
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  maxLength?: number;
+  autoFocus?: boolean;
+  /** The name the value is sent under when the field sits in a form. */
+  name?: string;
+  /** What is typed: words, or something written left to right with its own keyboard. */
+  typed?: "text" | "tel" | "digits" | "email";
+}) {
   const id = useId();
   return (
     <Field id={id} {...field}>
       <input
         id={id}
-        className="field-input"
+        name={name}
+        className={typed === "text" ? "field-input" : "field-input num"}
+        dir={typed === "text" ? undefined : "ltr"}
+        inputMode={typed === "tel" ? "tel" : typed === "digits" ? "numeric" : typed === "email" ? "email" : undefined}
         autoComplete="off"
         placeholder={placeholder}
         maxLength={maxLength}

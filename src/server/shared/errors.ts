@@ -22,6 +22,15 @@ export class DomainError extends Error {
       | "NO_PHONE"
       | "MESSAGE_EMPTY"
       | "SEND_FAILED"
+      | "BAD_PHONE"
+      | "BAD_EMAIL"
+      | "ID_FORMAT"
+      | "ID_KIND"
+      | "ID_CHECK"
+      | "PHONE_TAKEN"
+      | "ID_TAKEN"
+      | "NOTE_EMPTY"
+      | "NUMBER_KNOWN"
       | "FORBIDDEN"
       | "EMAIL_TAKEN"
       | "WRONG_PASSWORD"
@@ -35,6 +44,8 @@ export class DomainError extends Error {
       | "PASSKEY_REFUSED"
       | "PASSKEY_KNOWN",
     message?: string,
+    /** What the wording needs beyond the code, such as the file number a phone already belongs to. */
+    public readonly params: Record<string, string> = {},
   ) {
     super(message ?? code);
     this.name = "DomainError";

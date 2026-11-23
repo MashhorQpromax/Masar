@@ -1,0 +1,1 @@
+ALTER TABLE "masar"."wa_messages" ADD COLUMN "seen_at" timestamp with time zone;

@@ -32,6 +32,8 @@ export interface ThreadMessage {
   /** Who of the office sent it. */
   by: string | null;
   at: Date;
+  /** When the office said a message that came in needs no answer. */
+  seenAt?: Date | null;
 }
 
 /** The conversation with a client, oldest first, at most the last `limit` messages. */
@@ -47,6 +49,7 @@ export async function threadOf(db: Tx, clientId: number, limit = 40): Promise<Th
       fileId: waMessages.fileId,
       by: users.name,
       at: waMessages.createdAt,
+      seenAt: waMessages.seenAt,
     })
     .from(waMessages)
     .leftJoin(users, eq(users.id, waMessages.userId))
@@ -84,6 +87,8 @@ export interface MessagesView {
   phone: string | null;
   /** Free text may be sent from the company number now. */
   windowOpen: boolean;
+  /** The last word is the client's, and nobody said it needs no answer. */
+  waiting: boolean;
 }
 
 const owedByClient = (papers: Paper[]): Paper[] =>
@@ -95,6 +100,8 @@ export async function getMessages(db: Db, args: { dealId: number; secret: string
   if (!view) return null;
   const list = await papersOf(db, view);
   const timeline = dealTimeline(view.deal.structure, view.deal.stage, view.stageEnteredAt, now);
+  const thread = await threadOf(db, view.client.id);
+  const last = thread.at(-1);
   return {
     deal: view.deal,
     client: view.client,
@@ -106,9 +113,10 @@ export async function getMessages(db: Db, args: { dealId: number; secret: string
     steps: stationTimeline(view.deal.structure, timeline, view.history).steps.map((step) => ({ key: step.key, state: step.state })),
     owed: owedByClient(list.papers),
     link: await linkOf(db, { clientId: view.client.id, secret: args.secret, now }),
-    thread: await threadOf(db, view.client.id),
+    thread,
     phone: normalizePhone(view.client.phone),
     windowOpen: windowOpen(await lastInbound(db, view.client.id), now),
+    waiting: last?.direction === "in" && last.seenAt == null,
   };
 }
 

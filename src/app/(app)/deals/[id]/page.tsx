@@ -100,7 +100,10 @@ export default async function DealPage({ params }: { params: Promise<{ id: strin
         </div>
         <div className="head-side">
           <p className="where">
-            <span className="num">{client.fileNo}</span> · <b>{STAGE[deal.stage]}</b>
+            <Link className="where-file num" href={`/clients/${client.id}`} title="ملف العميل">
+              {client.fileNo}
+            </Link>{" "}
+            · <b>{STAGE[deal.stage]}</b>
             {!ended && stations.position > 0 && (
               <>
                 {" "}
@@ -175,6 +178,11 @@ export default async function DealPage({ params }: { params: Promise<{ id: strin
               <p className="label">الحالة</p>
               <h2>{deal.stage === "closed" ? "اكتملت الصفقة" : "أُغلق الملف بلا صفقة"}</h2>
             </div>
+            <div className="actions">
+              <Link className="btn btn--soft" href={`/clients/${client.id}`}>
+                ملف العميل
+              </Link>
+            </div>
           </section>
         ) : study.verdict === "short" || study.verdict === "needs_info" ? (
           <section className="tile tile--next" data-quiet="true">
@@ -197,6 +205,13 @@ export default async function DealPage({ params }: { params: Promise<{ id: strin
                 </>
               )}
             </div>
+            {study.verdict === "short" && mayEdit && (
+              <div className="actions">
+                <Link className="btn btn--soft" href={`/clients/${client.id}`}>
+                  قرار الملف
+                </Link>
+              </div>
+            )}
           </section>
         ) : (
           <section className="tile tile--next">

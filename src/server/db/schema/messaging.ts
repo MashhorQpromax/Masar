@@ -22,6 +22,8 @@ export const waMessages = masar.table(
     status: text(),
     error: text(),
     userId: integer().references(() => users.id, { onDelete: "set null" }),
+    /** When the office dealt with a message that came in: answered it, or said it needs no answer. */
+    seenAt: at(),
     createdAt: createdAt(),
     updatedAt: createdAt(),
   },

@@ -7,7 +7,7 @@ import { addCreditReport } from "../credit/service";
 import type { Db } from "../db/client";
 import { tokenHash } from "../auth/secret";
 import { clients, shareLinks, waMessages } from "../db/schema";
-import { getDeal, saveDeal, setDealStage } from "../deals/service";
+import { getDeal, rejectDeal, saveDeal, setDealStage } from "../deals/service";
 import { addPaper, keepFile, reviewPaper } from "../documents/service";
 import { seedCatalogue } from "../lenders/service";
 import { DEMO_LINK_SECRET, linkToken, reachable } from "../messages/links";
@@ -21,6 +21,8 @@ interface DemoDeal {
   name: string;
   /** A made-up number. It reaches nobody. */
   phone: string;
+  city: string;
+  employer: string;
   birthYear: number;
   basicSalary: number;
   totalSalary: number;
@@ -37,9 +39,11 @@ interface DemoDeal {
   /** What the client's file holds: each paper with its made-up files and what was said about it. */
   papers?: DemoPaper[];
   /** The conversation so far, oldest first. A message from the client may carry a made-up file. */
-  thread?: { from: "office" | "client"; hoursAgo: number; body: string; file?: string }[];
+  thread?: { from: "office" | "client"; hoursAgo: number; body: string; file?: string; seen?: boolean }[];
   /** How many times the client opened their link. */
   linkViews?: number;
+  /** The file was rejected that many days ago, for this reason. */
+  rejected?: { daysAgo: number; reason: string };
 }
 
 interface DemoPaper {
@@ -81,7 +85,7 @@ type DemoReading = Pick<ParsedReport, "warnings" | "confidence"> & { report: Par
 const base = defaultDealInput();
 
 /**
- * Four invented deals, one per situation the home map has to show: close to disbursement,
+ * Four invented deals in progress, one per situation the home map has to show: close to disbursement,
  * mid-way, a thin margin, and a deal that does not close. No real person or number is used.
  * Every figure on screen is computed by the real engine from these inputs.
  *
@@ -97,6 +101,8 @@ const DEALS: DemoDeal[] = [
     fileNo: "C-019",
     name: "فهد",
     phone: "0500000019",
+    city: "الرياض",
+    employer: "وزارة التعليم",
     birthYear: 1985,
     basicSalary: 14500,
     totalSalary: 19800,
@@ -127,6 +133,11 @@ const DEALS: DemoDeal[] = [
       ["bank_submit", 12],
       ["approval", 9],
     ],
+    // The good news went out, and the client's thanks was marked as needing no answer.
+    thread: [
+      { from: "office", hoursAgo: 30, body: "السلام عليكم فهد\nوصلت موافقة البنك على تمويلك. بقي توقيع العقود ثم الصرف، ونحدد لك الموعد." },
+      { from: "client", hoursAgo: 29, body: "الحمد لله، بانتظاركم", seen: true },
+    ],
     // Close to the end: everything arrived and was verified, but the SIMAH report was never read.
     papers: [
       good("id", "الهوية.pdf"),
@@ -146,6 +157,8 @@ const DEALS: DemoDeal[] = [
     fileNo: "C-014",
     name: "سالم",
     phone: "0500000014",
+    city: "جدة",
+    employer: "وزارة الصحة",
     birthYear: 1989,
     basicSalary: 11000,
     totalSalary: 15200,
@@ -216,6 +229,8 @@ const DEALS: DemoDeal[] = [
     fileNo: "C-017",
     name: "نورة",
     phone: "0500000017",
+    city: "الدمام",
+    employer: "أمانة المنطقة الشرقية",
     birthYear: 1992,
     basicSalary: 9800,
     totalSalary: 13400,
@@ -265,6 +280,8 @@ const DEALS: DemoDeal[] = [
     fileNo: "C-021",
     name: "ريم",
     phone: "0500000021",
+    city: "المدينة المنورة",
+    employer: "وزارة العدل",
     birthYear: 1981,
     basicSalary: 10500,
     totalSalary: 14100,
@@ -316,6 +333,77 @@ const DEALS: DemoDeal[] = [
       }),
     },
   },
+  // Two files that ended, for the list of everyone: one completed, one rejected. They are not on the road.
+  {
+    fileNo: "C-008",
+    name: "ماجد",
+    phone: "0500000008",
+    city: "الرياض",
+    employer: "وزارة الداخلية",
+    birthYear: 1987,
+    basicSalary: 12500,
+    totalSalary: 16900,
+    serviceMonths: 170,
+    input: {
+      ...base,
+      items: [
+        { id: "i1", kind: "default", label: "تعثر — شركة تمويل", original: 64000, pay: 55000, by: "company" },
+        { id: "i2", kind: "mortgage_payoff", label: "مخالصة العقاري — بنك", original: 318000, pay: 305000, by: "company", confirmed: true, monthly: 3300 },
+      ],
+      propertyValue: 880000,
+      fixedCosts: 10000,
+      bankMortgage: 760000,
+      bankPersonal: 180000,
+    },
+    startedDaysAgo: 118,
+    path: [
+      ["agreement", 116],
+      ["settlement", 114],
+      ["clearance", 110],
+      ["simah_update", 104],
+      ["payoff", 96],
+      ["transfer", 88],
+      ["bank_submit", 86],
+      ["approval", 82],
+      ["disbursement", 70],
+      ["recovered", 65],
+      ["closed", 63],
+    ],
+  },
+  {
+    fileNo: "C-011",
+    name: "هند",
+    phone: "0500000011",
+    city: "مكة المكرمة",
+    employer: "جامعة أم القرى",
+    birthYear: 1979,
+    basicSalary: 8900,
+    totalSalary: 11800,
+    serviceMonths: 250,
+    input: {
+      ...base,
+      items: [
+        { id: "i1", kind: "execution", label: "قرار تنفيذ 61877 — شركة تمويل", original: 188000, pay: 188000, by: "company" },
+        { id: "i2", kind: "mortgage_payoff", label: "مخالصة العقاري — بنك", original: 455000, pay: 446000, by: "company", monthly: 4300 },
+      ],
+      propertyValue: 640000,
+    },
+    startedDaysAgo: 26,
+    path: [],
+    rejected: { daysAgo: 22, reason: "الصفقة لا تُغلق: قيمة العقار لا تغطي السداد، والعميلة لا تملك دفع الفرق." },
+  },
+];
+
+/** Someone who wrote to the company's number before having a file. The name and the number are made up. */
+const STRANGERS = [
+  {
+    phone: "966500000031",
+    name: "أبو تركي",
+    said: [
+      { hoursAgo: 2, body: "السلام عليكم، وصلني رقمكم من صديق. عندي تعثر مسجل في سمة وقرض عقاري قائم، هل لكم حل؟" },
+      { hoursAgo: 2, body: "أعمل في جهة حكومية وراتبي 14 ألف" },
+    ],
+  },
 ];
 
 /** Fills an empty database with the demo deals, dated relative to `now` so the map always looks alive. */
@@ -329,6 +417,8 @@ export async function seedDemo(db: Db, now: Date): Promise<void> {
         fileNo: demo.fileNo,
         fullName: demo.name,
         phone: demo.phone,
+        city: demo.city,
+        employer: demo.employer,
         birthYear: demo.birthYear,
         basicSalary: demo.basicSalary,
         totalSalary: demo.totalSalary,
@@ -384,10 +474,12 @@ export async function seedDemo(db: Db, now: Date): Promise<void> {
         body: said.body,
         fileId,
         status: said.from === "client" ? "received" : "read",
+        seenAt: said.seen ? at : null,
         createdAt: at,
         updatedAt: at,
       });
     }
+    if (demo.rejected) await rejectDeal(db, { clientId: client!.id, reason: demo.rejected.reason, actor: SYSTEM, now: ago(demo.rejected.daysAgo) });
     // A client the office may write to has a link. Its token is the same on every copy of the demo.
     const view = await getDeal(db, { dealId, now });
     if (view && reachable(view)) {
@@ -401,6 +493,12 @@ export async function seedDemo(db: Db, now: Date): Promise<void> {
         lastViewAt: demo.linkViews ? new Date(now.getTime() - 6 * 3_600_000) : null,
         createdAt: ago(3),
       });
+    }
+  }
+  for (const stranger of STRANGERS) {
+    for (const [index, said] of stranger.said.entries()) {
+      const at = new Date(now.getTime() - said.hoursAgo * 3_600_000 + index * 40_000);
+      await db.insert(waMessages).values({ clientId: null, direction: "in", waId: `demo.${stranger.phone}.${index + 1}`, phone: stranger.phone, name: stranger.name, type: "text", body: said.body, status: "received", createdAt: at, updatedAt: at });
     }
   }
 }
