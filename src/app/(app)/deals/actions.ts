@@ -17,6 +17,8 @@ const formSchema = z.object({
   phone: z.string().max(40).nullable().default(null),
   borrower: z.unknown(),
   input: z.unknown(),
+  /** Why the fee was set away from what the deal had, or from the office's policy for a new deal. */
+  feeReason: z.string().max(400).nullable().default(null),
 });
 
 /**
@@ -30,19 +32,21 @@ export async function saveDealForm(form: unknown): Promise<{ error: string; para
   const actor = await requireActor();
   const parsed = formSchema.safeParse(form);
   if (!parsed.success) return { error: "INVALID_INPUT" };
-  const { dealId, clientId, phone, borrower, input } = parsed.data;
+  const { dealId, clientId, phone, borrower, input, feeReason } = parsed.data;
   // Opening a file and changing a deal's numbers are two permissions.
   if (!can(actor.role, dealId == null && clientId == null ? "client.create" : "deal.edit")) return { error: "FORBIDDEN" };
 
+  // The fee is checked against the deal's own, or the policy's, by whoever sets it.
+  const fee = { may: can(actor.role, "fee.set"), reason: feeReason };
   let saved: number;
   try {
     const db = await getDb();
     saved =
       dealId != null
-        ? (await reviseDeal(db, { dealId, borrower, input, actor })).dealId
+        ? (await reviseDeal(db, { dealId, borrower, input, actor, fee })).dealId
         : clientId != null
-          ? (await startDealFor(db, { clientId, borrower, input, actor })).dealId
-          : (await startDeal(db, { borrower, input, phone, actor })).dealId;
+          ? (await startDealFor(db, { clientId, borrower, input, actor, fee })).dealId
+          : (await startDeal(db, { borrower, input, phone, actor, fee })).dealId;
   } catch (error) {
     if (error instanceof DomainError) return { error: error.code, params: error.params };
     throw error;

@@ -12,6 +12,8 @@ const PERMISSIONS = {
   "client.delete": ["admin"],
   "client.view_pii": ["admin", "analyst", "officer"],
   "deal.edit": ["admin", "analyst", "officer"],
+  /** Setting a deal's fee away from what it had, with the reason. Whoever may change a deal sees its fee; this changes it. */
+  "fee.set": ["admin", "analyst"],
   /** Approving a client's analysis: the office's recommendation, signed. Until the owner says otherwise, the manager's alone. */
   "study.approve": ["admin"],
   "doc.upload": ["admin", "analyst", "officer"],
@@ -21,6 +23,8 @@ const PERMISSIONS = {
   /** Saying that a lender's term was checked against its source. The result of every study rests on it. */
   "lender.confirm": ["admin"],
   "user.manage": ["admin"],
+  /** The office's own settings: the fee policy every new deal starts from. */
+  "settings.manage": ["admin"],
   "audit.view": ["admin"],
 } as const satisfies Record<string, readonly Role[]>;
 

@@ -24,6 +24,8 @@ export class DomainError extends Error {
       | "FIGURE_REFUSED"
       | "RELY_REFUSED"
       | "APPROVAL_REFUSED"
+      | "POLICY_REFUSED"
+      | "FEE_REFUSED"
       | "UPLOAD_LIMIT"
       | "LINK_CLOSED"
       | "GATE_CLOSED"

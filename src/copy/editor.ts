@@ -1,7 +1,7 @@
 /** Wording of the deal editor: what a person chooses from, and what they are told when saving fails. */
-import type { DraftGap, FinanceBase, ItemKind, LenderKind, PaidBy, Sector } from "@/domain/deal";
-import { splitLabel } from "@/domain/deal";
-import { counted, dayOfRecord, ltr, money } from "./format";
+import type { DraftGap, FeeRefusal, FinanceBase, ItemKind, LenderKind, PaidBy, Sector } from "@/domain/deal";
+import { FEE_REASON_MIN, splitLabel } from "@/domain/deal";
+import { counted, dayOfRecord, ltr, money, percent } from "./format";
 
 /** Also the default title of an obligation of that kind. */
 export const ITEM_KIND: Record<ItemKind, string> = {
@@ -83,7 +83,16 @@ export function differenceText(difference: { label: string; deal: number; record
 /** Said once the report's commitments were put in a new deal for the person to review. */
 export const REPORT_FILLED = "وضعنا ما في التقرير. راجع كل رقم قبل الحفظ.";
 
+const FEE_REFUSAL: Record<FeeRefusal, (params: Record<string, string>) => string> = {
+  NOT_ALLOWED: () => "تعديل الأتعاب لمن يملك صلاحيتها. أرجعها كما كانت ثم احفظ.",
+  OUT_OF_RANGE: (p) => `نسبة الأتعاب خارج سياسة المكتب، من ${percent(Number(p.min))} إلى ${percent(Number(p.max))}.`,
+  REASON_NEEDED: () => `اكتب سبب تعديل الأتعاب، ${ltr(FEE_REASON_MIN)} أحرف على الأقل.`,
+};
+
+export const FEE_REFUSALS = Object.keys(FEE_REFUSAL) as FeeRefusal[];
+
 const SAVE_ERROR: Record<string, (params: Record<string, string>) => string> = {
+  FEE_REFUSED: (p) => (p.reason && p.reason in FEE_REFUSAL ? FEE_REFUSAL[p.reason as FeeRefusal](p) : "تعذر حفظ الأتعاب. حاول مرة أخرى."),
   INVALID_INPUT: () => "في الأرقام قيمة غير مقبولة. راجعها ثم احفظ.",
   NOT_FOUND: () => "هذه الصفقة لم تعد موجودة.",
   DEAL_ENDED: () => "الصفقة انتهت، وأرقامها لا تُعدَّل.",

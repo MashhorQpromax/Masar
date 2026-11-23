@@ -3,13 +3,14 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { phoneTyped } from "@/copy/clients";
 import { can } from "@/domain/auth";
-import { creditFlags, defaultDealInput, SECTORS, type Sector } from "@/domain/deal";
+import { creditFlags, defaultDealInput, policyFee, SECTORS, type Sector } from "@/domain/deal";
 import { contractOf } from "@/domain/eligibility";
 import { normalizePhone } from "@/domain/shared/phone";
 import { requireActor } from "@/server/auth/actor";
 import { getClientCard } from "@/server/clients/directory";
 import { latestCredit } from "@/server/credit/service";
 import { getDb } from "@/server/db/client";
+import { feePolicy } from "@/server/settings/fees";
 import { BackIcon } from "@/ui/icons";
 import { DealEditor } from "../DealEditor";
 import { reportOffer } from "../report-offer";
@@ -29,9 +30,13 @@ export default async function NewDealPage({ searchParams }: { searchParams: Prom
   const clientId = Number(one(query.client)) || null;
   const me = await requireActor(clientId ? "deal.edit" : "client.create");
   const year = new Date().getFullYear();
+  const db = await getDb();
+  // A new deal starts from the office's fee policy as it stands today.
+  const policy = await feePolicy(db);
+  const fee = { policy, may: can(me.role, "fee.set") };
+  const start = { ...defaultDealInput(), fee: policyFee(policy) };
 
   if (clientId) {
-    const db = await getDb();
     const card = await getClientCard(db, clientId);
     if (!card) notFound();
     const open = card.deals.find((deal) => deal.stage !== "closed" && deal.stage !== "lost");
@@ -63,7 +68,8 @@ export default async function NewDealPage({ searchParams }: { searchParams: Prom
             serviceMonths: client.serviceMonths,
             contractType: contractOf(client.contractType),
           }}
-          input={{ ...defaultDealInput(), propertyValue: client.propertyValue }}
+          input={{ ...start, propertyValue: client.propertyValue }}
+          fee={fee}
           credit={record ? creditFlags(record.report, record.analysis) : null}
           // The record's own lines are for those who may read the record.
           fromReport={record && can(me.role, "client.view_pii") ? reportOffer(record.report) : null}
@@ -90,7 +96,8 @@ export default async function NewDealPage({ searchParams }: { searchParams: Prom
         phone={phoneTyped(phone)}
         year={year}
         borrower={{ fullName: phone ? one(query.name).slice(0, 120) : "", birthYear: null, sector: "gov", basicSalary: null, totalSalary: null, serviceMonths: null, contractType: null }}
-        input={defaultDealInput()}
+        input={start}
+        fee={fee}
       />
     </>
   );

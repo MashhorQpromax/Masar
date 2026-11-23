@@ -344,6 +344,21 @@ The fifth part signs the analysis (`src/domain/analysis/approval.ts`, `src/serve
 
 Choices the owner has not reviewed: the manager alone approves, the length of a reason, what counts as complete, that a conflict with a paper cannot be approved over at all, and that any change to the four parts drops the approval with no tolerance.
 
+## Fees and the client's net
+
+Phase two of the owner's roadmap. Its first part is built; the client sees no fee anywhere until the owner decides whether they should.
+
+### The fee policy
+
+The manager sets the office's fee policy on `/settings/fees` (`settings.manage`): the two percents a new deal starts from, what the finance percent is counted on, and the lowest and highest percent a deal may carry (`FeePolicy` in `src/domain/deal/fee.ts`; table `office_settings`, migration `0010`; `src/server/settings/fees.ts`). With nothing set it stands at ten percent on each part, inside ten to thirty-five, which is what the engine's own `FEE_MIN` and `FEE_MAX` say. A policy whose range does not hold, or whose start is outside its own range, is refused (`policyProblem`). Every change is logged as `settings.fees` with what it was before, and is among the watched events.
+
+- **A new deal** starts from the policy (`policyFee`). A saved deal keeps its own fee: a new policy changes no deal.
+- **Changing a deal's fee** (either percent, the base, whether payoffs count, the flat amount) away from what it had, or from the policy for a new deal, needs `fee.set` (manager and analyst), percents inside the policy's range, and a written reason of ten characters or more (`feeRefusal`, refused as `FEE_REFUSED` with the reason and the range). A fee kept as it was is never refused, even one an older policy allowed. The change is logged as `deal.fee` with the fee before and after, the parts that changed, the reason and the amount it comes to.
+- Whoever may change a deal and not its fee sees the fee fields locked in the editor (`DealEditor`, prop `fee`). The editor asks the reason as soon as the fee moves, keeps the engine's suggested percent inside the range, and says the range.
+- The system's own writes (the demonstration, the move) pass no `FeeBy` and set the fee as given, unlogged apart from `deal.save`.
+
+Choices the owner has not reviewed: the analyst may set a fee; ten characters of reason; the range binds each percent alone; the engine's suggestion still steps by five from its own ten.
+
 ## What the office knows about lenders
 
 A lender's terms say what it publishes. `src/domain/knowledge` holds what the office learned beyond them, in two kinds:

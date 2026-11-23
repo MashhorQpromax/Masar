@@ -1,11 +1,13 @@
 /** Wording of the audit log: what each event is called, and the detail worth reading beside it. */
 import type { AuditAction, AuditArea, OldAuditAction } from "@/domain/audit";
 import { isRole } from "@/domain/auth";
+import type { Fee, FeePolicy, FinanceBase } from "@/domain/deal";
 import { DECISIONS, RULE_KINDS, type Decision, type RuleKind } from "@/domain/knowledge";
 import { ANALYSIS_VERDICT } from "./analysis";
 import { openText } from "./approval";
 import { ROLE } from "./auth";
 import { STAGE } from "./deal";
+import { feeText, policyText } from "./fees";
 import type { PaperFact } from "@/domain/eligibility";
 import { factValue, PAPER_STATUS, paperLabel, sourcePaper, statedLine } from "./documents";
 import { counted, dayFull, dayLong, dayOfIso, days, ltr, type CountForms } from "./format";
@@ -55,6 +57,8 @@ const AUDIT_ACTION: Record<AuditAction, string> = {
   "credit.report_review": "مراجعة تقرير سمة",
   "project.save": "حفظ دراسة مشروع",
   "deal.save": "حفظ أرقام الصفقة",
+  "deal.fee": "تعديل أتعاب الصفقة",
+  "settings.fees": "تغيير سياسة الأتعاب",
   "deal.stage": "نقل الصفقة",
   "deal.route": "اعتماد جهة التمويل",
   "doc.upload": "رفع ملف",
@@ -155,6 +159,26 @@ function statedFigures(value: unknown): Partial<Record<PaperFact, number>> {
   return Object.fromEntries((Object.keys(PAPER_FACT) as PaperFact[]).flatMap((fact) => (number(kept[fact]) != null ? [[fact, number(kept[fact])!]] : [])));
 }
 
+const isBase = (value: unknown): value is FinanceBase => value === "total" || value === "personal" || value === "mortgage";
+
+/** A fee as the log kept it. Null when it does not read as one. */
+function keptFee(value: unknown): Fee | null {
+  const kept = record(value);
+  const settlePct = number(kept.settlePct);
+  const financePct = number(kept.financePct);
+  if (settlePct == null || financePct == null || !isBase(kept.financeBase)) return null;
+  return { settlePct, financePct, financeBase: kept.financeBase, settleIncludesPayoff: kept.settleIncludesPayoff === true, fixed: number(kept.fixed) ?? 0 };
+}
+
+/** A fee policy as the log kept it. Null when it does not read as one. */
+function keptPolicy(value: unknown): FeePolicy | null {
+  const kept = record(value);
+  const fee = keptFee(value);
+  const min = number(kept.min);
+  const max = number(kept.max);
+  return fee && min != null && max != null ? { settlePct: fee.settlePct, financePct: fee.financePct, financeBase: fee.financeBase, min, max } : null;
+}
+
 const fields = (value: unknown): string => joined(strings(value).map((name) => FIELD[name]));
 const role = (value: unknown): string | null => (isRole(value) ? ROLE[value] : null);
 
@@ -236,6 +260,17 @@ export function auditDetail(action: string, details: Record<string, unknown> | n
     }
     case "deal.route":
       return joined([...new Set([text(record(d.mortgage).lender), text(record(d.personal).lender)])]);
+    case "deal.fee": {
+      // The fee before and after, and why: the reason is what the log is kept for.
+      const before = keptFee(d.before);
+      const after = keptFee(d.after);
+      return joined([before && after && `من ${feeText(before)} إلى ${feeText(after)}`, text(d.reason)]);
+    }
+    case "settings.fees": {
+      const before = keptPolicy(d.before);
+      const after = keptPolicy(d.after);
+      return joined([before && `كانت: ${policyText(before)}`, after && `صارت: ${policyText(after)}`]);
+    }
     case "doc.upload": {
       // A file that came by WhatsApp and waits to be put under its paper says so in its own name.
       const label = paper(d.paper);

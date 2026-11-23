@@ -19,7 +19,7 @@ export const AUDIT_AREAS = {
     "user.sessions_end",
   ],
   clients: ["client.create", "client.update", "client.contact", "client.note", "client.consent", "client.condition_answer", "client.fact_rely", "study.approve", "client.reject", "client.reopen", "credit.report_add", "credit.report_review", "project.save"],
-  deals: ["deal.save", "deal.stage", "deal.route"],
+  deals: ["deal.save", "deal.fee", "deal.stage", "deal.route", "settings.fees"],
   papers: ["doc.upload", "doc.remove", "doc.move", "doc.review", "doc.state", "doc.add", "doc.drop", "doc.open"],
   messages: ["wa.send", "wa.handled", "link.open", "link.close"],
   lenders: ["lender.add", "lender.product_add", "lender.product_update", "lender.product_switch", "lender.terms_confirm", "lender.terms_withdraw", "lender.condition_add", "lender.condition_remove", "lender.rule_add", "lender.rule_archive", "lender.decision"],
@@ -61,6 +61,6 @@ export function areaOf(action: string): AuditArea | null {
  * Events worth a second look: a way in that failed, a private file that was opened, and every change
  * to who may enter and what they may do.
  */
-export const WATCHED_ACTIONS: readonly AuditAction[] = ["login_failed", "doc.open", "user.create", "user.update", "user.password_reset", "user.signin_reset", "user.unlock"];
+export const WATCHED_ACTIONS: readonly AuditAction[] = ["login_failed", "doc.open", "user.create", "user.update", "user.password_reset", "user.signin_reset", "user.unlock", "settings.fees"];
 
 export const isWatched = (action: string): boolean => (WATCHED_ACTIONS as readonly string[]).includes(action);

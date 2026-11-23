@@ -12,6 +12,7 @@ describe("what each role may do", () => {
       "client.delete": "admin",
       "client.view_pii": "admin analyst officer",
       "deal.edit": "admin analyst officer",
+      "fee.set": "admin analyst",
       "study.approve": "admin",
       "doc.upload": "admin analyst officer",
       "doc.verify": "admin analyst",
@@ -19,6 +20,7 @@ describe("what each role may do", () => {
       "lender.manage": "admin analyst",
       "lender.confirm": "admin",
       "user.manage": "admin",
+      "settings.manage": "admin",
       "audit.view": "admin",
     });
   });

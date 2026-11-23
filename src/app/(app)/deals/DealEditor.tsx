@@ -19,13 +19,15 @@ import {
   SECTOR,
 } from "@/copy/editor";
 import { CONTRACT_TYPE } from "@/copy/eligibility";
+import { FEE_LOCKED, FEE_REASON_ASK, FEE_REASON_HINT, rangeText } from "@/copy/fees";
 import { ltr, percent, plainMoney } from "@/copy/format";
 import {
   borrowerIn,
   dealStudy,
   DEFAULT_PAYER,
-  FEE_MAX,
-  FEE_MIN,
+  FEE_REASON_MAX,
+  FEE_REASON_MIN,
+  feeChanges,
   joinLabel,
   labelParts,
   pendingDrafts,
@@ -36,6 +38,7 @@ import {
   type DealInput,
   type DealItem,
   type DraftGap,
+  type FeePolicy,
   type ItemKind,
   type LenderKind,
   type PaidBy,
@@ -148,6 +151,7 @@ export function DealEditor({
   input,
   credit = null,
   fromReport = null,
+  fee,
 }: {
   /** The deal being revised, or null for a new deal. */
   dealId: number | null;
@@ -163,6 +167,11 @@ export function DealEditor({
   credit?: CreditFlags | null;
   /** What the client's credit report says the deal has to deal with. Null with no report, or for someone who may not read it. */
   fromReport?: ReportOffer | null;
+  /**
+   * The office's fee policy, and whether this person may set the fee. The fee the deal starts from is
+   * `input.fee`: the deal's own, or the policy's for a new deal. Setting it otherwise asks why.
+   */
+  fee: { policy: FeePolicy; may: boolean };
 }) {
   const [who, setWho] = useState(borrower);
   const [born, setBorn] = useState(borrower.birthYear);
@@ -174,6 +183,7 @@ export function DealEditor({
   const filled = dealId == null && input.items.length === 0 && offered.length > 0;
   const [rows, setRows] = useState<Row[]>(() => (filled ? offered.map((draft, index) => draftRow(draft, `i${index + 1}`)) : input.items.map(toRow)));
   const [error, setError] = useState<string | null>(null);
+  const [feeReason, setFeeReason] = useState("");
   const [pending, startTransition] = useTransition();
   const added = useRef<string | null>(null);
   const list = useRef<HTMLDivElement>(null);
@@ -240,6 +250,12 @@ export function DealEditor({
     added.current = null;
   }, [rows.length]);
 
+  // The engine's suggestion, kept inside the office's range.
+  const suggested = Math.min(fee.policy.max, Math.max(fee.policy.min, study.suggestedPct));
+  // A fee set away from the one the deal started from is kept with the reason.
+  const feeMoved = feeChanges(input.fee, x.fee).length > 0;
+  const { policy } = fee;
+  const outside = [x.fee.settlePct, x.fee.financePct].some((pct) => pct < policy.min || pct > policy.max);
   const problem = !who.fullName.trim()
     ? "اكتب اسم العميل."
     : birthYear != null && (birthYear < 1930 || birthYear > year - 18)
@@ -250,7 +266,11 @@ export function DealEditor({
           ? "أضف التزاماً واحداً على الأقل."
           : rows.some((row) => !row.original)
             ? "اكتب مبلغ كل التزام."
-            : null;
+            : feeMoved && outside
+              ? `نسبة الأتعاب خارج سياسة المكتب، ${rangeText(policy)}.`
+              : feeMoved && feeReason.trim().length < FEE_REASON_MIN
+                ? `اكتب سبب تعديل الأتعاب، ${ltr(FEE_REASON_MIN)} أحرف على الأقل.`
+                : null;
 
   function save() {
     if (problem) {
@@ -259,7 +279,14 @@ export function DealEditor({
     }
     setError(null);
     startTransition(async () => {
-      const result = await saveDealForm({ dealId, clientId, phone: opensFile ? phone.trim() || null : null, borrower: { ...facts, fullName: who.fullName.trim() }, input: full });
+      const result = await saveDealForm({
+        dealId,
+        clientId,
+        phone: opensFile ? phone.trim() || null : null,
+        borrower: { ...facts, fullName: who.fullName.trim() },
+        input: full,
+        feeReason: feeMoved ? feeReason.trim() : null,
+      });
       if (result?.error) setError(saveError(result.error, result.params));
     });
   }
@@ -497,6 +524,7 @@ export function DealEditor({
               max={100}
               value={x.fee.settlePct}
               onChange={(pct) => setFee({ settlePct: pct ?? 0 })}
+              disabled={!fee.may}
               hint={ready ? `= ${ltr(plainMoney(study.feeSettle))}` : undefined}
             />
             <NumberField
@@ -506,24 +534,38 @@ export function DealEditor({
               max={100}
               value={x.fee.financePct}
               onChange={(pct) => setFee({ financePct: pct ?? 0 })}
+              disabled={!fee.may}
               hint={ready ? `= ${ltr(plainMoney(study.feeFinance))}` : undefined}
             />
           </div>
           {ready && (
             <p className="suggest">
               <span>
-                المقترح لهذا الملف <b>{percent(study.suggestedPct)}</b>
+                المقترح لهذا الملف <b>{percent(suggested)}</b>
                 {study.suggestedReasons.length > 0 && `، بسبب ${study.suggestedReasons.map((reason) => FEE_REASON[reason]).join("، ")}`}
-                <small>
-                  الحدود من {percent(FEE_MIN)} إلى {percent(FEE_MAX)}
-                </small>
+                <small>{fee.may ? rangeText(policy) : FEE_LOCKED}</small>
               </span>
-              {(x.fee.settlePct !== study.suggestedPct || x.fee.financePct !== study.suggestedPct) && (
-                <button type="button" className="add-chip" onClick={() => setFee({ settlePct: study.suggestedPct, financePct: study.suggestedPct })}>
+              {fee.may && (x.fee.settlePct !== suggested || x.fee.financePct !== suggested) && (
+                <button type="button" className="add-chip" onClick={() => setFee({ settlePct: suggested, financePct: suggested })}>
                   طبّقه
                 </button>
               )}
             </p>
+          )}
+          {fee.may && feeMoved && (
+            <label className="field fee-why" data-wide="true">
+              <span className="field-label">{FEE_REASON_ASK}</span>
+              <textarea
+                className="field-input field-area"
+                value={feeReason}
+                onChange={(event) => setFeeReason(event.target.value)}
+                minLength={FEE_REASON_MIN}
+                maxLength={FEE_REASON_MAX}
+                rows={2}
+                placeholder="مثال: ملف فيه تعثر لدى شركة تمويل، والجهد أكبر من المعتاد"
+              />
+              <small className="field-hint">{FEE_REASON_HINT}</small>
+            </label>
           )}
         </section>
 
@@ -558,10 +600,10 @@ export function DealEditor({
               </>
             )}
             <NumberField label="تكاليف ثابتة" money max={10_000_000} value={x.fixedCosts} onChange={(n) => set({ fixedCosts: n ?? 0 })} hint="تقييم، سعي، رسوم" />
-            <NumberField label="مبلغ مقطوع فوق الأتعاب" money max={10_000_000} value={x.fee.fixed} onChange={(n) => setFee({ fixed: n ?? 0 })} />
-            <SelectField label="نسبة التمويل تُحسب على" value={x.fee.financeBase} onChange={(financeBase) => setFee({ financeBase })} options={FINANCE_BASE} />
+            <NumberField label="مبلغ مقطوع فوق الأتعاب" money max={10_000_000} value={x.fee.fixed} onChange={(n) => setFee({ fixed: n ?? 0 })} disabled={!fee.may} />
+            <SelectField label="نسبة التمويل تُحسب على" value={x.fee.financeBase} onChange={(financeBase) => setFee({ financeBase })} options={FINANCE_BASE} disabled={!fee.may} />
           </div>
-          <Check label="نسبة السداد تشمل المخالصات" checked={x.fee.settleIncludesPayoff} onChange={(settleIncludesPayoff) => setFee({ settleIncludesPayoff })} />
+          <Check label="نسبة السداد تشمل المخالصات" checked={x.fee.settleIncludesPayoff} onChange={(settleIncludesPayoff) => setFee({ settleIncludesPayoff })} disabled={!fee.may} />
           <label className="field" data-wide="true">
             <span className="field-label">ملاحظات</span>
             <textarea className="field-input field-area" maxLength={4000} value={x.notes} onChange={(event) => set({ notes: event.target.value })} placeholder="نتيجة التفاوض، رد البنك، ما اتُّفق عليه مع العميل" />

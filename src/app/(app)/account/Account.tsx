@@ -37,7 +37,7 @@ export interface AccountView {
   passkeys: { id: number; name: string; added: string; used: string | null }[];
   devices: { name: string; since: string; how: string; current: boolean }[];
   /** The screens that run the office, for a person who may open them. */
-  office: { users: boolean; audit: boolean };
+  office: { users: boolean; audit: boolean; fees: boolean };
 }
 
 type Way = "password" | "authenticator" | "passkey" | "devices";
@@ -492,7 +492,7 @@ export function Account({ view }: { view: AccountView }) {
         <Note said={said} way="devices" />
       </section>
 
-      {(view.office.users || view.office.audit) && (
+      {(view.office.users || view.office.audit || view.office.fees) && (
         <nav className="tile tile--office" aria-label="إدارة المكتب">
           <p className="label">إدارة المكتب</p>
           <div className="office">
@@ -507,6 +507,13 @@ export function Account({ view }: { view: AccountView }) {
               <Link className="office-door" href="/audit">
                 <b>سجل التدقيق</b>
                 <span>كل ما جرى في النظام ومن قام به.</span>
+                <BackIcon />
+              </Link>
+            )}
+            {view.office.fees && (
+              <Link className="office-door" href="/settings/fees">
+                <b>سياسة الأتعاب</b>
+                <span>النسبة التي تبدأ بها كل صفقة، والحدان.</span>
                 <BackIcon />
               </Link>
             )}

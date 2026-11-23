@@ -7,6 +7,7 @@ import { contractOf } from "@/domain/eligibility";
 import { requireActor } from "@/server/auth/actor";
 import { getDb } from "@/server/db/client";
 import { getDeal } from "@/server/deals/service";
+import { feePolicy } from "@/server/settings/fees";
 import { BackIcon } from "@/ui/icons";
 import { DealEditor } from "../../DealEditor";
 import { reportOffer } from "../../report-offer";
@@ -20,7 +21,8 @@ export default async function EditDealPage({ params }: { params: Promise<{ id: s
   if (!Number.isInteger(dealId) || dealId <= 0) notFound();
 
   const now = new Date();
-  const view = await getDeal(await getDb(), { dealId, now });
+  const db = await getDb();
+  const view = await getDeal(db, { dealId, now });
   if (!view) notFound();
   const { deal, client, input } = view;
   // The numbers of a finished deal are a record. They are read on the deal's page, not changed.
@@ -53,6 +55,7 @@ export default async function EditDealPage({ params }: { params: Promise<{ id: s
         credit={view.creditFlags}
         // The record's own lines are for those who may read the record.
         fromReport={view.credit && can(me.role, "client.view_pii") ? reportOffer(view.credit.report) : null}
+        fee={{ policy: await feePolicy(db), may: can(me.role, "fee.set") }}
       />
     </>
   );

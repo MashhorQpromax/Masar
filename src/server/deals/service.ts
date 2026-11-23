@@ -1,12 +1,13 @@
 import "server-only";
 import { and, desc, eq, notInArray } from "drizzle-orm";
 import { ZodError } from "zod";
-import { creditFlags, dealStudy, stagesFor, type CreditFlags, type DealInput, type DealStudy, type Stage } from "@/domain/deal";
+import { creditFlags, dealStudy, feeChanges, feeRefusal, policyFee, stagesFor, type CreditFlags, type DealInput, type DealStudy, type Stage } from "@/domain/deal";
 import type { Db, Tx } from "../db/client";
 import { createClient, parseBorrower, updateBorrower } from "../clients/service";
 import { latestCredit, type CreditRecord } from "../credit/service";
 import { clients, dealItems, dealStageEvents, deals, notes, shareLinks } from "../db/schema";
 import type { Actor } from "../shared/actor";
+import { feePolicy } from "../settings/fees";
 import { audit } from "../shared/audit";
 import { DomainError } from "../shared/errors";
 import { parseDealInput } from "./input";
@@ -45,14 +46,43 @@ function validated(input: unknown): DealInput {
 }
 
 /**
+ * Who sets a deal's fee, when a person does: whether they may, and why they set it so. Every write a
+ * person makes passes it. The system's own writes (the demonstration, the move from the old system)
+ * leave it out and set the fee as given.
+ */
+export interface FeeBy {
+  may: boolean;
+  reason: string | null;
+}
+
+/**
+ * Checks a fee set by a person against the one the deal had, or the policy's for a new deal: a fee
+ * kept as it was passes; a changed one needs the right, a percent inside the policy's range and a
+ * written reason. Returns what changed, to be logged, or nothing.
+ */
+async function checkedFee(tx: Tx, args: { deal: DealRow | undefined; input: DealInput; by: FeeBy | undefined }) {
+  // The system's own writes set the fee as given; `deal.save` keeps what it comes to.
+  if (!args.by) return null;
+  const policy = await feePolicy(tx);
+  const before = args.deal ? dealInputOf(args.deal, []).fee : policyFee(policy);
+  const changed = feeChanges(before, args.input.fee);
+  if (!changed.length) return null;
+  const reason = args.by.reason?.replace(/\s+/g, " ").trim() || null;
+  const refusal = feeRefusal({ before, after: args.input.fee, policy, reason, may: args.by.may });
+  if (refusal) throw new DomainError("FEE_REFUSED", refusal, { reason: refusal, min: String(policy.min), max: String(policy.max) });
+  return { before, after: args.input.fee, changed, reason };
+}
+
+/**
  * Computes a deal with the engine and writes it: onto `deal` when given, otherwise as a new deal of the client.
  * The engine's result is stored with the deal so lists never have to recompute it.
  */
 async function writeDeal(
   tx: Tx,
-  args: { client: ClientRow; deal: DealRow | undefined; input: DealInput; actor: Actor; now: Date },
+  args: { client: ClientRow; deal: DealRow | undefined; input: DealInput; actor: Actor; now: Date; fee?: FeeBy },
 ): Promise<{ dealId: number; study: DealStudy }> {
   const { client, input, actor, now } = args;
+  const feeSet = await checkedFee(tx, { deal: args.deal, input, by: args.fee });
   const study = dealStudy(input, borrowerOf(client, now));
   const columns = {
     ...dealColumnsOf(input),
@@ -90,19 +120,21 @@ async function writeDeal(
     clientNet: study.clientNet,
     verdict: study.verdict,
   });
+  // A fee set away from what the deal had, or from the policy for a new deal, is logged apart with why.
+  if (feeSet) await audit(tx, actor, "deal.fee", "deal", dealId, { clientId: client.id, before: { ...feeSet.before }, after: { ...feeSet.after }, changed: feeSet.changed, reason: feeSet.reason, amount: study.fee });
   return { dealId, study };
 }
 
 /** Saves the deal study of a client. Updates the client's deal in progress, or starts a new one. */
 export async function saveDeal(
   db: Db,
-  args: { clientId: number; input: unknown; actor: Actor; now?: Date },
+  args: { clientId: number; input: unknown; actor: Actor; now?: Date; fee?: FeeBy },
 ): Promise<{ dealId: number; study: DealStudy }> {
   const input = validated(args.input);
   const now = args.now ?? new Date();
   return db.transaction(async (tx) => {
     const client = await clientById(tx, args.clientId);
-    return writeDeal(tx, { client, deal: await openDealOf(tx, client.id), input, actor: args.actor, now });
+    return writeDeal(tx, { client, deal: await openDealOf(tx, client.id), input, actor: args.actor, now, fee: args.fee });
   });
 }
 
@@ -112,14 +144,14 @@ export async function saveDeal(
  */
 export async function startDeal(
   db: Db,
-  args: { borrower: unknown; input: unknown; phone?: string | null; actor: Actor; now?: Date },
+  args: { borrower: unknown; input: unknown; phone?: string | null; actor: Actor; now?: Date; fee?: FeeBy },
 ): Promise<{ clientId: number; dealId: number; study: DealStudy }> {
   const borrower = parseBorrower(args.borrower);
   const input = validated(args.input);
   const now = args.now ?? new Date();
   return db.transaction(async (tx) => {
     const client = await createClient(tx, { input: borrower, phone: args.phone, actor: args.actor, now });
-    const saved = await writeDeal(tx, { client, deal: undefined, input, actor: args.actor, now });
+    const saved = await writeDeal(tx, { client, deal: undefined, input, actor: args.actor, now, fee: args.fee });
     return { clientId: client.id, ...saved };
   });
 }
@@ -130,7 +162,7 @@ export async function startDeal(
  */
 export async function startDealFor(
   db: Db,
-  args: { clientId: number; borrower: unknown; input: unknown; actor: Actor; now?: Date },
+  args: { clientId: number; borrower: unknown; input: unknown; actor: Actor; now?: Date; fee?: FeeBy },
 ): Promise<{ clientId: number; dealId: number; study: DealStudy }> {
   const borrower = parseBorrower(args.borrower);
   const input = validated(args.input);
@@ -140,7 +172,7 @@ export async function startDealFor(
     if (await openDealOf(tx, before.id)) throw new DomainError("DEAL_ALREADY_OPEN", `client ${before.id}`);
     const client = await updateBorrower(tx, { clientId: before.id, input: borrower, actor: args.actor, now });
     if (client.status === "rejected") await tx.update(clients).set({ status: "study", updatedAt: now }).where(eq(clients.id, client.id));
-    const saved = await writeDeal(tx, { client, deal: undefined, input, actor: args.actor, now });
+    const saved = await writeDeal(tx, { client, deal: undefined, input, actor: args.actor, now, fee: args.fee });
     return { clientId: client.id, ...saved };
   });
 }
@@ -148,7 +180,7 @@ export async function startDealFor(
 /** Changes the numbers of a deal in progress, together with the facts about the client they are computed from. */
 export async function reviseDeal(
   db: Db,
-  args: { dealId: number; borrower: unknown; input: unknown; actor: Actor; now?: Date },
+  args: { dealId: number; borrower: unknown; input: unknown; actor: Actor; now?: Date; fee?: FeeBy },
 ): Promise<{ dealId: number; study: DealStudy }> {
   const borrower = parseBorrower(args.borrower);
   const input = validated(args.input);
@@ -158,7 +190,7 @@ export async function reviseDeal(
     if (!deal) throw new DomainError("NOT_FOUND", `deal ${args.dealId}`);
     if (ENDED.includes(deal.stage)) throw new DomainError("DEAL_ENDED", `deal ${deal.id}`);
     const client = await updateBorrower(tx, { clientId: deal.clientId, input: borrower, actor: args.actor, now });
-    return writeDeal(tx, { client, deal, input, actor: args.actor, now });
+    return writeDeal(tx, { client, deal, input, actor: args.actor, now, fee: args.fee });
   });
 }
 

@@ -56,6 +56,7 @@ export function NumberField({
   grouped = true,
   max,
   placeholder,
+  disabled,
   ...field
 }: FieldProps & {
   value: number | null;
@@ -64,6 +65,8 @@ export function NumberField({
   grouped?: boolean;
   max?: number;
   placeholder?: string;
+  /** Shown and not changeable: the person may see it and not set it. */
+  disabled?: boolean;
 }) {
   const id = useId();
   const input = useRef<HTMLInputElement>(null);
@@ -99,6 +102,7 @@ export function NumberField({
         inputMode={decimals ? "decimal" : "numeric"}
         autoComplete="off"
         placeholder={placeholder}
+        disabled={disabled}
         value={text}
         onChange={typed}
         onFocus={() => setDraft(text)}
@@ -167,12 +171,13 @@ export function SelectField<T extends string>({
   value,
   onChange,
   options,
+  disabled,
   ...field
-}: FieldProps & { value: T; onChange: (value: T) => void; options: Record<T, string> }) {
+}: FieldProps & { value: T; onChange: (value: T) => void; options: Record<T, string>; disabled?: boolean }) {
   const id = useId();
   return (
     <Field id={id} {...field}>
-      <select id={id} className="field-input" value={value} onChange={(event) => onChange(event.target.value as T)}>
+      <select id={id} className="field-input" value={value} disabled={disabled} onChange={(event) => onChange(event.target.value as T)}>
         {(Object.keys(options) as T[]).map((key) => (
           <option key={key} value={key}>
             {options[key]}
@@ -206,10 +211,10 @@ export function Segmented<T extends string>({
   );
 }
 
-export function Check({ label, checked, onChange }: { label: string; checked: boolean; onChange: (checked: boolean) => void }) {
+export function Check({ label, checked, onChange, disabled }: { label: string; checked: boolean; onChange: (checked: boolean) => void; disabled?: boolean }) {
   return (
     <label className="check">
-      <input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} />
+      <input type="checkbox" checked={checked} disabled={disabled} onChange={(event) => onChange(event.target.checked)} />
       <span>{label}</span>
     </label>
   );

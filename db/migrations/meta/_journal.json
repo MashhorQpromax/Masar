@@ -71,6 +71,13 @@
       "when": 1795428915101,
       "tag": "0009_analysis_approvals",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1795429790953,
+      "tag": "0010_office_settings",
+      "breakpoints": true
     }
   ]
 }
