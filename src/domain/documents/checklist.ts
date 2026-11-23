@@ -1,5 +1,5 @@
 import type { FileKind } from "./files";
-import { isCustomCode, isPaperCode, PAPER_CATEGORIES, PAPERS, paperSource, SIMAH_PAPER, type PaperCategory, type PaperNeed, type PaperSource } from "./papers";
+import { INBOX_PAPER, isCustomCode, isPaperCode, PAPER_CATEGORIES, PAPERS, paperSource, SIMAH_PAPER, type PaperCategory, type PaperNeed, type PaperSource } from "./papers";
 
 /**
  * Where a paper stands. It follows its files: nothing kept is missing, something kept has arrived.
@@ -61,7 +61,8 @@ const blank = { id: null, label: null, status: "missing", note: null, files: [] 
 
 /**
  * The file of a client against what the deal needs: every needed paper with where it stands, then the
- * papers a person added, then anything kept that the deal no longer asks for.
+ * papers a person added, then anything kept that the deal no longer asks for, and last what arrived
+ * by WhatsApp and is not under a paper yet.
  *
  * The SIMAH report counts as verified once it was read into the credit record: reading it is the check.
  */
@@ -75,6 +76,8 @@ export function checklist(needs: readonly PaperNeed[], kept: readonly KeptPaper[
     // Added by a person: it is needed until they remove it.
     if (isCustomCode(paper.code)) papers.push({ ...paper, category: "extra", required: true, asked: true, by: "client" });
     else if (isPaperCode(paper.code) && paper.files.length > 0) papers.push({ ...paper, category: PAPERS[paper.code], required: false, asked: false, by: paperSource(paper.code) });
+    // What arrived by WhatsApp and waits to be put under its paper.
+    else if (paper.code === INBOX_PAPER && paper.files.length > 0) papers.push({ ...paper, status: "received", note: null, category: "extra", required: false, asked: false, by: "client" });
   }
 
   for (const paper of papers) {

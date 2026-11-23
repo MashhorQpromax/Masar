@@ -61,6 +61,12 @@ const OFFICE_PAPERS: ReadonlySet<string> = new Set<PaperCode>(["valuation", "agr
 
 export const paperSource = (code: string): PaperSource => (OFFICE_PAPERS.has(code) ? "office" : "client");
 
+/**
+ * Where a picture or a document a client sent by WhatsApp waits. Nobody knows yet which paper it is:
+ * a person looks at it and puts it under the right one.
+ */
+export const INBOX_PAPER = "inbox";
+
 /** The SIMAH report is the one paper that is read, not only kept. It enters through the credit record. */
 export const SIMAH_PAPER: PaperCode = "simah";
 

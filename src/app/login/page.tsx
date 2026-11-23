@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { currentSession, relyingParty } from "@/server/auth/request";
 import { dataMode } from "@/server/db/client";
+import { codeSender } from "@/server/messages/request";
 import { Mark } from "@/ui/icons";
 import { LoginArt } from "./LoginArt";
 import { LoginForm } from "./LoginForm";
@@ -29,7 +30,7 @@ export default async function LoginPage() {
         </header>
         <LoginArt as="band" />
         <div className="login-body">
-          <LoginForm demo={demo} passkeys={!demo && (await relyingParty()) != null} />
+          <LoginForm demo={demo} passkeys={!demo && (await relyingParty()) != null} byWhatsapp={codeSender() != null} />
         </div>
         <p className="login-foot">كل دخول يُسجَّل لحماية بيانات العملاء.</p>
       </main>

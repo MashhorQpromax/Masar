@@ -6,8 +6,9 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { passkeySignIn, signInWithPasskey } from "@/server/auth/passkeys";
 import { clearCookie, relyingParty, requestOrigin, SESSION_COOKIE, setCookie, STEP_COOKIE } from "@/server/auth/request";
-import { completeSecondFactor, signInWithCode, signInWithPassword, signOut as endSignIn } from "@/server/auth/signin";
+import { completeSecondFactor, sendLoginCode, signInWithCode, signInWithPassword, signOut as endSignIn } from "@/server/auth/signin";
 import { dataMode, getDb } from "@/server/db/client";
+import { codeSender } from "@/server/messages/request";
 
 /** What the sign-in form is told after a try: a refusal code, and whether the authenticator code is awaited. */
 export type SignInState = { error?: string; second?: boolean } | undefined;
@@ -74,6 +75,18 @@ export async function signInByCode(_: SignInState, form: FormData): Promise<Sign
   if (result.status === "refused") return { error: result.refusal };
   setCookie(await cookies(), SESSION_COOKIE, result.session.token, result.session.expiresAt);
   redirect("/");
+}
+
+/**
+ * Sends a sign-in code to the WhatsApp of the account behind an email. It answers nothing, whatever
+ * happened: the form says the same words for an email with an account and for one without.
+ */
+export async function askCode(email: string): Promise<void> {
+  if (dataMode() === "demo") return;
+  const parsed = text(200).safeParse(email);
+  const send = codeSender();
+  if (!parsed.success || !send) return;
+  await sendLoginCode(await getDb(), { email: parsed.data, origin: await requestOrigin(), send });
 }
 
 export interface PasskeyAsk {

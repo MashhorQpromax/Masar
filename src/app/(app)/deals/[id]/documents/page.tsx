@@ -3,20 +3,19 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { CSSProperties } from "react";
 import { STAGE } from "@/copy/deal";
-import { askText, BY_OFFICE, FILE_KIND, fileTitle, owedBrief, PAPER_CATEGORY, PAPER_STATUS, paperLabel } from "@/copy/documents";
+import { BY_OFFICE, FILE_KIND, fileTitle, owedBrief, PAPER_CATEGORY, PAPER_STATUS, paperLabel, TRAY } from "@/copy/documents";
 import { counted, ltr } from "@/copy/format";
 import { can } from "@/domain/auth";
-import { PAPER_CATEGORIES, PAPER_MAX_FILES, SIMAH_PAPER, type Paper, type PaperStatus } from "@/domain/documents";
-import { normalizePhone } from "@/domain/shared/phone";
+import { INBOX_PAPER, PAPER_CATEGORIES, PAPER_MAX_FILES, SIMAH_PAPER, type Paper, type PaperStatus } from "@/domain/documents";
+import { clientReachable, messageGate } from "@/domain/messages";
 import { requireActor } from "@/server/auth/actor";
 import { getDb } from "@/server/db/client";
 import { getPapers } from "@/server/documents/service";
 import { BackIcon, CheckIcon, CloseIcon } from "@/ui/icons";
 import { SubmitButton } from "@/ui/SubmitButton";
 import { AddPaper } from "./AddPaper";
-import { AskClient } from "./AskClient";
-import { dropPaper, judgePaper, removeFile } from "./actions";
-import { PaperUpload } from "./PaperUpload";
+import { PaperUpload } from "@/ui/PaperUpload";
+import { dropPaper, fileUnder, judgePaper, removeFile, uploadPaperFile } from "./actions";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "المستندات · مسار" };
@@ -60,15 +59,16 @@ export default async function DocumentsPage({ params }: { params: Promise<{ id: 
   const arrived = list.required - list.missing;
   // An optional paper nobody sent stays out of the way until someone wants it.
   const idle = (paper: Paper) => !paper.required && paper.files.length === 0;
-  const shown = list.papers.filter((paper) => !idle(paper));
+  // What arrived by WhatsApp is not a paper yet. It has its own place at the top, where each file is put under one.
+  const tray = list.papers.find((paper) => paper.code === INBOX_PAPER);
+  const shown = list.papers.filter((paper) => !idle(paper) && paper !== tray);
+  const homes = list.papers.filter((paper) => paper !== tray && paper.code !== SIMAH_PAPER && paper.asked);
   const optional = list.papers.filter(idle);
   // The client is asked for what is theirs to bring. What the office brings itself is the office's next step.
   const fromClient = owed.filter((paper) => paper.by === "client");
   const fromOffice = owed.filter((paper) => paper.by === "office");
-  const ask = askText(
-    client.fullName,
-    fromClient.map((paper) => ({ label: name(paper), note: paper.status === "rejected" ? paper.note : null })),
-  );
+  // A client the office does not write to is not asked for anything either.
+  const mayAsk = mayUpload && clientReachable(messageGate({ stage: deal.stage, verdict: view.verdict }));
 
   const row = (paper: Paper) => {
     const label = name(paper);
@@ -114,7 +114,7 @@ export default async function DocumentsPage({ params }: { params: Promise<{ id: 
               </span>
             );
           })}
-          {mayUpload && !simah && hasFiles && paper.files.length < PAPER_MAX_FILES && <PaperUpload dealId={deal.id} code={paper.code} name={label} more />}
+          {mayUpload && !simah && hasFiles && paper.files.length < PAPER_MAX_FILES && <PaperUpload send={uploadPaperFile.bind(null, deal.id, paper.code)} name={label} look="more" />}
         </div>
         <div className="paper-do">
           {simah ? (
@@ -145,7 +145,7 @@ export default async function DocumentsPage({ params }: { params: Promise<{ id: 
                   </form>
                 </details>
               )}
-              {mayUpload && !hasFiles && <PaperUpload dealId={deal.id} code={paper.code} name={label} more={false} />}
+              {mayUpload && !hasFiles && <PaperUpload send={uploadPaperFile.bind(null, deal.id, paper.code)} name={label} look="soft" />}
               {mayUpload && paper.category === "extra" && !hasFiles && paper.id != null && (
                 <form action={dropPaper}>
                   <input type="hidden" name="dealId" value={deal.id} />
@@ -218,7 +218,13 @@ export default async function DocumentsPage({ params }: { params: Promise<{ id: 
               <h2>اطلب الناقص من العميل</h2>
               <p className="due">{owedBrief(fromClient.map(name))}</p>
             </div>
-            {mayUpload && <AskClient text={ask} phone={mayOpen ? normalizePhone(client.phone) : null} />}
+            {mayAsk && (
+              <div className="actions">
+                <Link className="btn btn--navy" href={`/deals/${deal.id}/messages?kind=papers`}>
+                  اطلبها من العميل
+                </Link>
+              </div>
+            )}
           </section>
         ) : fromOffice.length > 0 ? (
           <section className="tile tile--next">
@@ -270,6 +276,60 @@ export default async function DocumentsPage({ params }: { params: Promise<{ id: 
         </section>
 
         <section className="tile tile--wide">
+          {tray && (
+            <div className="papers-group tray">
+              <h2 className="label">{TRAY}</h2>
+              <p className="tray-say">{mayUpload ? "افتح كل ملف ثم ضعه تحت مستنده." : "ملفات أرسلها العميل وتنتظر من يضعها تحت مستنداتها."}</p>
+              <ul className="papers">
+                {tray.files.map((file, index) => {
+                  const title = mayOpen ? fileTitle(file.name) : `ملف ${ltr(index + 1)}`;
+                  return (
+                    <li key={file.id} className="paper">
+                      <div className="paper-files">
+                        <span className="file">
+                          {mayOpen ? (
+                            <a href={`/files/${file.id}`} target="_blank" rel="noreferrer">
+                              <small>{FILE_KIND[file.kind]}</small>
+                              <bdi>{title}</bdi>
+                            </a>
+                          ) : (
+                            <span>
+                              <small>{FILE_KIND[file.kind]}</small>
+                              <bdi>{title}</bdi>
+                            </span>
+                          )}
+                        </span>
+                      </div>
+                      {mayUpload && (
+                        <form action={fileUnder} className="tray-put">
+                          <input type="hidden" name="dealId" value={deal.id} />
+                          <input type="hidden" name="fileId" value={file.id} />
+                          <select className="field-input" name="code" required defaultValue="" aria-label={`المستند الذي يوضع تحته ${title}`}>
+                            <option value="" disabled>
+                              أي مستند هذا؟
+                            </option>
+                            {homes.map((paper) => (
+                              <option key={paper.code} value={paper.code}>
+                                {name(paper)}
+                              </option>
+                            ))}
+                          </select>
+                          <SubmitButton className="btn btn--navy">ضعه هنا</SubmitButton>
+                        </form>
+                      )}
+                      {mayUpload && (
+                        <form action={removeFile}>
+                          <input type="hidden" name="dealId" value={deal.id} />
+                          <input type="hidden" name="fileId" value={file.id} />
+                          <SubmitButton className="btn btn--ghost">احذفه</SubmitButton>
+                        </form>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          )}
           {PAPER_CATEGORIES.filter((category) => shown.some((paper) => paper.category === category)).map((category) => (
             <div key={category} className="papers-group">
               <h2 className="label">{PAPER_CATEGORY[category]}</h2>

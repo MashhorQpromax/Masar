@@ -4,8 +4,7 @@ import { useId, useRef, useState, useTransition } from "react";
 import { paperError } from "@/copy/documents";
 import { ltr } from "@/copy/format";
 import { FILE_ACCEPT, FILE_MAX_BYTES, IMAGE_MAX_SIDE } from "@/domain/documents/files";
-import { PlusIcon, UploadIcon } from "@/ui/icons";
-import { uploadPaperFile } from "./actions";
+import { PlusIcon, UploadIcon } from "./icons";
 
 /** A picture this light and this small is sent as it is. */
 const LIGHT_BYTES = 900 * 1024;
@@ -39,11 +38,16 @@ async function lighter(file: File): Promise<File> {
   return new File([blob], `${file.name.replace(/\.[^.]+$/, "")}.jpg`, { type: "image/jpeg" });
 }
 
+/** How the button looks: a small plus beside the files already there, a quiet button, or the one thing to do. */
+export type UploadLook = "more" | "soft" | "navy";
+
 /**
  * One button: pick the files of a paper and they go up, one after another. There is nothing else to
- * fill in, so choosing the files sends them.
+ * fill in, so choosing the files sends them. `send` keeps one file and answers with the code of why
+ * it could not.
  */
-export function PaperUpload({ dealId, code, name, more }: { dealId: number; code: string; name: string; more: boolean }) {
+export function PaperUpload({ send, name, look }: { send: (body: FormData) => Promise<{ error?: string }>; name: string; look: UploadLook }) {
+  const more = look === "more";
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState<{ at: number; of: number } | null>(null);
   const [busy, start] = useTransition();
@@ -70,7 +74,7 @@ export function PaperUpload({ dealId, code, name, more }: { dealId: number; code
         }
         const body = new FormData();
         body.set("file", ready);
-        const answer = await uploadPaperFile(dealId, code, body);
+        const answer = await send(body);
         if (answer.error) {
           setError(answer.error);
           break;
@@ -94,7 +98,7 @@ export function PaperUpload({ dealId, code, name, more }: { dealId: number; code
         aria-label={`ارفع ${name}`}
         onChange={(event) => picked([...(event.target.files ?? [])])}
       />
-      <label htmlFor={id} className={more ? "file file-more" : "btn btn--soft"} aria-busy={busy}>
+      <label htmlFor={id} className={more ? "file file-more" : look === "navy" ? "btn btn--navy" : "btn btn--soft"} aria-busy={busy}>
         {more ? <PlusIcon size={16} /> : <UploadIcon size={16} />}
         {busy && progress ? (progress.of > 1 ? `يرفع ${ltr(progress.at)} من ${ltr(progress.of)}` : "يرفع") : more ? <span className="sr-only">أضف ملفاً إلى {name}</span> : "ارفع"}
       </label>

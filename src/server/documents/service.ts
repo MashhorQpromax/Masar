@@ -9,6 +9,7 @@ import {
   dealPapers,
   FILE_MAX_BYTES,
   fileKind,
+  INBOX_PAPER,
   isCustomCode,
   isFileKind,
   isPaperCode,
@@ -37,7 +38,7 @@ export interface PaperWho {
   nationality: Nationality;
 }
 
-const whoOf = (client: { sector: string; nationality: string }): PaperWho => ({
+export const whoOf = (client: { sector: string; nationality: string }): PaperWho => ({
   sector: (SECTORS as readonly string[]).includes(client.sector) ? (client.sector as Sector) : "gov",
   nationality: client.nationality === "non_saudi" ? "non_saudi" : "saudi",
 });
@@ -91,12 +92,14 @@ export interface PapersView {
   who: PaperWho;
   list: Checklist;
   ended: boolean;
+  /** Whether the deal closes. A client is asked for papers only while it may. */
+  verdict: DealView["study"]["verdict"];
 }
 
 export async function getPapers(db: Db, args: { dealId: number; now?: Date }): Promise<PapersView | null> {
   const view = await getDeal(db, args);
   if (!view) return null;
-  return { deal: view.deal, client: view.client, who: whoOf(view.client), list: await papersOf(db, view), ended: ENDED.includes(view.deal.stage) };
+  return { deal: view.deal, client: view.client, who: whoOf(view.client), list: await papersOf(db, view), ended: ENDED.includes(view.deal.stage), verdict: view.study.verdict };
 }
 
 async function clientExists(tx: Tx, clientId: number): Promise<void> {
@@ -109,7 +112,7 @@ async function clientExists(tx: Tx, clientId: number): Promise<void> {
  * their turns. A paper the engine knows gets its row here the first time; one a person added has it already.
  */
 async function paperRow(tx: Tx, clientId: number, code: string, now: Date) {
-  if (isPaperCode(code)) {
+  if (isPaperCode(code) || code === INBOX_PAPER) {
     const [row] = await tx
       .insert(documents)
       .values({ clientId, code, createdAt: now, updatedAt: now })
@@ -127,6 +130,9 @@ async function paperRow(tx: Tx, clientId: number, code: string, now: Date) {
   return row;
 }
 
+/** How a file came in when no person of the office uploaded it: the client's own link, or WhatsApp. */
+export type FileRoute = "portal" | "whatsapp";
+
 const filesOf = async (tx: Tx, paperId: number): Promise<number> =>
   (await tx.select({ n: count() }).from(documentFiles).where(eq(documentFiles.docId, paperId)))[0]?.n ?? 0;
 
@@ -138,7 +144,7 @@ const filesOf = async (tx: Tx, paperId: number): Promise<number> =>
  */
 export async function keepFile(
   tx: Tx,
-  args: { clientId: number; code: string; name: string; bytes: Uint8Array; actor: Actor; now: Date; makeRoom?: boolean },
+  args: { clientId: number; code: string; name: string; bytes: Uint8Array; actor: Actor; now: Date; makeRoom?: boolean; via?: FileRoute },
 ): Promise<{ paperId: number; fileId: number; added: boolean }> {
   const { bytes, now } = args;
   if (bytes.length > FILE_MAX_BYTES) throw new DomainError("FILE_TOO_LARGE", `${bytes.length} bytes`);
@@ -165,7 +171,7 @@ export async function keepFile(
     .returning({ id: documentFiles.id });
   await tx.insert(fileBlobs).values({ fileId: file!.id, data: bytes });
   await tx.update(documents).set({ status: "received", note: null, updatedAt: now }).where(eq(documents.id, paper.id));
-  await audit(tx, args.actor, "doc.upload", "client", args.clientId, { paper: paper.code, fileId: file!.id, kind, size: bytes.length });
+  await audit(tx, args.actor, "doc.upload", "client", args.clientId, { paper: paper.code, fileId: file!.id, kind, size: bytes.length, ...(args.via ? { via: args.via } : {}) });
   return { paperId: paper.id, fileId: file!.id, added: true };
 }
 
@@ -211,6 +217,49 @@ export async function removePaperFile(db: Db, args: { clientId: number; fileId: 
   });
 }
 
+/**
+ * Puts a kept file under another paper of the same client. It is how a picture that arrived by
+ * WhatsApp becomes the paper it is. The paper it lands in has arrived and waits to be looked at; the
+ * one it left stands by what it still holds.
+ */
+export async function movePaperFile(db: Db, args: { clientId: number; fileId: number; code: string; actor: Actor; now?: Date }): Promise<void> {
+  if (args.code === SIMAH_PAPER || args.code === INBOX_PAPER) throw new DomainError("INVALID_INPUT", `a file cannot be moved to ${args.code}`);
+  const now = args.now ?? new Date();
+  await db.transaction(async (tx) => {
+    const [file] = await tx.select({ paperId: documentFiles.docId, sha256: documentFiles.sha256 }).from(documentFiles).where(eq(documentFiles.id, args.fileId));
+    const [from] = file
+      ? await tx
+          .select()
+          .from(documents)
+          .where(and(eq(documents.id, file.paperId), eq(documents.clientId, args.clientId)))
+          .for("update")
+      : [];
+    if (!file || !from) throw new DomainError("NOT_FOUND", `file ${args.fileId}`);
+    if (from.code === args.code) return;
+    const to = await paperRow(tx, args.clientId, args.code, now);
+
+    const [same] = await tx
+      .select({ id: documentFiles.id })
+      .from(documentFiles)
+      .where(and(eq(documentFiles.docId, to.id), eq(documentFiles.sha256, file.sha256)));
+    if (same) {
+      // The paper holds this very file already: one copy is enough.
+      await tx.delete(documentFiles).where(eq(documentFiles.id, args.fileId));
+    } else {
+      if ((await filesOf(tx, to.id)) >= PAPER_MAX_FILES) throw new DomainError("FILE_LIMIT", `paper ${to.code}`);
+      await tx.update(documentFiles).set({ docId: to.id }).where(eq(documentFiles.id, args.fileId));
+      await tx.update(documents).set({ status: "received", note: null, updatedAt: now }).where(eq(documents.id, to.id));
+    }
+    const left = await filesOf(tx, from.id);
+    const status: PaperStatus = from.status === "rejected" ? "rejected" : left > 0 ? "received" : "missing";
+    await tx
+      .update(documents)
+      .set({ status, note: status === "rejected" ? from.note : null, updatedAt: now })
+      .where(eq(documents.id, from.id));
+    await audit(tx, args.actor, "doc.move", "client", args.clientId, { fileId: args.fileId, from: from.code, to: to.code });
+  });
+}
+
 /** Says a paper is good, or sends it back with the reason. Only a paper that has files can be judged. */
 export async function reviewPaper(db: Db, args: { clientId: number; paperId: number; review: unknown; actor: Actor; now?: Date }): Promise<void> {
   const review: PaperReview = valid(() => reviewSchema.parse(args.review));
@@ -224,6 +273,8 @@ export async function reviewPaper(db: Db, args: { clientId: number; paperId: num
     if (!paper) throw new DomainError("NOT_FOUND", `paper ${args.paperId}`);
     // The SIMAH report is checked by reading it. Its place is the credit record.
     if (paper.code === SIMAH_PAPER) throw new DomainError("INVALID_INPUT", "the SIMAH report is checked by reading it");
+    // What arrived by WhatsApp is not a paper yet: it is put under one first.
+    if (paper.code === INBOX_PAPER) throw new DomainError("INVALID_INPUT", "a file from WhatsApp is put under a paper first");
     if ((await filesOf(tx, paper.id)) === 0) throw new DomainError("PAPER_EMPTY", `paper ${paper.code}`);
     await tx
       .update(documents)

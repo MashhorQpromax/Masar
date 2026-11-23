@@ -1,13 +1,16 @@
 import "server-only";
 import { emptyReport, type CreditReport, type ParsedReport } from "@/domain/credit";
 import { defaultDealInput, type DealInput, type Stage } from "@/domain/deal";
-import type { PaperCode } from "@/domain/documents";
+import { INBOX_PAPER, type PaperCode } from "@/domain/documents";
+import { LINK_DAYS } from "@/domain/messages";
 import { addCreditReport } from "../credit/service";
 import type { Db } from "../db/client";
-import { clients } from "../db/schema";
-import { saveDeal, setDealStage } from "../deals/service";
+import { tokenHash } from "../auth/secret";
+import { clients, shareLinks, waMessages } from "../db/schema";
+import { getDeal, saveDeal, setDealStage } from "../deals/service";
 import { addPaper, keepFile, reviewPaper } from "../documents/service";
 import { seedCatalogue } from "../lenders/service";
+import { DEMO_LINK_SECRET, linkToken, reachable } from "../messages/links";
 import { SYSTEM } from "../shared/actor";
 import { riyadhDay } from "../shared/clock";
 
@@ -16,6 +19,8 @@ const DAY = 24 * 60 * 60 * 1000;
 interface DemoDeal {
   fileNo: string;
   name: string;
+  /** A made-up number. It reaches nobody. */
+  phone: string;
   birthYear: number;
   basicSalary: number;
   totalSalary: number;
@@ -31,6 +36,10 @@ interface DemoDeal {
   credit?: { readDaysAgo: number; reading: (day: (daysAgo: number) => string) => DemoReading };
   /** What the client's file holds: each paper with its made-up files and what was said about it. */
   papers?: DemoPaper[];
+  /** The conversation so far, oldest first. A message from the client may carry a made-up file. */
+  thread?: { from: "office" | "client"; hoursAgo: number; body: string; file?: string }[];
+  /** How many times the client opened their link. */
+  linkViews?: number;
 }
 
 interface DemoPaper {
@@ -87,6 +96,7 @@ const DEALS: DemoDeal[] = [
   {
     fileNo: "C-019",
     name: "فهد",
+    phone: "0500000019",
     birthYear: 1985,
     basicSalary: 14500,
     totalSalary: 19800,
@@ -135,6 +145,7 @@ const DEALS: DemoDeal[] = [
   {
     fileNo: "C-014",
     name: "سالم",
+    phone: "0500000014",
     birthYear: 1989,
     basicSalary: 11000,
     totalSalary: 15200,
@@ -170,6 +181,13 @@ const DEALS: DemoDeal[] = [
       { paper: "salary_cert", files: ["تعريف بالراتب.pdf"], verdict: { sentBack: "مضى عليه أكثر من شهر" } },
       kept({ added: "خطاب تثبيت من جهة العمل" }),
     ],
+    // The office asked for a newer salary letter, and the client answered with it in WhatsApp.
+    thread: [
+      { from: "office", hoursAgo: 52, body: "السلام عليكم ورحمة الله سالم\nتعريف الراتب الذي وصلنا مضى عليه أكثر من شهر. نحتاج واحداً جديداً لنكمل ملفك." },
+      { from: "client", hoursAgo: 5, body: "وعليكم السلام، هذا التعريف الجديد", file: "تعريف جديد.pdf" },
+      { from: "client", hoursAgo: 5, body: "متى يتحدث سجلي في سمة؟" },
+    ],
+    linkViews: 3,
     // Read again after the order was paid and SIMAH updated: the debt shows as settled history.
     credit: {
       readDaysAgo: 12,
@@ -197,6 +215,7 @@ const DEALS: DemoDeal[] = [
   {
     fileNo: "C-017",
     name: "نورة",
+    phone: "0500000017",
     birthYear: 1992,
     basicSalary: 9800,
     totalSalary: 13400,
@@ -245,6 +264,7 @@ const DEALS: DemoDeal[] = [
   {
     fileNo: "C-021",
     name: "ريم",
+    phone: "0500000021",
     birthYear: 1981,
     basicSalary: 10500,
     totalSalary: 14100,
@@ -308,6 +328,7 @@ export async function seedDemo(db: Db, now: Date): Promise<void> {
       .values({
         fileNo: demo.fileNo,
         fullName: demo.name,
+        phone: demo.phone,
         birthYear: demo.birthYear,
         basicSalary: demo.basicSalary,
         totalSalary: demo.totalSalary,
@@ -348,6 +369,38 @@ export async function seedDemo(db: Db, now: Date): Promise<void> {
         const review = entry.verdict === "verified" ? { verdict: "verified" } : { verdict: "rejected", note: entry.verdict.sentBack };
         await reviewPaper(db, { clientId: client!.id, paperId, review, actor: SYSTEM, now: at });
       }
+    }
+    for (const [index, said] of (demo.thread ?? []).entries()) {
+      const at = new Date(now.getTime() - said.hoursAgo * 3_600_000);
+      const fileId = said.file
+        ? (await db.transaction((tx) => keepFile(tx, { clientId: client!.id, code: INBOX_PAPER, name: said.file!, bytes: madeUpPdf(`${demo.fileNo} wa.${index + 1}`), actor: SYSTEM, now: at, via: "whatsapp" }))).fileId
+        : null;
+      await db.insert(waMessages).values({
+        clientId: client!.id,
+        direction: said.from === "client" ? "in" : "out",
+        waId: `demo.${demo.fileNo}.${index + 1}`,
+        phone: `9665000000${demo.phone.slice(-2)}`,
+        type: said.file ? "document" : "text",
+        body: said.body,
+        fileId,
+        status: said.from === "client" ? "received" : "read",
+        createdAt: at,
+        updatedAt: at,
+      });
+    }
+    // A client the office may write to has a link. Its token is the same on every copy of the demo.
+    const view = await getDeal(db, { dealId, now });
+    if (view && reachable(view)) {
+      const seed = `demo:${demo.fileNo}`;
+      await db.insert(shareLinks).values({
+        tokenHash: tokenHash(linkToken(DEMO_LINK_SECRET, seed)),
+        seed,
+        clientId: client!.id,
+        expiresAt: new Date(now.getTime() + (LINK_DAYS - 3) * DAY),
+        views: demo.linkViews ?? 0,
+        lastViewAt: demo.linkViews ? new Date(now.getTime() - 6 * 3_600_000) : null,
+        createdAt: ago(3),
+      });
     }
   }
 }

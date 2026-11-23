@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { askText, missingText, owedBrief, PAPER_CATEGORY, PAPER_ERROR_CODES, PAPER_STATUS, paperError, paperLabel } from "@/copy/documents";
+import { missingText, owedBrief, owedLines, PAPER_CATEGORY, PAPER_ERROR_CODES, PAPER_STATUS, paperError, paperLabel } from "@/copy/documents";
 import { PAPER_CATEGORIES, PAPER_CODES, PAPER_STATUSES } from "@/domain/documents";
 import { SECTORS } from "@/domain/eligibility";
 
@@ -43,16 +43,17 @@ describe("the wording of papers", () => {
     expect(owedBrief(["صك العقار", "أ", "ب", "ج"])).toBe("صك العقار، و3 مستندات أخرى.");
   });
 
-  it("asks the client for the papers and says nothing else", () => {
-    const text = askText("سالم العتيبي", [
+  it("numbers the papers owed, and says why one is needed again", () => {
+    const lines = owedLines([
       { label: "صك العقار", note: null },
       { label: "تعريف بالراتب لا يتجاوز شهراً", note: "مضى عليه أكثر من شهر" },
     ]);
-    expect(text).toBe(
-      ["السلام عليكم سالم،", "لإكمال ملفك نحتاج:", "1. صك العقار", "2. تعريف بالراتب لا يتجاوز شهراً (نحتاجه من جديد: مضى عليه أكثر من شهر)", "أرسلها هنا صوراً واضحة أو ملفات PDF. شكراً لك."].join("\n"),
-    );
-    expect(text).not.toMatch(/ريال|أتعاب|رسوم|ربح|%|\d{4,}/);
-    expect(askText("  ", [{ label: "الهوية الوطنية", note: null }]).split("\n")[0]).toBe("السلام عليكم،");
+    expect(lines).toEqual(["1. صك العقار", "2. تعريف بالراتب لا يتجاوز شهراً (نحتاجه من جديد: مضى عليه أكثر من شهر)"]);
+    expect(owedLines([])).toEqual([]);
+  });
+
+  it("names the tray of what arrived by WhatsApp", () => {
+    expect(paperLabel({ code: "inbox", label: null }, { sector: "gov", nationality: "saudi" })).toBe("وصل في واتساب");
   });
 
   it("has a sentence for every refusal", () => {
@@ -61,7 +62,7 @@ describe("the wording of papers", () => {
       expect(text, code).not.toMatch(broken);
       expect(text.endsWith("."), code).toBe(true);
     }
-    for (const code of ["FILE_TYPE", "FILE_TOO_LARGE", "FILE_LIMIT", "PAPER_EMPTY", "PAPER_HAS_FILES", "NOT_FOUND", "INVALID_INPUT", "DEMO", "NO_FILE", "UNREADABLE"]) expect(PAPER_ERROR_CODES).toContain(code);
+    for (const code of ["FILE_TYPE", "FILE_TOO_LARGE", "FILE_LIMIT", "PAPER_EMPTY", "PAPER_HAS_FILES", "UPLOAD_LIMIT", "LINK_CLOSED", "NOT_FOUND", "INVALID_INPUT", "DEMO", "NO_FILE", "UNREADABLE"]) expect(PAPER_ERROR_CODES).toContain(code);
     expect(paperError("SOMETHING_ELSE")).toBe("تعذر الحفظ. حاول مرة أخرى.");
   });
 });

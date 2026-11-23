@@ -2,7 +2,7 @@
  * The wording of a client's papers: what each one is called, where it stands, and what to tell the
  * client who still owes some. The engine returns codes; this file turns them into Arabic.
  */
-import type { FileKind, PaperCategory, PaperStatus } from "@/domain/documents";
+import { INBOX_PAPER, type FileKind, type PaperCategory, type PaperStatus } from "@/domain/documents";
 import type { Nationality } from "@/domain/eligibility";
 import type { Sector } from "@/domain/shared/sector";
 import { documentLabel } from "./eligibility";
@@ -36,9 +36,13 @@ const DEAL_PAPER: Record<string, string> = {
   transfer_deed: "صك العقار بعد الإفراغ لطرفنا",
 };
 
+/** The tray of pictures and documents a client sent by WhatsApp, before a person puts each under its paper. */
+export const TRAY = "وصل في واتساب";
+
 /** What a paper is called. One a person added carries the name they gave it. */
 export function paperLabel(paper: { code: string; label: string | null }, who: { sector: Sector; nationality: Nationality }): string {
   if (paper.label) return paper.label;
+  if (paper.code === INBOX_PAPER) return TRAY;
   return DEAL_PAPER[paper.code] ?? documentLabel(paper.code, { financeType: "mortgage", ...who });
 }
 
@@ -63,14 +67,9 @@ export function owedBrief(labels: string[]): string {
   return `${first}، و${counted(rest.length, { one: "مستند آخر", two: "مستندان آخران", few: "مستندات أخرى", many: "مستنداً آخر" })}.`;
 }
 
-/**
- * The message a person sends the client to ask for what is owed. It names the papers and nothing
- * else: no amounts, no fees, nothing about the deal.
- */
-export function askText(clientName: string, owed: { label: string; note: string | null }[]): string {
-  const first = clientName.trim().split(/\s+/)[0] ?? "";
-  const lines = owed.map((paper, index) => `${index + 1}. ${paper.label}${paper.note ? ` (نحتاجه من جديد: ${paper.note})` : ""}`);
-  return [`السلام عليكم${first ? ` ${first}` : ""}،`, "لإكمال ملفك نحتاج:", ...lines, "أرسلها هنا صوراً واضحة أو ملفات PDF. شكراً لك."].join("\n");
+/** The papers owed as numbered lines. A paper sent back says why it is needed again. */
+export function owedLines(owed: { label: string; note: string | null }[]): string[] {
+  return owed.map((paper, index) => `${index + 1}. ${paper.label}${paper.note ? ` (نحتاجه من جديد: ${paper.note})` : ""}`);
 }
 
 const PAPER_ERROR: Record<string, string> = {
@@ -81,6 +80,8 @@ const PAPER_ERROR: Record<string, string> = {
   FILE_LIMIT: "هذا المستند فيه 12 ملفاً، وهو الحد. احذف ما لا يلزم ثم ارفع.",
   PAPER_EMPTY: "لا ملف في هذا المستند بعد.",
   PAPER_HAS_FILES: "احذف ملفات المستند أولاً.",
+  UPLOAD_LIMIT: "وصلنا عدد كبير من الملفات اليوم. أكمل غداً أو أرسلها لنا في واتساب.",
+  LINK_CLOSED: "انتهت صلاحية الرابط. اطلب رابطاً جديداً من مسؤول ملفك.",
   NOT_FOUND: "هذا المستند لم يعد موجوداً. حدّث الصفحة.",
   INVALID_INPUT: "تحقق مما كتبته ثم حاول مرة أخرى.",
   UNREADABLE: "تعذرت قراءة الصورة. جرّب صورة أخرى.",

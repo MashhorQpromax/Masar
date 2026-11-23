@@ -172,6 +172,21 @@ One thing changed on purpose: the old list of documents could name a paper twice
 
 Worth a decision before the switch: files live in Postgres, so the database grows with every paper. That is sound for a start (one backup holds everything, and a file is never without its row), and a busy year of scans may outgrow a small database plan. Moving the contents to file storage later touches `file_blobs` alone.
 
+## Messages
+
+`src/domain/messages` decides what may be said to a client and what a client may be told. `src/server/messages` keeps the conversation, the client's link and the line to WhatsApp. The screens are `/deals/[id]/messages` for the office and `/s/[token]` for the client.
+
+- A gate decides what may be written (`messageGate`). A cancelled deal and a deal that does not close leave only the internal summary: the client counts as rejected and is not written to. A study still missing facts allows the papers request and a reply. Every other deal allows the study summary, the papers request, where the file stands, a reply in the person's own words, and the internal summary. The same gate opens and closes the client's link.
+- The three written messages for a client are built from `ClientFacts` alone. That type carries no fee, no capital and no return, so no wording built on it can tell a client what the company earns. A test walks all 240 golden deals and checks that every number in a client message is one the client may know. The internal summary carries the company's numbers and is never recorded as said to a client.
+- The study message names the kind of lender and the amount. Naming the lender itself is a choice the person makes each time, off by default.
+- A client's link is derived, not stored: the token is an HMAC of a random seed under the app's secret, and the row keeps the seed and the token's hash. The office can show the link again at any time, and a copy of the database alone opens nobody's page. A link lasts 14 days and one press closes every link of a client.
+- The client's page shows the steps of the road in the client's words, the amounts of the plan rounded, and the client's own papers. It never shows the office's papers, the WhatsApp tray, a file, a fee or the name of a lender. It takes uploads for the client's papers that are still owed, through the same `keepFile` checks as the office, 60 files per client per day.
+- WhatsApp from the company's number goes through Meta's Cloud API (`cloud.ts`) and is off until the owner sets `WA_TOKEN` and `WA_PHONE_ID`. Free text is sent only while the client wrote within the last 24 hours. Outside that window the approved template goes instead (`masar_file_update`: first name and link). Until the number is connected a person sends from their own WhatsApp and the message is recorded in the file as sent by hand.
+- `/api/wa/webhook` takes what Meta reports. A call is trusted only by its `x-hub-signature-256` under `WA_APP_SECRET`. Delivery reports update the message they belong to, a repeated message is kept once, and a message from a number the office does not know is stored without a client.
+- A picture or a document from a known client is kept under the `inbox` paper, the tray at the top of the papers screen. It counts for nothing there. A person opens it and puts it under the paper it is (`movePaperFile`), which is written to the audit log.
+- The sign-in code by WhatsApp uses the same line (`codeSender`) and the approved authentication template `masar_login_code`. The form answers with the same words whether the email has an account or not.
+- A build without a database sends nothing and records nothing. Its client numbers are invented, so "open in WhatsApp" opens with no number chosen, and its links are fixed so the same link opens on every copy of the demo.
+
 ## Porting checklist
 
 Old module (under `legacy/lib`) and its state in the rebuild:
@@ -187,10 +202,10 @@ Old module (under `legacy/lib`) and its state in the rebuild:
 - [ ] importing commitments from a report, and suggesting a new deal's items from it in the editor (`itemDrafts` is ready)
 - [ ] `project.ts` project finance
 - [ ] `advisor.ts`
-- [ ] `whatsapp.ts`, `wa-cloud.ts` messages and Meta Cloud API
+- [x] `whatsapp.ts`, `wa-cloud.ts` messages and Meta Cloud API: `src/domain/messages`, `src/copy/messages.ts`, `src/server/messages`, `/deals/[id]/messages`, `/api/wa/webhook` (migration `0004_messages_links`)
 - [x] `auth.ts`, `totp.ts` sign-in with a password, sessions, roles and permissions, lockouts, the authenticator as a second step and as a code: `src/domain/auth`, `src/server/auth`, the `/login` screen
 - [x] `auth-methods.ts` passkeys, enrolling an authenticator, changing a password and signing other devices out: `src/server/auth/passkeys.ts`, `account.ts`, the `/account` screen
-- [ ] `auth-methods.ts` delivery of the WhatsApp code: arrives with the WhatsApp module
+- [x] `auth-methods.ts` delivery of the WhatsApp code: `codeSender` in `src/server/messages/request.ts`, asked for on `/login`
 - [x] `schema.ts`, `db.ts`: replaced by `src/server/db` (Drizzle schema, `db/migrations`, Postgres schema `masar`)
 - [x] deal storage and stages from `data.ts` and `actions.ts`: `src/server/deals` (save, stage, reject, reopen, read), tested on a real Postgres engine in memory
 - [x] the lender catalogue and its terms: `src/server/lenders`, the `/lenders` page; funding routes for a deal: `src/domain/funding`, `src/server/funding`, `/deals/[id]/lenders` (migration `0002_lender_routes`)
@@ -198,7 +213,8 @@ Old module (under `legacy/lib`) and its state in the rebuild:
 - [ ] the rest of `data.ts` and `actions.ts`: clients, notes, adding and removing lenders and products, lender rules
 - [x] screens on the "الخريطة" direction: the road (home), the deals list, the deal file with stage moves and the step by step calculation, the deal editor
 - [x] opening a client file and revising its facts, from `data.ts` and `actions.ts`: `src/server/clients`
-- [ ] screens still to build: clients, inbox, calculator, knowledge, users, audit, client portal (where the client uploads their own papers)
+- [x] the client portal, where the client follows their file and uploads their own papers: `/s/[token]`, `src/server/messages/portal.ts`
+- [ ] screens still to build: clients, inbox (messages from numbers the office does not know wait for it), calculator, knowledge, users, audit
 - [ ] data migration from the live database, then the domain switch (only after the owner approves)
 
 To regenerate a golden file while `legacy/` still exists: `npm run golden:deal`, `npm run golden:credit`, `npm run golden:simah`. Each generator is seeded, so it writes the same file every time.

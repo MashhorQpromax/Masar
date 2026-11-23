@@ -113,7 +113,7 @@ describe("rejecting and reopening", () => {
   it("marks the deal lost, the client rejected, and cuts every shared link", async () => {
     const client = await newClient();
     const { dealId } = await saveDeal(c.db, { clientId: client.id, input, actor, now });
-    await c.db.insert(shareLinks).values({ tokenHash: `h-${client.id}`, clientId: client.id, expiresAt: new Date("2026-12-31T00:00:00Z") });
+    await c.db.insert(shareLinks).values({ tokenHash: `h-${client.id}`, seed: "seed", clientId: client.id, expiresAt: new Date("2026-12-31T00:00:00Z") });
 
     await rejectDeal(c.db, { clientId: client.id, reason: "الصفقة لا تقفل", actor, now });
 

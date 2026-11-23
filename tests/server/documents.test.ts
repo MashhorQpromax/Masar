@@ -52,10 +52,13 @@ describe("the file of a demo deal", () => {
       ["payoff_letter", "missing"],
       ["custom", "missing"],
     ]);
-    expect(salem).toMatchObject({ required: 12, missing: 4, verified: 6, toCheck: 2 });
+    // Two papers wait to be looked at, and so does the file that arrived by WhatsApp.
+    expect(salem).toMatchObject({ required: 12, missing: 4, verified: 6, toCheck: 3 });
     expect((await paper("سالم", "salary_cert")).note).toBe("مضى عليه أكثر من شهر");
     expect((await paper("سالم", "bank_3")).files.map((f) => f.name)).toEqual(["كشف الحساب 1.pdf", "كشف الحساب 2.pdf", "كشف الحساب 3.pdf"]);
-    expect(salem.papers.at(-1)).toMatchObject({ label: "خطاب تثبيت من جهة العمل", category: "extra" });
+    expect(salem.papers.at(-2)).toMatchObject({ label: "خطاب تثبيت من جهة العمل", category: "extra" });
+    expect(salem.papers.at(-1)).toMatchObject({ code: "inbox", category: "extra", required: false, status: "received" });
+    expect(salem.papers.at(-1)!.files.map((f) => f.name)).toEqual(["تعريف جديد.pdf"]);
   });
 
   it("shows a nearly finished deal that never had its SIMAH report read", async () => {

@@ -3120,6 +3120,697 @@
     min-height: 50px;
   }
 
+  /* ---------- Messages ---------- */
+  /* The writing tile sets the height of the first two rows; the link tile beside it takes what is left. */
+  .bento--compose {
+    grid-template-rows: auto 1fr;
+  }
+  .tile--compose {
+    justify-content: flex-start;
+    gap: 20px;
+  }
+  .compose-title {
+    font-size: clamp(28px, 3vw, 40px);
+    font-weight: 700;
+    line-height: 1.3;
+    margin-top: 2px;
+  }
+  .composer {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    min-width: 0;
+  }
+  .composer .seg {
+    align-self: flex-start;
+    background: rgba(255, 255, 255, 0.08);
+  }
+  .composer .seg button {
+    color: #c5d1dc;
+    white-space: nowrap;
+  }
+  .composer .seg button[aria-checked="true"] {
+    background: var(--color-sun);
+    color: var(--color-navy);
+    font-weight: 600;
+  }
+  /* The message as the client will get it: a white bubble with its tail at the sender's corner. */
+  .bubble {
+    display: flex;
+    flex-direction: column;
+    background: #fff;
+    color: var(--color-ink);
+    border-radius: 22px;
+    border-end-end-radius: 6px;
+    transition: box-shadow 0.2s;
+  }
+  .bubble:focus-within {
+    box-shadow: 0 0 0 3px var(--color-sun);
+  }
+  .bubble-text {
+    width: 100%;
+    min-height: 132px;
+    max-height: 440px;
+    field-sizing: content;
+    border: 0;
+    border-radius: 22px 22px 0 0;
+    background: transparent;
+    resize: none;
+    font: inherit;
+    font-size: 15.5px;
+    line-height: 1.8;
+    color: var(--color-ink);
+    padding: 18px 20px 12px;
+  }
+  .bubble-text:focus-visible {
+    outline: none;
+  }
+  .bubble-text::placeholder {
+    color: #98a2b3;
+  }
+  .bubble-foot {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 2px 16px;
+    min-height: 46px;
+    border-top: 1px solid var(--color-ground);
+    padding: 4px 20px;
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--color-muted);
+  }
+  .bubble-foot .check {
+    font-size: 13.5px;
+  }
+  .composer .btn--ghost {
+    color: #fff;
+  }
+  .composer .btn[aria-disabled="true"] {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+  }
+  .composer-say {
+    font-size: 13.5px;
+    line-height: 1.7;
+    color: var(--color-navy-mist);
+  }
+  .compose-title + .composer-say {
+    margin-top: 6px;
+    max-width: 520px;
+  }
+
+  /* The client's link, with their page drawn small beside it. */
+  .tile--share {
+    grid-column: span 5;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: stretch;
+    gap: 22px;
+    animation-delay: 0.16s;
+  }
+  .share-text {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    min-width: 0;
+  }
+  /* In a tall tile the facts stay at the top and what to do sits at the bottom. */
+  .share-text > .actions {
+    margin-top: auto;
+  }
+  .share-state {
+    font-size: 26px;
+    font-weight: 700;
+    line-height: 1.35;
+  }
+  .share-say {
+    font-size: 14px;
+    line-height: 1.7;
+    color: var(--color-body);
+    margin-top: 2px;
+  }
+  .share-url {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 46px;
+    background: var(--color-ground);
+    border-radius: 14px;
+    padding-inline: 14px 5px;
+  }
+  .share-url bdi {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: left;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 12.5px;
+    color: var(--color-body);
+  }
+  .share-phone {
+    align-self: center;
+    display: flex;
+    flex-direction: column;
+    gap: 11px;
+    width: 150px;
+    border-radius: 26px;
+    background-color: var(--color-navy);
+    background-image: radial-gradient(rgba(255, 255, 255, 0.07) 1px, transparent 1.1px);
+    background-size: 14px 14px;
+    box-shadow:
+      0 0 0 4px #fff,
+      0 0 0 5.5px var(--color-line),
+      0 18px 30px -18px rgba(15, 42, 67, 0.5);
+    color: #fff;
+    padding: 20px 14px 18px;
+    rotate: 4deg;
+    transition:
+      rotate 0.5s var(--ease-spring),
+      opacity 0.3s;
+  }
+  .tile--share:hover .share-phone {
+    rotate: 0deg;
+  }
+  .share-phone b {
+    font-size: 14px;
+    font-weight: 700;
+  }
+  .share-phone ol {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .share-phone li {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 9.5px;
+    line-height: 1.5;
+    color: #8fa1b3;
+    white-space: nowrap;
+    overflow: hidden;
+  }
+  .share-phone i {
+    flex: none;
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    border: 1.5px solid #34536f;
+  }
+  .share-phone li[data-state="done"] {
+    color: #dbe3ea;
+  }
+  .share-phone li[data-state="done"] i {
+    background: var(--color-sun);
+    border-color: var(--color-sun);
+  }
+  .share-phone li[data-state="current"] {
+    color: #fff;
+    font-weight: 600;
+  }
+  .share-phone li[data-state="current"] i {
+    background: var(--color-coral);
+    border-color: var(--color-coral);
+    animation: pulse 2s ease-out infinite;
+  }
+  .tile--share[data-off] .share-phone {
+    opacity: 0.3;
+    filter: grayscale(1);
+  }
+
+  /* The conversation: ours on one side in navy, the client's on the other. */
+  .thread {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    margin-top: 16px;
+  }
+  .thread li {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    max-width: min(76%, 640px);
+    animation: rise 0.6s var(--ease-out) backwards;
+  }
+  .thread li[data-dir="out"] {
+    align-self: flex-end;
+    align-items: flex-end;
+  }
+  .thread li[data-dir="in"] {
+    align-self: flex-start;
+    align-items: flex-start;
+  }
+  .thread-bubble {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+    min-width: 0;
+    max-width: 100%;
+    border-radius: 20px;
+    padding: 12px 18px;
+  }
+  .thread li[data-dir="out"] .thread-bubble {
+    background: var(--color-navy);
+    color: #fff;
+    border-end-end-radius: 6px;
+  }
+  .thread li[data-dir="in"] .thread-bubble {
+    background: var(--color-ground);
+    color: var(--color-ink);
+    border-end-start-radius: 6px;
+  }
+  .thread li[data-bad] .thread-bubble {
+    background: var(--color-coral-soft);
+    color: #8a2410;
+  }
+  .wa-text {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    font-size: 15px;
+    line-height: 1.8;
+  }
+  .wa-text b {
+    font-weight: 600;
+  }
+  .wa-text i {
+    font-style: normal;
+    opacity: 0.72;
+  }
+  .thread-kind {
+    font-size: 13.5px;
+    line-height: 1.7;
+    opacity: 0.82;
+  }
+  .thread-bubble .file {
+    background: #fff;
+  }
+  .thread-meta {
+    font-size: 12px;
+    color: var(--color-muted);
+    padding-inline: 6px;
+  }
+  .thread li[data-bad] .thread-meta {
+    color: var(--color-coral-ink);
+  }
+  .thread-long > summary {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    list-style: none;
+    cursor: pointer;
+    font-size: 15px;
+    line-height: 1.8;
+  }
+  .thread-long > summary::-webkit-details-marker {
+    display: none;
+  }
+  .thread-long > summary b {
+    font-size: 13px;
+    font-weight: 500;
+    text-decoration: underline;
+    text-underline-offset: 4px;
+    opacity: 0.85;
+  }
+  .thread-long[open] > summary {
+    display: none;
+  }
+  .thread-none {
+    margin-top: 10px;
+    font-size: 15px;
+    line-height: 1.8;
+    color: var(--color-body);
+    max-width: 560px;
+  }
+
+  /* What arrived by WhatsApp waits at the top of the papers until a person files it. */
+  .tray {
+    background: var(--color-sun-soft);
+    border-radius: 20px;
+    padding: 16px 20px 4px;
+    margin-bottom: 20px;
+  }
+  .tray .label {
+    color: var(--color-sun-ink);
+  }
+  .tray-say {
+    font-size: 14px;
+    line-height: 1.7;
+    color: var(--color-navy);
+    margin-top: 2px;
+  }
+  .tray + .papers-group {
+    border-top: 0;
+    margin-top: 0;
+    padding-top: 0;
+  }
+  .tray .paper {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    gap: 8px 10px;
+  }
+  .tray .paper + .paper {
+    border-top-color: rgba(122, 90, 0, 0.14);
+  }
+  .tray .file {
+    background: #fff;
+  }
+  .tray-put {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .tray-put .field-input {
+    width: 250px;
+    min-height: 44px;
+    background-color: #fff;
+    padding-block: 9px;
+    font-size: 15px;
+  }
+  .tray .btn {
+    min-height: 44px;
+    padding-inline: 18px;
+    font-size: 14px;
+  }
+
+  /* ---------- The client's page ---------- */
+  .portal {
+    max-width: 600px;
+    min-height: 100dvh;
+    margin-inline: auto;
+    padding: 0 16px 36px;
+  }
+  .portal-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 20px 4px 16px;
+  }
+  .portal-body {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .portal-hero {
+    background-color: var(--color-navy);
+    background-image: radial-gradient(rgba(255, 255, 255, 0.07) 1.3px, transparent 1.4px);
+    background-size: 28px 28px;
+    color: #fff;
+    padding: 28px 24px 22px;
+  }
+  .portal-hero .label {
+    color: #ffd46b;
+  }
+  .portal-hello {
+    font-size: clamp(34px, 9.5vw, 46px);
+    font-weight: 700;
+    line-height: 1.25;
+    margin-top: 4px;
+  }
+  .portal-now {
+    font-size: 16px;
+    line-height: 1.8;
+    color: #dbe3ea;
+    margin-top: 6px;
+  }
+  /* The road, top to bottom: gold behind the client, coral where they stand, an outline ahead. */
+  .trail {
+    margin-top: 20px;
+  }
+  .trail li {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    height: 46px;
+    font-size: 15.5px;
+    color: #8fa1b3;
+    animation: rise 0.6s var(--ease-out) backwards;
+  }
+  .trail li:nth-child(2) {
+    animation-delay: 0.06s;
+  }
+  .trail li:nth-child(3) {
+    animation-delay: 0.12s;
+  }
+  .trail li:nth-child(4) {
+    animation-delay: 0.18s;
+  }
+  .trail li:nth-child(5) {
+    animation-delay: 0.24s;
+  }
+  .trail li:nth-child(6) {
+    animation-delay: 0.3s;
+  }
+  .trail li + li::before {
+    content: "";
+    position: absolute;
+    top: -11px;
+    inset-inline-start: 11px;
+    width: 2px;
+    height: 22px;
+    background: #34536f;
+  }
+  .trail i {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    border: 2px solid #34536f;
+    color: var(--color-navy);
+  }
+  .trail li[data-state="done"] {
+    color: #dbe3ea;
+  }
+  .trail li[data-state="done"] i {
+    background: var(--color-sun);
+    border-color: var(--color-sun);
+  }
+  .trail li[data-state="done"]::before,
+  .trail li[data-state="current"]::before {
+    background: var(--color-sun);
+  }
+  .trail li[data-state="current"] {
+    color: #fff;
+    font-weight: 600;
+  }
+  .trail li[data-state="current"] i {
+    background: var(--color-coral);
+    border-color: var(--color-coral);
+    animation: pulse 2s ease-out infinite;
+  }
+  .trail small {
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.14);
+    padding: 2px 11px;
+    font-size: 12px;
+    font-weight: 500;
+  }
+  /* What the client ends with is where the road leads, so it has the sun's colour. */
+  .portal-plan {
+    background: var(--color-sun);
+    color: var(--color-navy);
+    animation-delay: 0.08s;
+  }
+  .portal-plan .label,
+  .portal-figures dt,
+  .portal-fine {
+    color: rgba(15, 42, 67, 0.78);
+  }
+  .portal-keep {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 2px 10px;
+    font-size: 17px;
+    font-weight: 500;
+    margin-top: 6px;
+  }
+  .portal-keep span:first-child {
+    flex-basis: 100%;
+  }
+  .portal-keep b {
+    font-size: clamp(44px, 13vw, 62px);
+    font-weight: 700;
+    line-height: 1.15;
+  }
+  .portal-figures {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    margin-top: 14px;
+    border-top: 1.5px solid rgba(15, 42, 67, 0.14);
+    padding-top: 14px;
+  }
+  .portal-plan > .portal-figures:nth-child(2) {
+    border-top: 0;
+    padding-top: 0;
+    margin-top: 8px;
+  }
+  .portal-figures dt {
+    font-size: 13px;
+  }
+  .portal-figures dd {
+    font-size: 18px;
+    font-weight: 600;
+    line-height: 1.6;
+  }
+  .portal-fine {
+    font-size: 12.5px;
+    line-height: 1.7;
+    margin-top: 14px;
+  }
+  .portal-papers {
+    animation-delay: 0.16s;
+  }
+  .portal-papers-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .portal-papers-head h2 {
+    font-size: 24px;
+    font-weight: 700;
+  }
+  .portal-papers-head p {
+    font-size: 13.5px;
+    color: var(--color-muted);
+  }
+  .portal-say {
+    font-size: 14px;
+    line-height: 1.7;
+    color: var(--color-body);
+    margin-top: 2px;
+  }
+  .portal-owed {
+    margin-top: 6px;
+  }
+  .portal-owed li {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px 16px;
+    padding: 14px 0;
+  }
+  .portal-owed li + li {
+    border-top: 1px solid var(--color-ground);
+  }
+  .portal-owed li > div:first-child {
+    flex: 1 1 190px;
+    min-width: 0;
+  }
+  .portal-owed b {
+    font-size: 16.5px;
+    font-weight: 600;
+    line-height: 1.6;
+  }
+  .portal-papers > .note {
+    margin-top: 10px;
+  }
+  .portal-arrived {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-top: 6px;
+    border-top: 1px solid var(--color-line);
+    padding-top: 16px;
+  }
+  .portal-arrived li {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 15px;
+    line-height: 1.6;
+    color: var(--color-body);
+  }
+  .portal-arrived svg {
+    flex: none;
+    color: var(--color-sun-ink);
+  }
+  .portal-arrived small {
+    flex: none;
+    margin-inline-start: auto;
+    font-size: 12.5px;
+    color: var(--color-muted);
+  }
+  .portal-foot {
+    padding: 8px 0;
+    text-align: center;
+    font-size: 12.5px;
+    color: var(--color-muted);
+  }
+  .portal-shut {
+    padding: 52px 24px;
+    text-align: center;
+  }
+  .portal-shut h1 {
+    font-size: 26px;
+    font-weight: 700;
+    line-height: 1.4;
+  }
+  .portal-shut p {
+    font-size: 15px;
+    line-height: 1.8;
+    color: var(--color-body);
+    margin-top: 6px;
+  }
+
+  @media (max-width: 900px) {
+    .bento--compose {
+      grid-template-rows: none;
+    }
+    .tile--share {
+      grid-column: 1 / -1;
+    }
+    .share-phone {
+      display: none;
+    }
+    /* Five choices do not fit one row of a phone. They take two, each as wide as its words need. */
+    .composer .seg {
+      align-self: stretch;
+      flex-wrap: wrap;
+      gap: 4px;
+    }
+    .composer .seg button {
+      flex: 1 1 auto;
+      min-width: auto;
+      padding: 0 12px;
+      font-size: 14px;
+    }
+    .composer .actions .btn {
+      flex: 1 1 auto;
+    }
+    .composer .actions .btn--ghost {
+      flex: 0 0 auto;
+    }
+    .thread li {
+      max-width: 90%;
+    }
+    .tray {
+      padding: 14px 16px 2px;
+    }
+    .tray .paper {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .tray-put {
+      flex-wrap: wrap;
+    }
+    .tray-put .field-input {
+      flex: 1 1 200px;
+      width: auto;
+    }
+  }
+
   /* ---------- Small screens ---------- */
   @media (max-width: 900px) {
     .page {

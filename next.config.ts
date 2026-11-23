@@ -23,7 +23,11 @@ const config: NextConfig = {
     ],
   },
   async headers() {
-    return [{ source: "/(.*)", headers: securityHeaders }];
+    return [
+      { source: "/(.*)", headers: securityHeaders },
+      // A client's link is its own key. It is never handed to another site, not even this one's other pages.
+      { source: "/s/:token*", headers: [{ key: "Referrer-Policy", value: "no-referrer" }] },
+    ];
   },
 };
 

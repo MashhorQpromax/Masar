@@ -1,12 +1,15 @@
 "use client";
 
-import { useActionState, useEffect, useId, useState, type ReactNode } from "react";
+import { useActionState, useEffect, useId, useState, useTransition, type ReactNode } from "react";
 import { passkeyProblem, signInError } from "@/copy/auth";
 import { digitsOf } from "@/domain/shared/phone";
 import { FingerprintIcon } from "@/ui/icons";
 import { PasswordField } from "@/ui/PasswordField";
 import { SubmitButton } from "@/ui/SubmitButton";
-import { passkeyFinish, passkeyStart, signIn, signInByCode, signInSecond } from "./actions";
+import { askCode, passkeyFinish, passkeyStart, signIn, signInByCode, signInSecond } from "./actions";
+
+/** How long before another code may be asked for from the same form. */
+const ASK_AGAIN_MS = 60_000;
 
 /** The two ways in that are typed. The fingerprint is a third, and is a button of its own. */
 type Way = "password" | "code";
@@ -55,7 +58,7 @@ function CodeField({ send, autoFocus, required }: { send?: boolean; autoFocus?: 
   );
 }
 
-export function LoginForm({ demo, passkeys }: { demo: boolean; passkeys: boolean }) {
+export function LoginForm({ demo, passkeys, byWhatsapp }: { demo: boolean; passkeys: boolean; byWhatsapp: boolean }) {
   const [way, setWay] = useState<Way>("password");
   const [email, setEmail] = useState("");
   const [remember, setRemember] = useState(true);
@@ -67,6 +70,17 @@ export function LoginForm({ demo, passkeys }: { demo: boolean; passkeys: boolean
   const [canKey, setCanKey] = useState(false);
   const [waiting, setWaiting] = useState(false);
   const [keyRefused, setKeyRefused] = useState<string | null>(null);
+  const [asked, setAsked] = useState(false);
+  const [asking, startAsking] = useTransition();
+
+  /** Asks for a code on WhatsApp. The answer is the same whether the email has an account or not. */
+  function askForCode() {
+    startAsking(async () => {
+      await askCode(email);
+      setAsked(true);
+      setTimeout(() => setAsked(false), ASK_AGAIN_MS);
+    });
+  }
 
   useEffect(() => {
     setCanKey(passkeys && typeof window.PublicKeyCredential === "function");
@@ -149,8 +163,18 @@ export function LoginForm({ demo, passkeys }: { demo: boolean; passkeys: boolean
   if (way === "code") {
     return (
       <form action={codeAction} className="login-form" key="code">
-        <Heading title="أهلاً بعودتك">ادخل بالرمز من تطبيق المصادقة.</Heading>
+        <Heading title="أهلاً بعودتك">{byWhatsapp ? "ادخل برمز يصلك على واتساب، أو بالرمز من تطبيق المصادقة." : "ادخل بالرمز من تطبيق المصادقة."}</Heading>
         {emailField}
+        {byWhatsapp && (
+          <button type="button" className="btn btn--white" disabled={asking || asked || !email.trim()} aria-busy={asking} onClick={askForCode}>
+            {asked ? "طلبنا لك الرمز" : "أرسل الرمز إلى واتساب"}
+          </button>
+        )}
+        {asked && (
+          <p role="status" className="login-note">
+            إن كان لهذا البريد حساب برقم جوال، يصله الرمز من رقم الشركة خلال لحظات. صالح 5 دقائق.
+          </p>
+        )}
         <CodeField required={!demo} />
         {rememberField}
         <Refused text={byCode?.error ? signInError(byCode.error, "code") : null} />

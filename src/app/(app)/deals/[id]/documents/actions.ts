@@ -5,7 +5,7 @@ import { z } from "zod";
 import { FILE_MAX_BYTES } from "@/domain/documents";
 import { requireActor } from "@/server/auth/actor";
 import { getDb } from "@/server/db/client";
-import { addPaper, addPaperFile, clientOfDeal, removePaper, removePaperFile, reviewPaper } from "@/server/documents/service";
+import { addPaper, addPaperFile, clientOfDeal, movePaperFile, removePaper, removePaperFile, reviewPaper } from "@/server/documents/service";
 import { DomainError } from "@/server/shared/errors";
 
 /** What a paper action answers: nothing when it worked, or the code of why it did not. */
@@ -85,4 +85,15 @@ export async function dropPaper(formData: FormData): Promise<void> {
   const paperId = id.safeParse(formData.get("paperId"));
   if (!paperId.success) return;
   await change(formData.get("dealId"), async (clientId) => removePaper(await getDb(), { clientId, paperId: paperId.data, actor }));
+}
+
+/** Puts a file that arrived by WhatsApp under the paper it is. */
+export async function fileUnder(formData: FormData): Promise<void> {
+  const actor = await requireActor("doc.upload");
+  const fileId = id.safeParse(formData.get("fileId"));
+  const paper = codeSchema.safeParse(formData.get("code"));
+  if (!fileId.success || !paper.success) return;
+  await change(formData.get("dealId"), async (clientId) => {
+    await movePaperFile(await getDb(), { clientId, fileId: fileId.data, code: paper.data, actor });
+  });
 }
