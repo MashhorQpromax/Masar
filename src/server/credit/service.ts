@@ -2,8 +2,10 @@ import "server-only";
 import { and, desc, eq } from "drizzle-orm";
 import { ZodError } from "zod";
 import { analyzeCredit, type CreditAnalysis, type CreditReport, type ParsedReport, type ParseWarning } from "@/domain/credit";
+import { SIMAH_PAPER } from "@/domain/documents";
 import type { Db, Tx } from "../db/client";
 import { clients, creditReports, deals } from "../db/schema";
+import { keepFile } from "../documents/service";
 import type { Actor } from "../shared/actor";
 import { audit } from "../shared/audit";
 import { DomainError } from "../shared/errors";
@@ -41,11 +43,12 @@ async function latestRow(tx: Tx, clientId: number) {
 
 /**
  * Stores a reading of a client's SIMAH report and grades it. Each reading is kept: the newest one is
- * the client's record, and the older ones are its history.
+ * the client's record, and the older ones are its history. The PDF it was read from, when there is
+ * one, is kept with the client's papers.
  */
 export async function addCreditReport(
   db: Db,
-  args: { clientId: number; reading: unknown; actor: Actor; now?: Date },
+  args: { clientId: number; reading: unknown; file?: { name: string; bytes: Uint8Array }; actor: Actor; now?: Date },
 ): Promise<{ reportId: number; analysis: CreditAnalysis }> {
   const reading: Reading = valid(() => parseReading(args.reading));
   const now = args.now ?? new Date();
@@ -53,6 +56,8 @@ export async function addCreditReport(
     const [client] = await tx.select({ id: clients.id }).from(clients).where(eq(clients.id, args.clientId));
     if (!client) throw new DomainError("NOT_FOUND", `client ${args.clientId}`);
     const analysis = analyzeCredit(reading.report);
+    // A client is read many times over the years. The paper keeps the newest files and lets the oldest go.
+    const kept = args.file ? await keepFile(tx, { clientId: client.id, code: SIMAH_PAPER, ...args.file, actor: args.actor, now, makeRoom: true }) : null;
     const [row] = await tx
       .insert(creditReports)
       .values({
@@ -60,6 +65,7 @@ export async function addCreditReport(
         report: stored(reading),
         grade: analysis.grade,
         derivedSimah: analysis.standing,
+        fileId: kept?.fileId ?? null,
         userId: args.actor.userId,
         createdAt: now,
       })

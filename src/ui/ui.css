@@ -2880,6 +2880,246 @@
     border-top: 1px solid var(--color-line);
   }
 
+  /* ---------- Papers of a file ---------- */
+  /* One sheet for each paper the file needs. Its look is where the paper stands. */
+  .sheets {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .sheets li {
+    display: grid;
+    place-items: center;
+    width: 42px;
+    height: 54px;
+    border-radius: 9px 16px 9px 9px;
+    border: 2px dashed #34536f;
+    color: var(--color-navy);
+    animation: pop 0.5s var(--ease-spring) backwards;
+  }
+  .sheets li[data-status="verified"] {
+    background: var(--color-sun);
+    border: 0;
+  }
+  .sheets li[data-status="received"] {
+    background: #fff;
+    border: 0;
+  }
+  .sheets li[data-status="rejected"] {
+    border: 2px solid #ff8168;
+  }
+  .papers-group + .papers-group,
+  .papers-more {
+    border-top: 1px solid var(--color-line);
+    margin-top: 6px;
+    padding-top: 18px;
+  }
+  .papers-more {
+    padding-top: 6px;
+  }
+  .papers-more[open] {
+    padding-top: 18px;
+  }
+  .paper {
+    display: grid;
+    grid-template-columns: minmax(0, 1.25fr) minmax(0, 1.5fr) auto;
+    align-items: center;
+    gap: 8px 24px;
+    padding: 14px 0;
+  }
+  .paper + .paper {
+    border-top: 1px solid var(--color-ground);
+  }
+  .paper-what {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 10px;
+  }
+  .paper-what b {
+    font-size: 16.5px;
+    font-weight: 600;
+    line-height: 1.5;
+  }
+  .paper-what small {
+    font-size: 12.5px;
+    color: var(--color-muted);
+  }
+  .paper-state {
+    padding: 3px 12px;
+    border-radius: 999px;
+    background: var(--color-coral-soft);
+    font-size: 12.5px;
+    font-weight: 500;
+    color: #8a2410;
+    white-space: nowrap;
+  }
+  .paper-state[data-status="received"] {
+    background: var(--color-ground);
+    color: var(--color-navy);
+  }
+  .paper-state[data-status="verified"] {
+    background: var(--color-sun-soft);
+    color: var(--color-sun-ink);
+  }
+  .paper-why {
+    flex-basis: 100%;
+    font-size: 13.5px;
+    line-height: 1.7;
+    color: var(--color-coral-ink);
+  }
+  .paper-files {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  /* A kept file: its name opens it, the small cross lets it go. */
+  .file {
+    display: inline-flex;
+    align-items: center;
+    max-width: 100%;
+    min-height: 40px;
+    border-radius: 12px;
+    background: var(--color-ground);
+    font-size: 13.5px;
+    color: var(--color-navy);
+  }
+  .file > a,
+  .file > span {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    padding: 8px 14px;
+  }
+  .file bdi {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 200px;
+    font-weight: 500;
+  }
+  .file small {
+    flex: none;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--color-muted);
+  }
+  .file > a:hover bdi {
+    text-decoration: underline;
+    text-underline-offset: 4px;
+  }
+  /* The small plus that adds another file to a paper sits with its files. */
+  .file-more {
+    justify-content: center;
+    gap: 6px;
+    min-width: 40px;
+    padding-inline: 12px;
+    background: transparent;
+    border: 1.5px dashed var(--color-navy-mist);
+    color: var(--color-navy);
+    cursor: pointer;
+  }
+  .paper-upload:has(.file-more) {
+    gap: 8px;
+  }
+  .file > form {
+    display: flex;
+  }
+  .file-remove {
+    display: grid;
+    place-items: center;
+    width: 40px;
+    height: 40px;
+    margin-inline-start: -8px;
+    border: 0;
+    border-radius: 12px;
+    background: transparent;
+    color: var(--color-muted);
+    cursor: pointer;
+  }
+  .file-remove:hover {
+    color: var(--color-coral-ink);
+  }
+  .paper-do {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+    min-width: 132px;
+  }
+  .paper-do .btn {
+    min-height: 44px;
+    padding-inline: 18px;
+    font-size: 14px;
+  }
+  .paper-do .btn--ghost {
+    padding-inline: 12px;
+  }
+  .paper[data-status="verified"] .send-back > summary {
+    color: var(--color-muted);
+    font-weight: 400;
+  }
+  .paper-upload .said {
+    flex-basis: 100%;
+  }
+  .paper:has(.paper-upload .said) .paper-do,
+  .paper:has(.send-back[open]) .paper-do {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+  }
+  /* Sending a paper back asks for the reason in the same row. */
+  .send-back > summary {
+    list-style: none;
+    cursor: pointer;
+  }
+  .send-back > summary::-webkit-details-marker {
+    display: none;
+  }
+  .send-back[open] {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    flex: 1 1 100%;
+  }
+  .send-back[open] > summary {
+    display: none;
+  }
+  .send-back form {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+  }
+  .send-back .field-input {
+    flex: 1 1 220px;
+    min-height: 44px;
+    background: var(--color-ground);
+    border: 1.5px solid transparent;
+    padding-block: 9px;
+    font-size: 15px;
+  }
+  .send-back .field-input:focus-visible {
+    border-color: var(--color-navy);
+    background: #fff;
+  }
+  .paper-add {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: end;
+    gap: 10px;
+    padding-bottom: 6px;
+  }
+  .paper-add .field {
+    flex: 0 1 340px;
+  }
+  .paper-add .btn {
+    min-height: 50px;
+  }
+
   /* ---------- Small screens ---------- */
   @media (max-width: 900px) {
     .page {
@@ -3100,6 +3340,26 @@
     .row {
       grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
       padding: 14px 16px;
+    }
+    .paper {
+      grid-template-columns: minmax(0, 1fr);
+      gap: 10px;
+    }
+    .paper-do {
+      justify-content: flex-start;
+      min-width: 0;
+    }
+    .sheets {
+      gap: 7px;
+    }
+    .sheets li {
+      width: 32px;
+      height: 42px;
+      border-radius: 7px 12px 7px 7px;
+    }
+    .sheets li svg {
+      width: 16px;
+      height: 16px;
     }
     .row-who,
     .row-state {

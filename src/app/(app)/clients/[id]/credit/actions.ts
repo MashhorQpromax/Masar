@@ -22,13 +22,16 @@ const idSchema = z.coerce.number().int().positive();
 async function refresh(clientId: number): Promise<void> {
   revalidatePath(`/clients/${clientId}/credit`);
   const view = await getCredit(await getDb(), clientId);
-  if (view?.dealId) revalidatePath(`/deals/${view.dealId}`);
+  if (view?.dealId) {
+    revalidatePath(`/deals/${view.dealId}`);
+    revalidatePath(`/deals/${view.dealId}/documents`);
+  }
   revalidatePath("/");
 }
 
 /**
  * Reads a SIMAH report from the PDF as SIMAH issued it, and stores the reading as the client's record.
- * The file itself is read and let go: it is kept once the documents of a client are.
+ * The file itself is kept with the client's papers.
  */
 export async function uploadReport(clientId: number, _previous: CreditAnswer, formData: FormData): Promise<CreditAnswer> {
   const actor = await requireActor("doc.upload");
@@ -55,7 +58,7 @@ export async function uploadReport(clientId: number, _previous: CreditAnswer, fo
   if (!facilities.length && !judgments.length && summary?.activeCount == null) return { error: "NOT_SIMAH" };
 
   try {
-    await addCreditReport(await getDb(), { clientId: id.data, reading, actor, now });
+    await addCreditReport(await getDb(), { clientId: id.data, reading, file: { name: file.name, bytes }, actor, now });
   } catch (error) {
     if (error instanceof DomainError) return { error: error.code };
     throw error;

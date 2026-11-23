@@ -21,7 +21,7 @@ describe("schema", () => {
   it("creates every table from the migrations", async () => {
     const result = await c.db.execute(sql`select count(*)::int as n from information_schema.tables where table_schema = 'masar'`);
     const rows = (Array.isArray(result) ? result : (result as { rows: unknown[] }).rows) as { n: number }[];
-    expect(rows[0]!.n).toBe(24); // 23 tables + the migrations journal
+    expect(rows[0]!.n).toBe(25); // 24 tables + the migrations journal
   });
 
   it("treats emails as case insensitive", async () => {

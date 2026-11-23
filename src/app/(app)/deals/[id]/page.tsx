@@ -15,6 +15,7 @@ import {
   VERDICT,
 } from "@/copy/deal";
 import { GRADE } from "@/copy/credit";
+import { missingText } from "@/copy/documents";
 import { counted, days, dayShort, dueIn, ltr, money, percent, plainMoney } from "@/copy/format";
 import {
   dealAlternatives,
@@ -31,6 +32,7 @@ import { requireActor } from "@/server/auth/actor";
 import { getDb } from "@/server/db/client";
 import { borrowerOf } from "@/server/deals/mapping";
 import { getDeal } from "@/server/deals/service";
+import { papersOf } from "@/server/documents/service";
 import { BackIcon, ChevronIcon, PenIcon } from "@/ui/icons";
 import { Num } from "@/ui/Num";
 import { SubmitButton } from "@/ui/SubmitButton";
@@ -54,9 +56,11 @@ export default async function DealPage({ params }: { params: Promise<{ id: strin
   if (!Number.isInteger(dealId) || dealId <= 0) notFound();
 
   const now = new Date();
-  const view = await getDeal(await getDb(), { dealId, now });
+  const db = await getDb();
+  const view = await getDeal(db, { dealId, now });
   if (!view) notFound();
   const { deal, client, input, study, history, credit } = view;
+  const papers = await papersOf(db, view);
 
   const ended = deal.stage === "closed" || deal.stage === "lost";
   const timeline = dealTimeline(deal.structure, deal.stage, view.stageEnteredAt, now);
@@ -111,6 +115,9 @@ export default async function DealPage({ params }: { params: Promise<{ id: strin
               {credit ? `سمة: ${GRADE[credit.analysis.grade].title}` : "ارفع تقرير سمة"}
             </Link>
           )}
+          <Link className="edit-link" data-soft href={`/deals/${deal.id}/documents`}>
+            {papers.missing > 0 ? missingText(papers.missing) : "المستندات مكتملة"}
+          </Link>
           <Link className="edit-link" data-soft href={`/deals/${deal.id}/lenders`}>
             جهات التمويل
           </Link>

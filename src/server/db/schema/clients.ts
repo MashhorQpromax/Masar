@@ -1,4 +1,4 @@
-import { boolean, date, index, integer, jsonb, text } from "drizzle-orm/pg-core";
+import { boolean, date, index, integer, jsonb, text, uniqueIndex } from "drizzle-orm/pg-core";
 import { at, bytea, createdAt, id, masar, money, percent } from "./_shared";
 import { users } from "./identity";
 import { lenders } from "./lenders";
@@ -70,6 +70,10 @@ export const obligations = masar.table(
   (t) => [index("obligations_client_idx").on(t.clientId)],
 );
 
+/**
+ * A paper of a client's file: one the engine knows by its code, or one a person added by name.
+ * A row appears once something happens to the paper. What a deal needs is worked out, not stored.
+ */
 export const documents = masar.table(
   "documents",
   {
@@ -78,27 +82,41 @@ export const documents = masar.table(
       .notNull()
       .references(() => clients.id, { onDelete: "cascade" }),
     code: text().notNull(),
-    label: text().notNull(),
-    category: text().notNull(),
-    required: boolean().notNull().default(true),
+    /** The name a person gave a paper they added. Null for a paper known by its code. */
+    label: text(),
     status: documentStatus().notNull().default("missing"),
-    fileName: text(),
-    storedName: text(),
-    mime: text(),
-    size: integer(),
-    sha256: text(),
+    /** Why the paper was sent back. */
     note: text(),
-    uploadedBy: integer().references(() => users.id, { onDelete: "set null" }),
-    uploadedAt: at(),
+    createdAt: createdAt(),
+    updatedAt: createdAt(),
   },
-  (t) => [index("documents_client_idx").on(t.clientId)],
+  (t) => [uniqueIndex("documents_client_code_idx").on(t.clientId, t.code)],
 );
 
-/** File contents, kept apart from the document row so listing documents never loads them. */
+/** A file kept for a paper. A paper holds several: a statement photographed page by page is one paper. */
+export const documentFiles = masar.table(
+  "document_files",
+  {
+    id: id(),
+    docId: integer()
+      .notNull()
+      .references(() => documents.id, { onDelete: "cascade" }),
+    name: text().notNull(),
+    /** What the file really is, read from its bytes: pdf, jpeg, png or webp. */
+    kind: text().notNull(),
+    size: integer().notNull(),
+    sha256: text().notNull(),
+    uploadedBy: integer().references(() => users.id, { onDelete: "set null" }),
+    uploadedAt: createdAt(),
+  },
+  (t) => [uniqueIndex("document_files_doc_sha_idx").on(t.docId, t.sha256)],
+);
+
+/** File contents, kept apart from the file row so listing files never loads them. */
 export const fileBlobs = masar.table("file_blobs", {
-  docId: integer()
+  fileId: integer()
     .primaryKey()
-    .references(() => documents.id, { onDelete: "cascade" }),
+    .references(() => documentFiles.id, { onDelete: "cascade" }),
   data: bytea().notNull(),
 });
 
@@ -145,7 +163,8 @@ export const creditReports = masar.table(
     report: jsonb().notNull(),
     grade: text(),
     derivedSimah: text(),
-    docId: integer().references(() => documents.id, { onDelete: "set null" }),
+    /** The PDF the report was read from, kept with the client's papers. */
+    fileId: integer().references(() => documentFiles.id, { onDelete: "set null" }),
     userId: integer().references(() => users.id, { onDelete: "set null" }),
     createdAt: createdAt(),
   },

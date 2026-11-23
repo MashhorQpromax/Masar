@@ -113,7 +113,7 @@ The weights, waiting periods and thresholds are one object, `CREDIT_RULES`. They
 
 A client's record lives in `credit_reports`. Every reading is kept: the newest is the record, the older ones its history. `src/server/credit/service.ts` writes them (`addCreditReport`, `reviewCreditReport`), in a transaction with an audit entry, and reads them graded as of now (`latestCredit`, `getCredit`). The grade is computed on read, so a change to `CREDIT_RULES` applies to every stored record at once.
 
-The upload (`/clients/[id]/credit`, permission `doc.upload`) takes the PDF as SIMAH issued it, at most 4 MB (`REPORT_MAX_BYTES`, under the platform's request limit), reads its text with `unpdf`, runs the reader and stores the reading. The file itself is read and let go; it is kept once a client's documents are. A reading passes the same schema as any other input (`src/server/credit/input.ts`). One thing is softened there on purpose: an inquiry's amount is only shown, never counted, and extraction often glues it to the number beside it, so an impossible one is stored blank instead of refusing the report.
+The upload (`/clients/[id]/credit`, permission `doc.upload`) takes the PDF as SIMAH issued it, at most 4 MB (`REPORT_MAX_BYTES`, under the platform's request limit), reads its text with `unpdf`, runs the reader and stores the reading. The file itself is kept with the client's papers, under the `simah` paper (see Documents below); a newer report takes the place of the oldest when the paper is full. A reading passes the same schema as any other input (`src/server/credit/input.ts`). One thing is softened there on purpose: an inquiry's amount is only shown, never counted, and extraction often glues it to the number beside it, so an impossible one is stored blank instead of refusing the report.
 
 `unpdf` is pinned to the exact version production runs. The reader depends on how that version lays text out, and `tests/server/pdf.test.ts` reads a made-up report from a real PDF (`tests/fixtures/simah-made-up.pdf`, made by `scripts/make-simah-pdf.cjs`) and expects the production reading. Upgrade the library only with that test green.
 
@@ -156,6 +156,22 @@ One thing changed on purpose: the old list of documents could name a paper twice
 - `applyRoute` writes a route's terms on a deal in progress. It works the routes out again on the server, refuses a route the lender would turn down, and never replaces a recorded offer.
 - The catalogue starts from `src/server/lenders/base.ts`. Its terms are indicative until someone confirms them on the `/lenders` page, and every screen that shows them says so.
 
+## Documents
+
+`src/domain/documents` answers what a client's file needs today and where each paper stands. `src/server/documents` keeps the papers and their files, and `/deals/[id]/documents` is the screen.
+
+- What a file needs is worked out, never stored (`dealPapers`). It starts from what a lender asks for the financing the deal's structure ends in, the mortgage, the personal finance or both, through the same `requiredDocuments` the eligibility engine is locked to. A liability letter is required when the deal settles anything. Then come the papers the deal itself produces, each asked for once the deal reaches the stage that produces it: the signed agreement, the clearance letters for what the company paid, the mortgage payoff letter, and the deed after the property moves to the company's side. A cancelled deal asks for what its history reached.
+- A row in `documents` is a paper, one per client and code, and it exists only once something happened to it. A paper holds several files (`document_files`, their contents in `file_blobs`), because a bank statement comes as a handful of photos.
+- A paper's state follows its files: none is missing, some is received. A person who may verify (`doc.verify`) says it is good or sends it back with a reason. A new file returns it to received. A paper sent back stays sent back, with its reason, until a new file arrives.
+- A person can add a paper by name for what one lender asks for (a medical exam, a letter from the employer). It carries a `custom:` code, counts as required until it is removed, and can be removed only while it is empty.
+- The SIMAH report enters only through the credit page, because it is read and not only kept. Its PDF is kept under the `simah` paper, and that paper counts as verified once a credit record exists.
+- A file is judged by its own bytes, never by its name or the type the browser claims: PDF, JPEG, PNG or WebP, 4 MB each, 12 to a paper, the same file never twice in one paper. Pictures are made smaller in the browser before they travel, and files go up one request each.
+- A file is read through `/files/[id]`, which asks for `client.view_pii`, writes the opening to the audit log, and answers with `private, no-store` and `nosniff`. A person without that permission sees that a file exists and neither its name nor its contents.
+- Some papers are the office's to bring: the valuation it orders and the papers the deal produces. `paperSource` marks them, and the message that asks the client for what is owed never names them. That message names papers only: no amounts, no fees, nothing about the deal.
+- A build without a database refuses uploads, as it refuses a credit report. The demo carries made-up one-page PDFs that say so on the page.
+
+Worth a decision before the switch: files live in Postgres, so the database grows with every paper. That is sound for a start (one backup holds everything, and a file is never without its row), and a busy year of scans may outgrow a small database plan. Moving the contents to file storage later touches `file_blobs` alone.
+
 ## Porting checklist
 
 Old module (under `legacy/lib`) and its state in the rebuild:
@@ -167,7 +183,8 @@ Old module (under `legacy/lib`) and its state in the rebuild:
 - [x] `simah.ts` credit grading: `src/domain/credit`, locked by `tests/golden/credit.json` (320 records)
 - [x] `simah-parse.ts` reading the report's text: `src/domain/credit/parse.ts`, locked by `tests/golden/simah.json` (160 made-up texts)
 - [x] storing a client's credit report, the upload of the PDF, the Najiz check and the credit screen: `src/server/credit`, `/clients/[id]/credit`
-- [ ] keeping the uploaded PDF with the client's documents, importing commitments from a report, and suggesting a new deal's items from it in the editor (`itemDrafts` is ready)
+- [x] keeping the uploaded PDF with the client's documents: `keepFile` under the `simah` paper
+- [ ] importing commitments from a report, and suggesting a new deal's items from it in the editor (`itemDrafts` is ready)
 - [ ] `project.ts` project finance
 - [ ] `advisor.ts`
 - [ ] `whatsapp.ts`, `wa-cloud.ts` messages and Meta Cloud API
@@ -177,10 +194,11 @@ Old module (under `legacy/lib`) and its state in the rebuild:
 - [x] `schema.ts`, `db.ts`: replaced by `src/server/db` (Drizzle schema, `db/migrations`, Postgres schema `masar`)
 - [x] deal storage and stages from `data.ts` and `actions.ts`: `src/server/deals` (save, stage, reject, reopen, read), tested on a real Postgres engine in memory
 - [x] the lender catalogue and its terms: `src/server/lenders`, the `/lenders` page; funding routes for a deal: `src/domain/funding`, `src/server/funding`, `/deals/[id]/lenders` (migration `0002_lender_routes`)
-- [ ] the rest of `data.ts` and `actions.ts`: clients, documents, notes, adding and removing lenders and products, lender rules
+- [x] a client's papers and their files from `data.ts` and `actions.ts`: `src/domain/documents`, `src/server/documents`, `/deals/[id]/documents`, `/files/[id]` (migration `0003_documents_files`)
+- [ ] the rest of `data.ts` and `actions.ts`: clients, notes, adding and removing lenders and products, lender rules
 - [x] screens on the "الخريطة" direction: the road (home), the deals list, the deal file with stage moves and the step by step calculation, the deal editor
 - [x] opening a client file and revising its facts, from `data.ts` and `actions.ts`: `src/server/clients`
-- [ ] screens still to build: clients, required documents, inbox, calculator, knowledge, users, audit, client portal
+- [ ] screens still to build: clients, inbox, calculator, knowledge, users, audit, client portal (where the client uploads their own papers)
 - [ ] data migration from the live database, then the domain switch (only after the owner approves)
 
 To regenerate a golden file while `legacy/` still exists: `npm run golden:deal`, `npm run golden:credit`, `npm run golden:simah`. Each generator is seeded, so it writes the same file every time.

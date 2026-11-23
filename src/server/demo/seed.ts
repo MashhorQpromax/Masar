@@ -1,10 +1,12 @@
 import "server-only";
 import { emptyReport, type CreditReport, type ParsedReport } from "@/domain/credit";
 import { defaultDealInput, type DealInput, type Stage } from "@/domain/deal";
+import type { PaperCode } from "@/domain/documents";
 import { addCreditReport } from "../credit/service";
 import type { Db } from "../db/client";
 import { clients } from "../db/schema";
 import { saveDeal, setDealStage } from "../deals/service";
+import { addPaper, keepFile, reviewPaper } from "../documents/service";
 import { seedCatalogue } from "../lenders/service";
 import { SYSTEM } from "../shared/actor";
 import { riyadhDay } from "../shared/clock";
@@ -27,6 +29,42 @@ interface DemoDeal {
   startedDaysAgo: number;
   /** The client's SIMAH record as it was read, when one was. `day` gives the date that many days ago. */
   credit?: { readDaysAgo: number; reading: (day: (daysAgo: number) => string) => DemoReading };
+  /** What the client's file holds: each paper with its made-up files and what was said about it. */
+  papers?: DemoPaper[];
+}
+
+interface DemoPaper {
+  /** A paper the engine knows, or the name of one a person added. */
+  paper: PaperCode | { added: string };
+  /** The names of the files kept for it. */
+  files: string[];
+  verdict?: "verified" | { sentBack: string };
+}
+
+const kept = (paper: DemoPaper["paper"], ...files: string[]): DemoPaper => ({ paper, files });
+const good = (paper: DemoPaper["paper"], ...files: string[]): DemoPaper => ({ paper, files, verdict: "verified" });
+
+/**
+ * A one-page PDF that says it is made up. The demo's papers open like real ones, and nothing in them
+ * belongs to anyone.
+ */
+function madeUpPdf(serial: string): Uint8Array {
+  const page = `BT /F1 20 Tf 60 760 Td (Masar demo paper ${serial}) Tj 0 -30 Td /F1 13 Tf (Made-up data. It belongs to no one.) Tj ET`;
+  const objects = [
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>",
+    `<< /Length ${page.length} >>\nstream\n${page}\nendstream`,
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+  ];
+  let body = "%PDF-1.4\n";
+  const offsets = objects.map((object, index) => {
+    const offset = body.length;
+    body += `${index + 1} 0 obj\n${object}\nendobj\n`;
+    return offset;
+  });
+  const table = offsets.map((offset) => `${String(offset).padStart(10, "0")} 00000 n \n`).join("");
+  return new TextEncoder().encode(`${body}xref\n0 ${objects.length + 1}\n0000000000 65535 f \n${table}trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${body.length}\n%%EOF\n`);
 }
 
 type DemoReading = Pick<ParsedReport, "warnings" | "confidence"> & { report: Partial<CreditReport> };
@@ -79,6 +117,20 @@ const DEALS: DemoDeal[] = [
       ["bank_submit", 12],
       ["approval", 9],
     ],
+    // Close to the end: everything arrived and was verified, but the SIMAH report was never read.
+    papers: [
+      good("id", "الهوية.pdf"),
+      good("address", "العنوان الوطني.pdf"),
+      good("obligations", "خطاب مديونية 1.pdf", "خطاب مديونية 2.pdf", "خطاب سداد مبكر.pdf"),
+      good("salary_cert", "تعريف بالراتب.pdf"),
+      good("bank_3", "كشف الحساب.pdf"),
+      good("deed", "الصك.pdf"),
+      good("valuation", "التقييم.pdf"),
+      good("agreement", "الاتفاقية.pdf"),
+      good("clearance", "مخالصة التنفيذ.pdf", "مخالصة البطاقة.pdf"),
+      good("payoff_letter", "مخالصة العقاري.pdf"),
+      good("transfer_deed", "الصك بعد الإفراغ.pdf"),
+    ],
   },
   {
     fileNo: "C-014",
@@ -105,6 +157,18 @@ const DEALS: DemoDeal[] = [
       ["clearance", 24],
       ["simah_update", 19],
       ["payoff", 9],
+    ],
+    // Mid-way: some verified, some waiting to be looked at, one sent back, and what the bank will ask for still owed.
+    papers: [
+      good("id", "الهوية.pdf"),
+      good("address", "العنوان الوطني.pdf"),
+      good("obligations", "خطاب مديونية.pdf", "خطاب سداد مبكر.pdf"),
+      good("deed", "الصك.pdf"),
+      good("agreement", "الاتفاقية.pdf"),
+      kept("clearance", "مخالصة التنفيذ.pdf"),
+      kept("bank_3", "كشف الحساب 1.pdf", "كشف الحساب 2.pdf", "كشف الحساب 3.pdf"),
+      { paper: "salary_cert", files: ["تعريف بالراتب.pdf"], verdict: { sentBack: "مضى عليه أكثر من شهر" } },
+      kept({ added: "خطاب تثبيت من جهة العمل" }),
     ],
     // Read again after the order was paid and SIMAH updated: the debt shows as settled history.
     credit: {
@@ -152,6 +216,8 @@ const DEALS: DemoDeal[] = [
       ["agreement", 3],
       ["settlement", 1],
     ],
+    // Early: the first papers arrived and nobody has looked at them yet.
+    papers: [kept("id", "الهوية.pdf"), kept("address", "العنوان الوطني.pdf"), kept("obligations", "خطاب مديونية.pdf"), kept("agreement", "الاتفاقية.pdf")],
     // The suspension was checked in Najiz and is real.
     credit: {
       readDaysAgo: 5,
@@ -269,6 +335,19 @@ export async function seedDemo(db: Db, now: Date): Promise<void> {
         actor: SYSTEM,
         now: ago(demo.credit.readDaysAgo),
       });
+    }
+    for (const [index, entry] of (demo.papers ?? []).entries()) {
+      const at = ago(Math.max(0, demo.startedDaysAgo - 1));
+      const code = typeof entry.paper === "string" ? entry.paper : (await addPaper(db, { clientId: client!.id, label: entry.paper.added, actor: SYSTEM, now: at })).code;
+      let paperId: number | null = null;
+      for (const [page, name] of entry.files.entries()) {
+        const bytes = madeUpPdf(`${demo.fileNo} ${index + 1}.${page + 1}`);
+        paperId = (await db.transaction((tx) => keepFile(tx, { clientId: client!.id, code, name, bytes, actor: SYSTEM, now: at }))).paperId;
+      }
+      if (paperId != null && entry.verdict) {
+        const review = entry.verdict === "verified" ? { verdict: "verified" } : { verdict: "rejected", note: entry.verdict.sentBack };
+        await reviewPaper(db, { clientId: client!.id, paperId, review, actor: SYSTEM, now: at });
+      }
     }
   }
 }
