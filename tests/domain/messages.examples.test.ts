@@ -34,7 +34,7 @@ describe("who the office may write to", () => {
   });
 
   it("never offers the internal summary as a message for the client", () => {
-    expect(MESSAGE_KINDS.filter(isClientMessage)).toEqual(["study", "papers", "progress", "reply"]);
+    expect(MESSAGE_KINDS.filter(isClientMessage)).toEqual(["study", "offer", "papers", "progress", "reply"]);
     expect(isMessageKind("internal")).toBe(true);
     expect(isMessageKind("fees")).toBe(false);
     for (const [stage] of STAGES) {

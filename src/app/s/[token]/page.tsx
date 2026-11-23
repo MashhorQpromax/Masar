@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { paperLabel } from "@/copy/documents";
-import { dayShort, ltr, plainMoney } from "@/copy/format";
-import { about, CLIENT_NOW, CLIENT_STEP, ESTIMATE_NOTE, firstName, hasEstimate } from "@/copy/messages";
+import { dayShort, ltr, percent, plainMoney } from "@/copy/format";
+import { about, CLIENT_NOW, CLIENT_STEP, ESTIMATE_NOTE, feeItemWhat, firstName, hasEstimate, OFFER, OFFER_COST } from "@/copy/messages";
 import { dataMode, getDb } from "@/server/db/client";
 import { portalView, type PortalPaper } from "@/server/messages/portal";
 import { Certain } from "@/ui/Certain";
@@ -16,7 +16,8 @@ const PART = { mortgage: "تمويل عقاري", personal: "تمويل شخصي
 
 /**
  * The client's own page. A link opens it, with no account and no password, so it shows only what a
- * client may know: where their file stands, what they end with, and the papers they still owe.
+ * client may know: where their file stands, what they end with, the papers they still owe, and, once
+ * the fee plan is approved, their final offer with the office's fee in detail.
  */
 export default async function ClientPage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
@@ -80,7 +81,86 @@ export default async function ClientPage({ params }: { params: Promise<{ token: 
           </ol>
         </section>
 
-        {view.facts && (
+        {/* Once the fee plan is approved the client reads the whole sum: the financing, what is paid out of it, the fee item by item, and what is left. */}
+        {view.offer && (
+          <section className="tile portal-plan">
+            <p className="label">{OFFER.title}</p>
+            <p className="portal-keep">
+              <span>{OFFER.keeps}</span>
+              <b className="num">{plainMoney(view.offer.keeps)}</b>
+              <span>ريال</span>
+              <Certain value={view.offer.certainty} />
+            </p>
+            <div className="offer">
+              <h2>{OFFER.financing}</h2>
+              <ul>
+                {view.offer.financing.map((part) => (
+                  <li key={part.part}>
+                    <span>
+                      {PART[part.part]} <Certain value={part.certainty} />
+                    </span>
+                    <b className="num">{plainMoney(part.amount)}</b>
+                  </li>
+                ))}
+              </ul>
+              {(view.offer.obligations || view.offer.costs.length > 0) && (
+                <>
+                  <h2>{OFFER.out}</h2>
+                  <ul>
+                    {view.offer.obligations && (
+                      <li>
+                        <span>
+                          {OFFER.obligations} {view.offer.obligations.certainty === "estimated" && <Certain value="estimated" />}
+                        </span>
+                        <b className="num">{plainMoney(-view.offer.obligations.amount)}</b>
+                      </li>
+                    )}
+                    {view.offer.costs.map((cost) => (
+                      <li key={cost.kind}>
+                        <span>
+                          {OFFER_COST[cost.kind]} <Certain value="estimated" />
+                        </span>
+                        <b className="num">{plainMoney(-cost.amount)}</b>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
+              <h2>{OFFER.fee}</h2>
+              {view.offer.fee.items.length === 0 ? (
+                <p className="offer-none">{OFFER.noFee}.</p>
+              ) : (
+                <ul>
+                  {view.offer.fee.items.map((item) => (
+                    <li key={item.kind}>
+                      <span>
+                        {item.kind !== "fixed" && <>{percent(item.pct)} </>}
+                        {feeItemWhat(item)}
+                        {item.kind !== "fixed" && (
+                          <small>
+                            من <span className="num">{plainMoney(item.base)}</span> ريال
+                          </small>
+                        )}
+                      </span>
+                      <b className="num">{plainMoney(-item.amount)}</b>
+                    </li>
+                  ))}
+                  {view.offer.fee.items.length > 1 && (
+                    <li className="offer-sum">
+                      <span>
+                        {OFFER.feeTotal} {view.offer.fee.certainty === "estimated" && <Certain value="estimated" />}
+                      </span>
+                      <b className="num">{plainMoney(-view.offer.fee.total)}</b>
+                    </li>
+                  )}
+                </ul>
+              )}
+            </div>
+            <p className="portal-fine">{view.offer.certainty === "estimated" ? ESTIMATE_NOTE : OFFER.written}</p>
+          </section>
+        )}
+
+        {view.facts && !view.offer && (
           <section className="tile portal-plan">
             <p className="label">{view.facts.offered ? "عرض تمويلك" : "المتوقع لك"}</p>
             {view.facts.keeps > 0 && (

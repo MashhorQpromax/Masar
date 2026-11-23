@@ -2,11 +2,13 @@
  * The messages the office sends about a deal, as WhatsApp reads them: plain text, *bold* and _soft_,
  * no pictures and no decoration.
  *
- * The three messages for the client are built from `ClientFacts` alone. That type carries no fee, no
- * capital and no return, so nothing written here can tell a client what the company earns.
+ * The study, papers and progress messages for the client are built from `ClientFacts` alone. That type
+ * carries no fee, no capital and no return, so nothing written from it can tell a client what the
+ * company earns. The final offer adds `ClientOffer`: the office's fee in detail, as the owner decided
+ * a client sees it, and still no capital and no return.
  */
 import { splitLabel, STATIONS, type DealInput, type DealStudy, type LenderKind, type Stage, type StationKey, type StationState } from "@/domain/deal";
-import type { ClientFacts, GateReason, MessageKind } from "@/domain/messages";
+import type { ClientFacts, ClientOffer, GateReason, MessageKind, OfferCost, OfferFeeItem } from "@/domain/messages";
 import { LINK_DAYS } from "@/domain/messages";
 import { STRUCTURE } from "./deal";
 import { owedLines } from "./documents";
@@ -17,10 +19,11 @@ export const OFFICE_NAME = "مسار للحلول التمويلية";
 
 export const MESSAGE_KIND: Record<MessageKind, { label: string; hint: string }> = {
   study: { label: "ملخص الدراسة", hint: "للعميل: الجهة التي وجدناها، الحل، وما يبقى له." },
+  offer: { label: "العرض النهائي", hint: "للعميل: أين يذهب التمويل بالريال، وأتعابنا بالتفصيل كما اعتُمدت." },
   papers: { label: "طلب المستندات", hint: "للعميل: ما ينقص ملفه ورابط الرفع." },
   progress: { label: "أين وصل الملف", hint: "للعميل: المرحلة الحالية وما بعدها." },
   reply: { label: "رد بكلماتك", hint: "للعميل: جواب على ما كتبه." },
-  internal: { label: "ملخص داخلي", hint: "لشريك أو ممول: فيه أتعابنا ورأس المال." },
+  internal: { label: "ملخص داخلي", hint: "لشريك أو ممول: فيه رأس المال وعائدنا." },
 };
 
 /** Why a message is closed, said to the person who wanted to send it. */
@@ -167,6 +170,88 @@ export function studyText(facts: ClientFacts, x: MessageExtras): string {
   out.push(`*المدة:* من ${facts.weeks.from} إلى ${counted(facts.weeks.to, WEEKS)} تقريباً.`);
   if (x.owed.length) out.push(`*${opening ? "المطلوب لتثبيت العرض" : "المطلوب منك الآن"}*\n${owedLines(x.owed.slice(0, 8)).join("\n")}`);
   if (hasEstimate(facts)) out.push(`_${ESTIMATE_NOTE}_`);
+  out.push(closing(x));
+  return out.join("\n\n");
+}
+
+/** Said to the person who looks for the final offer before the fee plan is approved. */
+export const OFFER_WAITS = "العرض النهائي يُفتح بعد اعتماد خطة الأتعاب، فلا تصل أتعاب إلى عميل قبل اعتمادها.";
+
+/** The costs paid out of the financing, as the client reads them. */
+export const OFFER_COST: Record<OfferCost["kind"], string> = {
+  admin_fee: "الرسوم الإدارية لجهة التمويل",
+  transfer_tax: "ضريبة التصرفات العقارية",
+  sale_tax: "ضريبة بيع العقار",
+  fixed_costs: "التقييم والسعي والتوثيق",
+};
+
+/** What the finance percent is counted on, as the client reads it. */
+export const OFFER_BASE: Record<Extract<OfferFeeItem, { kind: "finance" }>["on"], string> = {
+  total: "كامل التمويل",
+  personal: "التمويل الشخصي",
+  mortgage: "التمويل العقاري",
+  net: "صافي التمويل بعد السداد والتكاليف",
+};
+
+/** The headings of the offer, shared by the message and the client's page. */
+export const OFFER = {
+  title: "عرضك النهائي",
+  financing: "التمويل الجديد",
+  out: "يُسدَّد منه",
+  obligations: "التزاماتك التي نسددها ونخالصها عنك",
+  fee: "أتعابنا",
+  noFee: "لا أتعاب على هذا العرض",
+  feeTotal: "مجموع الأتعاب",
+  fixed: "مبلغ مقطوع",
+  keeps: "يبقى لك نقداً",
+  written: "كل رقم فيه من عرض الجهة المكتوب وخطابات الدائنين.",
+} as const;
+
+/** One item of the fee in words, without its amounts: the percent goes before it and the base after. */
+export function feeItemWhat(item: OfferFeeItem): string {
+  if (item.kind === "fixed") return OFFER.fixed;
+  if (item.kind === "settle") return item.includesPayoff ? "على ما نسدده ونخالصه عنك" : "على ما نسدده عنك";
+  return `على ${OFFER_BASE[item.on]}`;
+}
+
+/** One item of the fee as a line the client can check: the percent, what it is counted on, and what it comes to. */
+export function feeItemLine(item: OfferFeeItem): string {
+  if (item.kind === "fixed") return `${OFFER.fixed}: ${plainMoney(item.amount)} ريال`;
+  return `${pct(item.pct)} ${feeItemWhat(item)} (${plainMoney(item.base)} ريال): ${plainMoney(item.amount)} ريال`;
+}
+
+/**
+ * The final offer, for the client: where the new financing goes to the riyal, the office's fee item by
+ * item, and what they keep. It is written only from an approved plan. It never says what the office
+ * puts in or what it earns on it.
+ */
+export function offerText(facts: Pick<ClientFacts, "financing">, offer: ClientOffer, x: MessageExtras): string {
+  const mark = (certainty: ClientOffer["certainty"]) => (certainty === "estimated" ? ` ${ESTIMATE_MARK}` : "");
+  const out = [greeting(x), `*${OFFER.title}*\nهذا عرضنا لك بعد اعتماده، بالريال:`];
+
+  const lender = (part: "mortgage" | "personal") => (x.nameLender ? (facts.financing.find((entry) => entry.part === part)?.lender ?? null) : null);
+  const financing = offer.financing.map((part) => {
+    const from = lender(part.part);
+    return `- تمويل ${PART[part.part]}${from ? ` من *${from}*` : ""}: ${plainMoney(part.amount)} ريال${part.certainty === "confirmed" ? "، بعرض مكتوب من الجهة" : mark(part.certainty)}`;
+  });
+  if (offer.financing.length > 1) financing.push(`المجموع: *${plainMoney(offer.totalFinancing)}* ريال`);
+  out.push(`*${OFFER.financing}*\n${financing.join("\n")}`);
+
+  const paid: string[] = [];
+  if (offer.obligations) paid.push(`- ${OFFER.obligations}: ${plainMoney(offer.obligations.amount)} ريال${mark(offer.obligations.certainty)}`);
+  for (const cost of offer.costs) paid.push(`- ${OFFER_COST[cost.kind]}: ${plainMoney(cost.amount)} ريال ${ESTIMATE_MARK}`);
+  if (paid.length) out.push(`*${OFFER.out}*\n${paid.join("\n")}`);
+
+  if (offer.fee.items.length === 0) out.push(`*${OFFER.fee}*\n${OFFER.noFee}.`);
+  else {
+    const fee = offer.fee.items.map((item) => `- ${feeItemLine(item)}`);
+    if (offer.fee.items.length > 1) fee.push(`${OFFER.feeTotal}: *${plainMoney(offer.fee.total)}* ريال${mark(offer.fee.certainty)}`);
+    else fee[0] += mark(offer.fee.certainty);
+    out.push(`*${OFFER.fee}*\n${fee.join("\n")}`);
+  }
+
+  out.push(`*${OFFER.keeps}: ${plainMoney(offer.keeps)} ريال*${mark(offer.certainty)}`);
+  out.push(`_${offer.certainty === "estimated" ? ESTIMATE_NOTE : OFFER.written}_`);
   out.push(closing(x));
   return out.join("\n\n");
 }

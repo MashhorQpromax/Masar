@@ -4522,6 +4522,52 @@
   .portal-keep .certain {
     align-self: center;
   }
+  /* The final offer: a sum the client can check line by line, what comes in and what goes out of it. */
+  .offer {
+    margin-top: 14px;
+    border-top: 1.5px solid rgba(15, 42, 67, 0.14);
+  }
+  .offer h2 {
+    margin-top: 14px;
+    font-size: 13px;
+    font-weight: 500;
+    color: rgba(15, 42, 67, 0.78);
+  }
+  .offer ul {
+    margin-top: 4px;
+  }
+  .offer li {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 14px;
+    padding: 7px 0;
+    font-size: 15px;
+    line-height: 1.6;
+  }
+  .offer li + li {
+    border-top: 1px solid rgba(15, 42, 67, 0.1);
+  }
+  .offer li > span {
+    min-width: 0;
+  }
+  .offer li > b {
+    flex: none;
+    font-size: 16px;
+    font-weight: 600;
+  }
+  .offer small {
+    display: block;
+    font-size: 12.5px;
+    color: rgba(15, 42, 67, 0.78);
+  }
+  .offer .offer-sum {
+    font-weight: 600;
+  }
+  .offer-none {
+    margin-top: 4px;
+    font-size: 15px;
+  }
   .portal-papers {
     animation-delay: 0.16s;
   }

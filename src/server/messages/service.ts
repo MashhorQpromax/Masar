@@ -3,10 +3,11 @@ import { and, asc, desc, eq, isNotNull, max } from "drizzle-orm";
 import { z } from "zod";
 import { dealTimeline, stationTimeline, type StationKey, type StationState } from "@/domain/deal";
 import { FILE_MAX_BYTES, INBOX_PAPER, type Paper } from "@/domain/documents";
-import { clientFacts, isClientMessage, isMessageKind, messageGate, windowOpen, type ClientFacts, type Gate, type MessageKind } from "@/domain/messages";
+import { clientFacts, clientOffer, isClientMessage, isMessageKind, messageGate, windowOpen, type ClientFacts, type ClientOffer, type Gate, type MessageKind } from "@/domain/messages";
 import { normalizePhone } from "@/domain/shared/phone";
 import type { Db, Tx } from "../db/client";
 import { clients, users, waMessages } from "../db/schema";
+import { standingApproval } from "../deals/plan";
 import { getDeal, type DealView } from "../deals/service";
 import { keepFile, papersOf, whoOf, type PaperWho } from "../documents/service";
 import { SYSTEM, type Actor } from "../shared/actor";
@@ -78,6 +79,8 @@ export interface MessagesView {
   gate: Gate;
   /** The client's side of the deal. */
   facts: ClientFacts;
+  /** The final offer, with the office's fee in detail. Null until the deal's fee plan stands approved. */
+  offer: ClientOffer | null;
   steps: { key: StationKey; state: StationState }[];
   /** The client's own papers still owed. */
   owed: Paper[];
@@ -91,6 +94,16 @@ export interface MessagesView {
   waiting: boolean;
 }
 
+/**
+ * The final offer of a deal already read: made only from a fee plan that stands approved as the deal
+ * is now. Null for a deal whose plan is not approved, that does not close, or that was cancelled.
+ */
+export async function offerOf(db: Tx, view: DealView, now: Date): Promise<ClientOffer | null> {
+  if (view.deal.stage === "lost" || (view.study.verdict !== "go" && view.study.verdict !== "tight")) return null;
+  const approval = await standingApproval(db, view, now);
+  return approval ? clientOffer({ input: view.input, study: view.study }, approval.plan) : null;
+}
+
 const owedByClient = (papers: Paper[]): Paper[] =>
   papers.filter((paper) => paper.by === "client" && paper.required && paper.code !== INBOX_PAPER && (paper.status === "missing" || paper.status === "rejected"));
 
@@ -102,14 +115,16 @@ export async function getMessages(db: Db, args: { dealId: number; secret: string
   const timeline = dealTimeline(view.deal.structure, view.deal.stage, view.stageEnteredAt, now);
   const thread = await threadOf(db, view.client.id);
   const last = thread.at(-1);
+  const offer = await offerOf(db, view, now);
   return {
     deal: view.deal,
     client: view.client,
     input: view.input,
     study: view.study,
     who: whoOf(view.client),
-    gate: messageGate({ stage: view.deal.stage, verdict: view.study.verdict }),
+    gate: messageGate({ stage: view.deal.stage, verdict: view.study.verdict, approved: offer != null }),
     facts: clientFacts({ stage: view.deal.stage, input: view.input, study: view.study }),
+    offer,
     steps: stationTimeline(view.deal.structure, timeline, view.history).steps.map((step) => ({ key: step.key, state: step.state })),
     owed: owedByClient(list.papers),
     link: await linkOf(db, { clientId: view.client.id, secret: args.secret, now }),
@@ -129,7 +144,9 @@ async function clientMessage(db: Db, args: { dealId: number; kind: string; body:
   if (!isMessageKind(args.kind) || !isClientMessage(args.kind)) throw new DomainError("INVALID_INPUT", `message ${args.kind}`);
   const view = await getDeal(db, { dealId: args.dealId, now: args.now });
   if (!view) throw new DomainError("NOT_FOUND", `deal ${args.dealId}`);
-  const gate = messageGate({ stage: view.deal.stage, verdict: view.study.verdict });
+  // The final offer carries the office's fee: it is open only while the fee plan stands approved.
+  const approved = args.kind === "offer" && (await offerOf(db, view, args.now)) != null;
+  const gate = messageGate({ stage: view.deal.stage, verdict: view.study.verdict, approved });
   if (!gate.allowed.includes(args.kind)) throw new DomainError("GATE_CLOSED", `${args.kind} for deal ${args.dealId}`);
   const phone = normalizePhone(view.client.phone);
   if (!phone) throw new DomainError("NO_PHONE", `client ${view.client.id}`);

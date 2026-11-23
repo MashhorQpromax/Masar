@@ -444,6 +444,14 @@ export default async function DealPage({ params }: { params: Promise<{ id: strin
             <small className="an-why">{feeText(input.fee)}</small>
           </div>
           {mayApprovePlan && !ended && closes && planSaid.state !== "stands" && <ApprovePlan key={current.print} dealId={deal.id} />}
+          {/* An approved plan is what the client's final offer is written from. */}
+          {planSaid.state === "stands" && !ended && closes && maySeeCredit && (
+            <div className="actions">
+              <Link className="btn btn--soft" href={`/deals/${deal.id}/messages?kind=offer`}>
+                العرض النهائي للعميل
+              </Link>
+            </div>
+          )}
           {planLog.length > 0 && (
             <details className="more">
               <summary>سجل اعتماد الأتعاب ({ltr(planLog.length)})</summary>

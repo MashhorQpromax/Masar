@@ -5,7 +5,7 @@ import type { FeePart } from "@/domain/deal";
 import { dayOf } from "@/domain/eligibility";
 import type { FundingRoute } from "@/domain/funding";
 import { lendersPrint, opportunityOf } from "@/domain/opportunity";
-import type { Db } from "../db/client";
+import type { Db, Tx } from "../db/client";
 import { feeApprovals, users } from "../db/schema";
 import type { Actor } from "../shared/actor";
 import { audit } from "../shared/audit";
@@ -14,7 +14,7 @@ import { printOf } from "../shared/print";
 import { fundingOf } from "../funding/service";
 import { lenderReplies } from "../knowledge/service";
 import { borrowerOf } from "./mapping";
-import { getDeal } from "./service";
+import { getDeal, type DealView } from "./service";
 
 /**
  * A deal's plan as it stands, and its print. The print is of every input of the deal but its notes,
@@ -53,6 +53,18 @@ export async function planApprovalsOf(db: Db, args: { dealId: number; now: { pla
     const plan = approval.plan as unknown as FeePlan;
     return { id: approval.id, at: approval.createdAt, by: approval.approver ?? by, plan, stands: approval.print === args.now.print, moves: planMoves(plan, args.now.plan) };
   });
+}
+
+/**
+ * The approval of a deal's fee plan that stands now, for a deal already read. Null when the plan was
+ * never approved, or anything it rests on moved since. This is what opens the client's final offer: a
+ * fee reaches a client only from a plan the manager approved as the deal is.
+ */
+export async function standingApproval(db: Tx, view: DealView, now: Date): Promise<PlanApproval | null> {
+  const funding = await fundingOf(db, view, now);
+  const route = funding.routes.find((r) => r.key === funding.chosen) ?? null;
+  const [latest] = await planApprovalsOf(db as Db, { dealId: view.deal.id, now: planOf(view.input, view.study, route) });
+  return latest?.stands ? latest : null;
 }
 
 /**

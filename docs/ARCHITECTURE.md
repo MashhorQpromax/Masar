@@ -71,7 +71,7 @@ legacy/        The old application, parked as a read-only reference. Deleted bef
 3. **Rounding is explicit.** Each named money quantity is rounded to whole riyals with `round0` at the point it is defined. Percentages shown to people carry one decimal, cover ratios two.
 4. **Validate at the edge.** Every server action parses its input with a zod schema before any work. Domain functions receive typed, validated data only.
 5. **One way to write.** Writes go through a service function that runs in a transaction and records an audit row. Routes and actions never issue SQL.
-6. **Client-facing output cannot leak fees.** Anything sent to a client (portal, WhatsApp) is built from client view types that have no fee, profit or capital fields.
+6. **Client-facing output cannot leak what the office earns.** Anything sent to a client (portal, WhatsApp) is built from client view types that have no profit, return or capital fields. The office's fee reaches a client in one place only, the final offer, and only from a fee plan the manager approved as the deal stands now (`ClientOffer`).
 7. **Schema changes are migrations.** No schema is created or altered at runtime.
 8. **No secrets in the repository.** Configuration comes from environment variables.
 9. **Its own database, by name.** All tables live in the Postgres schema `masar`, and the app reads only `MASAR_DATABASE_URL`. It never falls back to `DATABASE_URL` or `POSTGRES_URL`, so a preview of this branch cannot attach to the live data by accident.
@@ -346,7 +346,7 @@ Choices the owner has not reviewed: the manager alone approves, the length of a 
 
 ## Fees and the client's net
 
-Phase two of the owner's roadmap. Its five parts are built, apart from the tax, the due date and the collection, which wait on the owner's fee answers; the client sees no fee anywhere until the owner decides whether they should.
+Phase two of the owner's roadmap. Its five parts are built, apart from the tax, the due date and the collection, which wait on the owner's fee answers. On 2026-11-23 the owner decided the client sees the fee in detail in their final offer (the percent, what it is counted on, every item), and never the office's profit or capital.
 
 ### The fee policy
 
@@ -372,7 +372,17 @@ The manager approves a deal's fee plan (`fee.approve`; `src/domain/deal/plan.ts`
 - Logged as `deal.fee_approve` with the fee, what it comes to and what the client keeps.
 - The tile sits on `/deals/[id]` above the step-by-step account. In the demonstration one invented deal's plan stands and another's fell (`seedDemoPlans`).
 
-Nothing of the plan reaches a client yet. Whether a client sees the fee waits on the owner; when it does, it will be the approved copy that is shown.
+### The client's final offer
+
+The owner's rule is that a fee enters the client's final offer only once approved, and his decision is that the client then sees it in detail. `clientOffer` (`src/domain/messages/offer.ts`) makes the offer from the approved copy and the deal as it stands, and `offerOf` (`src/server/messages/service.ts`) gives it only while the approval stands (`standingApproval`).
+
+- **What it holds** (`ClientOffer`): each part of the new financing, what is paid out of it for the client (the obligations as one figure, each cost by name), the fee item by item (the percent, the amount it is counted on, what it comes to, and the flat amount), and what the client keeps. An item that comes to nothing is left out. It has no field for the capital, the return, the cover or the office's ledger.
+- **It reads as a sum.** The financing, less the obligations, the costs and the fee, is what the client keeps, to the riyal (`offerTotal`), on every golden deal that closes.
+- **When there is none.** A deal that does not close, a cancelled deal, a deal with no approval, and a deal whose approval fell have no offer. The copy is also checked against the deal: its fee, its total and the client's net must be the deal's own now, and its parts must add up, or nothing is shown.
+- **Where it is seen.** A sixth message, "العرض النهائي", on `/deals/[id]/messages`, which the gate opens only with `approved` (`messageGate`); sending or recording it without a standing approval is refused (`GATE_CLOSED`). The client's own page shows the same offer in place of the rounded figures. The deal's page links to it from the plan tile once the plan stands.
+- **Certainty.** Every figure keeps its mark: a financing with no written offer, the obligations without their letters, and the costs are said as estimates, and so is a fee counted on them.
+
+Choices the owner has not reviewed: the offer is its own message beside the study summary; it shuts the moment a number moves, with no grace; amounts are to the riyal with estimates marked; the costs are named one by one; the lender is named only when the person chooses; the monthly deduction is not in the offer; the study, papers and progress messages still carry no fee.
 
 ### Confirmed and estimated
 
@@ -387,7 +397,7 @@ Every figure of the client's net says where it comes from (`clientNet` in `src/d
 Where it shows:
 
 - On `/deals/[id]`, a badge beside what the client keeps, and the tile "صافي العميل": the lines, each with its source and its badge, and what they come to, with which is which and the deduction. Hidden while the valuation is missing.
-- In the client's study message and on their own page, each financing part is said as written when the lender's offer gives it (to the riyal, "بعرض مكتوب من الجهة"), and as near when counted ("نحو …" and "(تقديري)"). What the client keeps is marked the same way. The note under the figures appears only when one of them is an estimate. `ClientFacts` carries each part's certainty and the net's, and still nothing of the fee.
+- In the client's study message and on their own page, each financing part is said as written when the lender's offer gives it (to the riyal, "بعرض مكتوب من الجهة"), and as near when counted ("نحو …" and "(تقديري)"). What the client keeps is marked the same way. The note under the figures appears only when one of them is an estimate. `ClientFacts` carries each part's certainty and the net's, and nothing of the fee: the fee is in the final offer alone.
 
 Choices the owner has not reviewed: the lender's admin fee counts as an estimate even with a written offer, since the offer's own fee is not recorded; the valuation has no confirmed state, so the taxes on it stay estimates; the client is told a confirmed amount to the riyal.
 
@@ -507,11 +517,11 @@ Worth a decision before the switch: files live in Postgres, so the database grow
 
 `src/domain/messages` decides what may be said to a client and what a client may be told. `src/server/messages` keeps the conversation, the client's link and the line to WhatsApp. The screens are `/deals/[id]/messages` for the office and `/s/[token]` for the client.
 
-- A gate decides what may be written (`messageGate`). A cancelled deal and a deal that does not close leave only the internal summary: the client counts as rejected and is not written to. A study still missing facts allows the papers request and a reply. Every other deal allows the study summary, the papers request, where the file stands, a reply in the person's own words, and the internal summary. The same gate opens and closes the client's link.
-- The three written messages for a client are built from `ClientFacts` alone. That type carries no fee, no capital and no return, so no wording built on it can tell a client what the company earns. A test walks all 240 golden deals and checks that every number in a client message is one the client may know. The internal summary carries the company's numbers and is never recorded as said to a client.
+- A gate decides what may be written (`messageGate`). A cancelled deal and a deal that does not close leave only the internal summary: the client counts as rejected and is not written to. A study still missing facts allows the papers request and a reply. Every other deal allows the study summary, the papers request, where the file stands, a reply in the person's own words, and the internal summary, and, while its fee plan stands approved, the final offer. The same gate opens and closes the client's link.
+- The study, papers and progress messages are built from `ClientFacts` alone. That type carries no fee, no capital and no return, so no wording built on it can tell a client what the company earns. The final offer is built from `ClientOffer`, which adds the approved fee in detail and still has no capital and no return (see "The client's final offer"). A test walks all 240 golden deals and checks that every number in a client message is one the client may know. The internal summary carries the company's numbers and is never recorded as said to a client.
 - The study message names the kind of lender and the amount. Naming the lender itself is a choice the person makes each time, off by default.
 - A client's link is derived, not stored: the token is an HMAC of a random seed under the app's secret, and the row keeps the seed and the token's hash. The office can show the link again at any time, and a copy of the database alone opens nobody's page. A link lasts 14 days and one press closes every link of a client.
-- The client's page shows the steps of the road in the client's words, the amounts of the plan rounded, and the client's own papers. It never shows the office's papers, the WhatsApp tray, a file, a fee or the name of a lender. It takes uploads for the client's papers that are still owed, through the same `keepFile` checks as the office, 60 files per client per day.
+- The client's page shows the steps of the road in the client's words, the amounts of the plan rounded, and the client's own papers. Once the fee plan stands approved it shows the final offer instead of the rounded amounts, with the fee in detail, and goes back to them if the approval falls. It never shows the office's papers, the WhatsApp tray, a file, the name of a lender, or what the office puts in or earns. It takes uploads for the client's papers that are still owed, through the same `keepFile` checks as the office, 60 files per client per day.
 - WhatsApp from the company's number goes through Meta's Cloud API (`cloud.ts`) and is off until the owner sets `WA_TOKEN` and `WA_PHONE_ID`. Free text is sent only while the client wrote within the last 24 hours. Outside that window the approved template goes instead (`masar_file_update`: first name and link). Until the number is connected a person sends from their own WhatsApp and the message is recorded in the file as sent by hand.
 - `/api/wa/webhook` takes what Meta reports. A call is trusted only by its `x-hub-signature-256` under `WA_APP_SECRET`. Delivery reports update the message they belong to, a repeated message is kept once, and a message from a number the office does not know is stored without a client.
 - A picture or a document from a known client is kept under the `inbox` paper, the tray at the top of the papers screen. It counts for nothing there. A person opens it and puts it under the paper it is (`movePaperFile`), which is written to the audit log.

@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import { STAGE } from "@/copy/deal";
 import { owedBrief, paperLabel } from "@/copy/documents";
 import { counted, dayShort } from "@/copy/format";
-import { agoText, CLIENT_STEP, excerpt, firstName, GATE_REASON, internalText, MESSAGE_KIND, MESSAGE_TYPE, papersText, progressText, studyText, type MessageExtras } from "@/copy/messages";
+import { agoText, CLIENT_STEP, excerpt, firstName, GATE_REASON, internalText, MESSAGE_KIND, MESSAGE_TYPE, OFFER_WAITS, offerText, papersText, progressText, studyText, type MessageExtras } from "@/copy/messages";
 import { can } from "@/domain/auth";
 import { clientReachable, isClientMessage, isMessageKind, type MessageKind } from "@/domain/messages";
 import { requireActor } from "@/server/auth/actor";
@@ -31,7 +31,7 @@ export default async function MessagesPage({ params, searchParams }: { params: P
   const view = await getMessages(await getDb(), { dealId, secret: linkSecret(), now });
   if (!view) notFound();
 
-  const { deal, client, who, gate, facts, steps, owed, link, thread } = view;
+  const { deal, client, who, gate, facts, offer, steps, owed, link, thread } = view;
   const first = firstName(client.fullName);
   const maySend = can(me.role, "client.edit");
   const toClient = clientReachable(gate);
@@ -44,6 +44,8 @@ export default async function MessagesPage({ params, searchParams }: { params: P
 
   const written: Record<MessageKind, () => Pick<Choice, "text" | "named">> = {
     study: () => ({ text: studyText(facts, extras), named: named ? studyText(facts, { ...extras, nameLender: true }) : undefined }),
+    // The gate opens the final offer only while the fee plan stands approved, so there is one to write.
+    offer: () => ({ text: offer ? offerText(facts, offer, extras) : "", named: offer && named ? offerText(facts, offer, { ...extras, nameLender: true }) : undefined }),
     papers: () => ({ text: papersText(extras) }),
     progress: () => ({ text: progressText(facts, steps, extras) }),
     reply: () => ({ text: "" }),
@@ -92,6 +94,7 @@ export default async function MessagesPage({ params, searchParams }: { params: P
             <p className="label">{toClient ? "واتساب" : "للمكتب فقط"}</p>
             <h2 className="compose-title">{toClient ? `رسالة إلى ${first}` : "ملخص داخلي"}</h2>
             {toClient && gate.reason && <p className="composer-say">{GATE_REASON[gate.reason]}</p>}
+            {toClient && !gate.reason && !offer && <p className="composer-say">{OFFER_WAITS}</p>}
           </div>
           <Composer key={start} dealId={deal.id} choices={choices} start={start} phone={view.phone} maySend={maySend} api={whatsapp() !== null} windowOpen={view.windowOpen} demo={me.demo} />
         </section>
