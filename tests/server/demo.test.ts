@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { draftLabel } from "@/copy/credit";
-import { dealTimeline, fundsFlow, pendingDrafts, reportDrafts, stationTimeline } from "@/domain/deal";
+import { dealTimeline, fundsFlow, pendingDrafts, recordDifferences, reportDrafts, stationTimeline } from "@/domain/deal";
 import { getAnalysis } from "@/server/analysis/service";
 import { getAsked } from "@/server/clients/conditions";
 import { getClientCard, listClients } from "@/server/clients/directory";
@@ -112,7 +112,7 @@ describe("demo credit records", () => {
     // A suspension someone confirmed. What must be cleared is what the deal settles.
     const noura = await of("نورة");
     expect(noura.credit.record!.report).toMatchObject({ serviceSuspension: true, suspensionAssumed: false });
-    expect(noura.credit.record!.analysis).toMatchObject({ grade: "E", stats: { totalToClear: 150000 } });
+    expect(noura.credit.record!.analysis).toMatchObject({ grade: "E", stats: { totalToClear: 153000 } });
     expect(noura.credit.record!.analysis.actions[0]!.code).toBe("LIFT_SUSPENSION");
     expect(noura.deal.creditFlags).toEqual({ bankReopenMonths: null, suspension: true, financeCoDefault: true });
     expect(noura.deal.study.risks.map((r) => r.code)).toEqual(expect.arrayContaining(["FINANCE_CO_DEFAULT_HISTORY", "SUSPENSION_LIFT"]));
@@ -139,6 +139,20 @@ describe("demo credit records", () => {
     expect(await lacking("نورة")).toEqual([]);
     expect(await lacking("ريم")).toEqual([]);
     expect(await lacking("فهد")).toEqual([]);
+  });
+
+  it("says which debt a deal holds at another amount than its record, until the creditor confirms the deal's", async () => {
+    const { deals } = await roadView(c.db, now);
+    const differing = async (name: string, confirmed = false) => {
+      const deal = (await getDeal(c.db, { dealId: deals.find((d) => d.clientName === name)!.dealId, now }))!;
+      const drafts = reportDrafts(deal.credit?.report ?? null).map((draft) => ({ ...draft, label: draftLabel(draft.source) }));
+      const items = deal.input.items.map((item) => (confirmed ? { ...item, confirmed: true } : item));
+      return recordDifferences(drafts, items).map((d) => [deal.input.items[d.item]!.label, d.deal, d.record]);
+    };
+    // The default of نورة grew since her deal was written. Its order is the same on both.
+    expect(await differing("نورة")).toEqual([["تعثر تمويل سيارة — شركة تمويل", 46000, 49000]]);
+    expect(await differing("نورة", true)).toEqual([]);
+    for (const name of ["سالم", "ريم", "فهد"]) expect(await differing(name), name).toEqual([]);
   });
 
   it("gives a new deal for the client who was turned down what her record shows, with what it lacks", async () => {

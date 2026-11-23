@@ -1284,6 +1284,11 @@
     line-height: 1.5;
     color: var(--color-muted);
   }
+  /* A hint that asks for a look, such as an amount the credit report gives otherwise. */
+  .hint-warn {
+    color: var(--color-sun-ink);
+    font-weight: 500;
+  }
   .field-area {
     min-height: 96px;
     resize: vertical;

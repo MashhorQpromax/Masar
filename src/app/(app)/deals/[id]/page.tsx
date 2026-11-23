@@ -16,11 +16,13 @@ import {
 } from "@/copy/deal";
 import { GRADE } from "@/copy/credit";
 import { missingText } from "@/copy/documents";
+import { differenceText } from "@/copy/editor";
 import { counted, days, dayShort, dueIn, ltr, money, percent, plainMoney } from "@/copy/format";
 import {
   dealAlternatives,
   dealTimeline,
   fundsFlow,
+  recordDifferences,
   stagesFor,
   stationTimeline,
   type LedgerSection,
@@ -36,6 +38,7 @@ import { papersOf } from "@/server/documents/service";
 import { BackIcon, ChevronIcon, PenIcon } from "@/ui/icons";
 import { Num } from "@/ui/Num";
 import { SubmitButton } from "@/ui/SubmitButton";
+import { reportOffer } from "../report-offer";
 import { moveDealStage } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -85,7 +88,18 @@ export default async function DealPage({ params }: { params: Promise<{ id: strin
   const elapsed = Math.max(1, Math.floor((now.getTime() - startedAt.getTime()) / DAY) + 1);
   const share = Math.min(100, Math.round((elapsed / Math.max(1, study.days)) * 1000) / 10);
 
-  const risks = [...study.risks].sort((a, b) => LEVEL_ORDER[a.level] - LEVEL_ORDER[b.level]);
+  // A court order or default the deal holds at another amount than the credit report stands beside the risks,
+  // for those who may read the report: the capital rests on these amounts.
+  const differences = maySeeCredit && credit ? recordDifferences(reportOffer(credit.report).drafts, input.items) : [];
+  // They come right after what blocks, ahead of the other warnings: what the office pays is in question.
+  const notes: { key: string; level: Risk["level"]; text: string }[] = [
+    ...differences.map((difference) => ({
+      key: `record-${difference.item}`,
+      level: "warn" as const,
+      text: differenceText({ label: input.items[difference.item]!.label, deal: difference.deal, record: difference.record }),
+    })),
+    ...study.risks.map((risk) => ({ key: risk.code, level: risk.level, text: riskText(risk) })),
+  ].sort((a, b) => LEVEL_ORDER[a.level] - LEVEL_ORDER[b.level]);
   const flowTotal = flow.total + flow.deficit;
 
   return (
@@ -322,19 +336,19 @@ export default async function DealPage({ params }: { params: Promise<{ id: strin
         </section>
 
         <section className="tile tile--notes">
-          <p className="label">{risks.length ? counted(risks.length, NOTES) : "لا ملاحظات"}</p>
-          {risks.slice(0, VISIBLE_NOTES).map((risk) => (
-            <p key={risk.code} className="note" data-level={risk.level}>
-              {riskText(risk)}
+          <p className="label">{notes.length ? counted(notes.length, NOTES) : "لا ملاحظات"}</p>
+          {notes.slice(0, VISIBLE_NOTES).map((note) => (
+            <p key={note.key} className="note" data-level={note.level}>
+              {note.text}
             </p>
           ))}
-          {risks.length > VISIBLE_NOTES && (
+          {notes.length > VISIBLE_NOTES && (
             <details className="more">
-              <summary>اعرض الباقي ({ltr(risks.length - VISIBLE_NOTES)})</summary>
+              <summary>اعرض الباقي ({ltr(notes.length - VISIBLE_NOTES)})</summary>
               <div>
-                {risks.slice(VISIBLE_NOTES).map((risk) => (
-                  <p key={risk.code} className="note" data-level={risk.level}>
-                    {riskText(risk)}
+                {notes.slice(VISIBLE_NOTES).map((note) => (
+                  <p key={note.key} className="note" data-level={note.level}>
+                    {note.text}
                   </p>
                 ))}
               </div>

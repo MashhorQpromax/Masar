@@ -167,41 +167,83 @@ function draftParty(source: DraftSource): string | null {
   return text?.trim() || null;
 }
 
+type Held = Pick<DealItem, "kind" | "label" | "original"> & { confirmed?: boolean };
+
+/** How a suggested item was found in a deal: by name and amount, by name alone, by amount alone, or by the label it was added under. */
+type Placing = "exact" | "about" | "named" | "amount" | "label";
+
 /**
- * The suggested items a deal does not hold yet. A draft is in the deal when an item of its kind names
- * its lender or its decision number, or has about its amount. The surest match is made first (the
- * name and the exact amount, then the name and about the amount, then the name, then the amount), so
- * of two loans from one lender the one that is missing is the one still suggested. A draft the record
+ * Finds each suggested item in a deal. A draft is in the deal when an item of its kind names its
+ * lender or its decision number, or has about its amount. The surest match is made first (the name
+ * and the exact amount, then the name and about the amount, then the name, then the amount), so of
+ * two loans from one lender the one that is missing is the one still suggested. A draft the record
  * gives no name for is, last, known by the label it is added under, so it is not offered again once
  * its amount is written. Each item answers for one draft only.
  */
-export function pendingDrafts<T extends ItemDraft & { label?: string | null }>(drafts: readonly T[], items: readonly Pick<DealItem, "kind" | "label" | "original">[]): T[] {
-  type Held = Pick<DealItem, "kind" | "label" | "original">;
+function placeDrafts<T extends ItemDraft & { label?: string | null }>(drafts: readonly T[], items: readonly Held[]): Map<T, { at: number; how: Placing }> {
   const taken = new Set<number>();
-  const answered = new Set<T>();
+  const placed = new Map<T, { at: number; how: Placing }>();
   const named = (draft: T, item: Held): boolean => {
     const party = draftParty(draft.source);
     return !!party && item.label.includes(party);
   };
   const about = (draft: T, item: Held): boolean =>
     draft.original > 0 && item.original > 0 && Math.abs(item.original - draft.original) <= Math.max(CREDIT_RULES.sameDebtTolerance, draft.original * CREDIT_RULES.sameDebtShare);
-  const passes: ((draft: T, item: Held) => boolean)[] = [
-    (draft, item) => named(draft, item) && item.original === draft.original,
-    (draft, item) => named(draft, item) && about(draft, item),
-    named,
-    about,
-    (draft, item) => !!draft.label && item.label === draft.label,
+  const passes: [Placing, (draft: T, item: Held) => boolean][] = [
+    ["exact", (draft, item) => named(draft, item) && item.original === draft.original],
+    ["about", (draft, item) => named(draft, item) && about(draft, item)],
+    ["named", named],
+    ["amount", about],
+    ["label", (draft, item) => !!draft.label && item.label === draft.label],
   ];
-  for (const matches of passes) {
+  for (const [how, matches] of passes) {
     for (const draft of drafts) {
-      if (answered.has(draft)) continue;
+      if (placed.has(draft)) continue;
       const at = items.findIndex((item, index) => !taken.has(index) && item.kind === draft.kind && matches(draft, item));
       if (at < 0) continue;
       taken.add(at);
-      answered.add(draft);
+      placed.set(draft, { at, how });
     }
   }
-  return drafts.filter((draft) => !answered.has(draft));
+  return placed;
+}
+
+/** The suggested items a deal does not hold yet (`placeDrafts` says how one is found). */
+export function pendingDrafts<T extends ItemDraft & { label?: string | null }>(drafts: readonly T[], items: readonly Held[]): T[] {
+  const placed = placeDrafts(drafts, items);
+  return drafts.filter((draft) => !placed.has(draft));
+}
+
+/** A debt the record and the deal both name, at amounts that differ by more than a rounding. */
+export interface RecordDifference<T> {
+  draft: T;
+  /** The deal's item, by its place in the deal's list. */
+  item: number;
+  /** What the record says is owed. */
+  record: number;
+  /** What the deal says is owed. */
+  deal: number;
+}
+
+/** The debts whose amount the record fixes: what a court ordered and what a lender declared in default. A loan's balance falls every month. */
+const FIXED_DEBTS: readonly ItemKind[] = ["execution", "default"];
+
+/**
+ * The court orders and defaults the deal names at another amount than the record. These are what the
+ * office pays, so a deal that holds less than the record owes is a deal whose capital is short. An
+ * item whose amount was confirmed by a paper from the creditor is newer than the record and differs
+ * from nothing. A running loan is left out: its balance on the record is older than the deal, and the
+ * creditor's letter settles it.
+ */
+export function recordDifferences<T extends ItemDraft & { label?: string | null }>(drafts: readonly T[], items: readonly Held[]): RecordDifference<T>[] {
+  const differences: RecordDifference<T>[] = [];
+  for (const [draft, { at, how }] of placeDrafts(drafts, items)) {
+    const item = items[at]!;
+    if (how !== "named" || !FIXED_DEBTS.includes(draft.kind) || item.confirmed) continue;
+    if (draft.original <= 0 || item.original <= 0) continue;
+    differences.push({ draft, item: at, record: draft.original, deal: item.original });
+  }
+  return differences.sort((a, b) => a.item - b.item);
 }
 
 /** The facts of a credit record that change a deal's risks and its suggested fee. */

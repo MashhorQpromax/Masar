@@ -3,7 +3,21 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { FEE_REASON, riskText, STRUCTURE, VERDICT } from "@/copy/deal";
-import { DRAFT_GAP, FINANCE_BASE, ITEM_KIND, LENDER_KIND, notInDeal, PAID_BY, PAYOFF_ESTIMATED, REPORT_FILLED, reportDay, saveError, SECTOR } from "@/copy/editor";
+import {
+  CONFIRMED_BY_CREDITOR,
+  DRAFT_GAP,
+  FINANCE_BASE,
+  ITEM_KIND,
+  LENDER_KIND,
+  notInDeal,
+  onRecord,
+  PAID_BY,
+  PAYOFF_ESTIMATED,
+  REPORT_FILLED,
+  reportDay,
+  saveError,
+  SECTOR,
+} from "@/copy/editor";
 import { CONTRACT_TYPE } from "@/copy/eligibility";
 import { ltr, percent, plainMoney } from "@/copy/format";
 import {
@@ -15,6 +29,7 @@ import {
   joinLabel,
   labelParts,
   pendingDrafts,
+  recordDifferences,
   STRUCTURES,
   structureOf,
   type CreditFlags,
@@ -76,6 +91,8 @@ interface Row {
 
 const KINDS = Object.keys(ITEM_KIND) as ItemKind[];
 const PAYOFF = new Set<ItemKind>(["mortgage_payoff", "personal_payoff"]);
+/** The debts whose amount the credit report fixes, and a paper from the creditor can confirm. */
+const FIXED = new Set<ItemKind>(["execution", "default"]);
 const NO_LENDER_KIND = { "": "غير محدد", ...LENDER_KIND };
 const NO_DRAFTS: OfferedDraft[] = [];
 
@@ -116,7 +133,8 @@ const toItem = (row: Row): DealItem => {
     original,
     pay: row.pay ?? original,
     by: row.by,
-    ...(PAYOFF.has(row.kind) ? { confirmed: row.confirmed } : {}),
+    // A court order or default carries the mark only once a person set it, so saving an old deal changes nothing.
+    ...(PAYOFF.has(row.kind) ? { confirmed: row.confirmed } : FIXED.has(row.kind) && row.confirmed ? { confirmed: true } : {}),
     monthly: row.monthly,
   };
 };
@@ -165,6 +183,11 @@ export function DealEditor({
   const full = useMemo<DealInput>(() => ({ ...x, items: rows.map(toItem) }), [x, rows]);
   /** What the report shows and the deal does not hold yet. */
   const unplaced = useMemo(() => pendingDrafts(offered, full.items), [offered, full.items]);
+  /** What the report says is owed on each court order or default the deal holds at another amount, by row, whether or not a person confirmed it. */
+  const onReport = useMemo(
+    () => new Map(recordDifferences(offered, full.items.map((item) => ({ ...item, confirmed: false }))).map((difference) => [difference.item, difference.record])),
+    [offered, full.items],
+  );
   const study = useMemo(() => dealStudy(full, borrowerIn(facts, year), credit), [full, facts, year, credit]);
   /** What the engine estimates from the salary, shown beside a bank offer. */
   const estimate = useMemo(
@@ -351,7 +374,8 @@ export function DealEditor({
             </p>
           )}
           <div ref={list} className="items">
-            {rows.map((row) => {
+            {rows.map((row, index) => {
+              const recorded = onReport.get(index);
               const discount = row.original && row.pay != null && row.pay < row.original ? (1 - row.pay / row.original) * 100 : null;
               return (
                 <div key={row.id} className="item" data-row={row.id} data-out={row.by === "out" || undefined}>
@@ -383,7 +407,7 @@ export function DealEditor({
                       value={row.original}
                       onChange={(original) => setRow(row.id, { original })}
                       max={10_000_000_000}
-                      hint={!row.original && row.missing?.includes("amount") ? DRAFT_GAP.amount : undefined}
+                      hint={!row.original && row.missing?.includes("amount") ? DRAFT_GAP.amount : recorded == null ? undefined : row.confirmed ? onRecord(recorded) : <span className="hint-warn">{onRecord(recorded)}</span>}
                     />
                     <NumberField
                       label="بعد الخصم"
@@ -408,6 +432,9 @@ export function DealEditor({
                   <div className="item-foot">
                     <Segmented label="من يسدده" value={row.by} onChange={(by) => setRow(row.id, { by })} options={PAID_BY} />
                     {PAYOFF.has(row.kind) && <Check label="مؤكد بخطاب مخالصة" checked={row.confirmed} onChange={(confirmed) => setRow(row.id, { confirmed })} />}
+                    {FIXED.has(row.kind) && (recorded != null || row.confirmed) && (
+                      <Check label={CONFIRMED_BY_CREDITOR} checked={row.confirmed} onChange={(confirmed) => setRow(row.id, { confirmed })} />
+                    )}
                   </div>
                 </div>
               );

@@ -280,7 +280,8 @@ const DEALS: DemoDeal[] = [
           reportMonthsAgo: 0,
           facilities: [
             { lender: "شركة تمويل", creditorType: "finance_company", product: "تمويل شخصي", status: "default", defaultAmount: 104000, defaultNow: 104000, defaultListedAt: "2025/12/03", defaultMonthsAgo: 11 },
-            { lender: "شركة تمويل", creditorType: "finance_company", product: "تمويل سيارة", status: "default", defaultAmount: 46000, defaultNow: 46000, defaultListedAt: "2026/04/11", defaultMonthsAgo: 7 },
+            // The default grew since the letter her deal was written from: the deal holds 46,000 and the record 49,000.
+            { lender: "شركة تمويل", creditorType: "finance_company", product: "تمويل سيارة", status: "default", defaultAmount: 46000, defaultNow: 49000, defaultListedAt: "2026/04/11", defaultMonthsAgo: 7 },
             { lender: "بنك", creditorType: "bank", product: "تمويل شخصي", status: "current", balance: 44000, installment: 1500, openedAt: "2024/01/08" },
           ],
           judgments: [{ kind: "enforcement", active: true, amount: 104000, remaining: 104000, creditor: null, date: "2026/05/19", state: "عدم تنفيذ", decisionNo: "77241" }],

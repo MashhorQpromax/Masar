@@ -19,9 +19,10 @@ import {
   STANDING,
   UPLOAD_ERROR_CODES,
 } from "@/copy/credit";
-import { DRAFT_GAP, notInDeal, PAYOFF_ESTIMATED, REPORT_FILLED, reportDay } from "@/copy/editor";
+import { alsoDiffers, CONFIRMED_BY_CREDITOR, differenceText, DIFFERS_DUE, DRAFT_GAP, notInDeal, onRecord, PAYOFF_ESTIMATED, recordDiffers, REPORT_FILLED, reportDay } from "@/copy/editor";
+import { plainMoney } from "@/copy/format";
 import { analyzeCredit, parseSimahPages, type CreditReport } from "@/domain/credit";
-import { itemDrafts, joinLabel, labelParts, pendingDrafts, reportDrafts, type Owed } from "@/domain/deal";
+import { itemDrafts, joinLabel, labelParts, pendingDrafts, recordDifferences, reportDrafts, type Owed } from "@/domain/deal";
 
 const golden = JSON.parse(readFileSync(new URL("../golden/credit.json", import.meta.url), "utf8"));
 const cases: { report: CreditReport; obligations: Owed[]; expected: { items: { label: string }[] } }[] = golden.cases;
@@ -205,5 +206,49 @@ describe("the report's commitments in the deal editor", () => {
       expect(said).not.toMatch(/undefined|NaN|null|\[object|[A-Za-z_]{3,}|—|–/);
     }
     expect(DRAFT_GAP.amount).not.toBe(DRAFT_GAP.monthly);
+  });
+
+  it("finds every court order and default written at another amount than the record, for every record of the golden file", () => {
+    let differing = 0;
+    for (const c of cases) {
+      const drafts = reportDrafts(c.report).map((draft) => ({ ...draft, label: draftLabel(draft.source) }));
+      const items = drafts.map((draft) => ({ kind: draft.kind, label: draft.label, original: draft.original }));
+      // Written as the record has them, nothing differs.
+      expect(recordDifferences(drafts, items)).toEqual([]);
+      // Each fixed debt written a tenth lower, and not less than 5,000 lower, is said with both amounts.
+      const lower = items.map((item) =>
+        (item.kind === "execution" || item.kind === "default") && item.original > 5000 ? { ...item, original: Math.min(item.original - 5000, Math.round(item.original * 0.9)) } : item,
+      );
+      const found = recordDifferences(drafts, lower);
+      for (const difference of found) {
+        const text = differenceText({ label: lower[difference.item]!.label, deal: difference.deal, record: difference.record });
+        expect(strip(text)).toContain(`في الصفقة ${plainMoney(difference.deal)}، وفي تقرير سمة ${plainMoney(difference.record)}.`);
+        expect(text).not.toMatch(broken);
+        // The names come from the record, and may be written in Latin letters. The separator of a label never shows.
+        expect(text).not.toMatch(/—|–/);
+        expect(difference.record).toBeGreaterThan(difference.deal);
+        differing++;
+      }
+      // A debt the creditor confirmed at the deal's amount differs from nothing.
+      expect(recordDifferences(drafts, lower.map((item) => ({ ...item, confirmed: true })))).toEqual([]);
+    }
+    expect(differing).toBeGreaterThan(50);
+  });
+
+  it("says how many amounts differ from the record, and each one with both figures", () => {
+    expect(recordDiffers(1)).toBe("مبلغ واحد يخالف تقرير سمة");
+    expect(recordDiffers(2)).toBe("مبلغان يخالفان تقرير سمة");
+    expect(recordDiffers(3)).toBe("3 مبالغ تخالف تقرير سمة");
+    expect(recordDiffers(11)).toBe("11 مبلغاً تخالف تقرير سمة");
+    expect(alsoDiffers(1)).toBe("وفي الصفقة مبلغ واحد يخالف تقرير سمة.");
+    expect(strip(onRecord(49000))).toBe("في تقرير سمة 49,000");
+    expect(strip(differenceText({ label: "تعثر تمويل سيارة — شركة تمويل", deal: 46000, record: 49000 }))).toBe(
+      "تعثر تمويل سيارة (شركة تمويل): في الصفقة 46,000، وفي تقرير سمة 49,000. صحّح المبلغ أو أكّده من الدائن.",
+    );
+    expect(strip(differenceText({ label: "تعثر", deal: 1000, record: 9000 }))).toBe("تعثر: في الصفقة 1,000، وفي تقرير سمة 9,000. صحّح المبلغ أو أكّده من الدائن.");
+    for (const said of [DIFFERS_DUE, CONFIRMED_BY_CREDITOR]) {
+      expect(said).toMatch(/^[؀-ۿ]/);
+      expect(said).not.toMatch(/undefined|NaN|null|\[object|[A-Za-z_]{3,}|—|–/);
+    }
   });
 });

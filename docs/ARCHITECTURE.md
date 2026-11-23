@@ -314,7 +314,20 @@ The third part of the first phase holds what the client's file says against what
 
 `tests/domain/facts.examples.test.ts` holds the worked examples, `tests/domain/strict.examples.test.ts` and `tests/domain/analysis.examples.test.ts` the conflict on a route and in the analysis, `tests/server/facts.test.ts` the writing, clearing and relying end to end, `tests/server/demo.test.ts` the demonstration, and the wording `tests/copy/documents.test.ts`, `tests/copy/eligibility.test.ts`, `tests/copy/funding.test.ts`, `tests/copy/analysis.test.ts` and `tests/copy/audit.test.ts`. Tests about other things take the demonstration's conflict away first (`tests/helpers/demo.ts`).
 
-Choices made here that the owner has not reviewed: the three facts and no others, a GOSI statement's basic wage only, the two tolerances, that an income is proven only by a figure written from a paper, and that settling a conflict writes the paper's figure into the file. What the SIMAH record says against the amounts a deal carries is the next step of this part.
+Choices made here that the owner has not reviewed: the three facts and no others, a GOSI statement's basic wage only, the two tolerances, that an income is proven only by a figure written from a paper, and that settling a conflict writes the paper's figure into the file.
+
+### The deal against the record
+
+The fourth part holds the amounts a deal carries against the client's SIMAH record (`recordDifferences` in `src/domain/deal/from-credit.ts`). The office pays the court orders and defaults, so a deal that holds less than the record says is owed is a deal whose capital is short.
+
+- **Which debts.** Only a court order and a default (`FIXED_DEBTS`): their amount is fixed by the court or declared by the lender. A running loan is left out, because its balance on the record is older than the deal and falls every month; its payoff is settled by the lender's letter, which a payoff already carries as its own mark.
+- **When it differs.** A draft of the record is found in the deal as `pendingDrafts` finds it (`placeDrafts`). It differs when the item names the same lender or decision number and its amount is beyond the tolerance two readings of one debt are given (`CREDIT_RULES.sameDebtTolerance` and `sameDebtShare`: 1,500 riyals or two parts in a hundred, whichever is more). An item matched by its amount alone, or with no amount on either side, differs from nothing.
+- **Settled by a paper.** An item whose amount the creditor confirmed (`confirmed`, the mark a payoff gets from its clearance letter) is newer than the record and differs from nothing. The editor shows the mark on a court order or default only while it differs or is set, and saves it only when set, so saving an old deal changes nothing.
+- **Said, never decided.** A difference changes no figure of the deal's study and no lender's answer: the golden tests that lock the engine's numbers are untouched. It is a warning among the deal's notes, for those who may read the record (`client.view_pii`); under the amount in the editor ("في تقرير سمة ..."); and the next step on the record's page when the deal holds everything the record shows but not at its amounts.
+
+In the demonstration one invented client's default grew since her deal was written. `tests/domain/report-drafts.test.ts` holds the worked examples, `tests/copy/credit.test.ts` the wording and a pass over every record of the golden file, and `tests/server/demo.test.ts` the demonstration.
+
+Choices the owner has not reviewed: court orders and defaults only, the tolerance taken from matching one debt across two readings, and that a creditor's confirmation is a mark a person sets rather than a paper the system holds.
 
 ## What the office knows about lenders
 

@@ -13,11 +13,11 @@ import {
   JUDGMENT_KIND,
   parseWarningText,
 } from "@/copy/credit";
-import { notInDeal } from "@/copy/editor";
+import { alsoDiffers, DIFFERS_DUE, notInDeal, recordDiffers } from "@/copy/editor";
 import { counted, dayOfRecord, dayShort, ltr, money, percent, plainMoney } from "@/copy/format";
 import { can } from "@/domain/auth";
 import type { Facility, FacilityStatus, FindingLevel, Grade } from "@/domain/credit";
-import { pendingDrafts } from "@/domain/deal";
+import { pendingDrafts, recordDifferences } from "@/domain/deal";
 import { requireActor } from "@/server/auth/actor";
 import { getCredit } from "@/server/credit/service";
 import { getDb } from "@/server/db/client";
@@ -130,8 +130,10 @@ export default async function CreditPage({ params }: { params: Promise<{ id: str
   const deal = mayDeal && dealId && offered.length ? await getDeal(db, { dealId }) : null;
   const open = deal && deal.deal.stage !== "closed" && deal.deal.stage !== "lost" ? deal : null;
   const lacking = open ? pendingDrafts(offered, open.input.items).length : 0;
+  // A court order or default the deal holds at another amount than this record.
+  const differing = open ? recordDifferences(offered, open.input.items).length : 0;
   const starting = mayDeal && !dealId && offered.length > 0;
-  const next = !asking && (lacking > 0 || starting);
+  const next = !asking && (lacking > 0 || differing > 0 || starting);
   const swing = banks.access === "open" ? 90 : banks.access === "conditional" || financeCompanies.access !== "closed" ? 45 : 0;
 
   // What a person should double check in the reading comes first, then what blocks, then what was found.
@@ -258,8 +260,14 @@ export default async function CreditPage({ params }: { params: Promise<{ id: str
           <section className="tile tile--next">
             <div>
               <p className="label">الخطوة التالية</p>
-              <h2>{starting ? "ابدأ الصفقة من التقرير" : notInDeal(lacking)}</h2>
-              <p className="due">{starting ? "نضع ما في التقرير في صفقة جديدة، وتراجع كل رقم قبل الحفظ." : "من تقرير سمة، وليس في أرقام الصفقة بعد. راجع الأرقام وأضف ما يلزم."}</p>
+              <h2>{starting ? "ابدأ الصفقة من التقرير" : lacking > 0 ? notInDeal(lacking) : recordDiffers(differing)}</h2>
+              <p className="due">
+                {starting
+                  ? "نضع ما في التقرير في صفقة جديدة، وتراجع كل رقم قبل الحفظ."
+                  : lacking > 0
+                    ? `من تقرير سمة، وليس في أرقام الصفقة بعد. راجع الأرقام وأضف ما يلزم.${differing > 0 ? ` ${alsoDiffers(differing)}` : ""}`
+                    : DIFFERS_DUE}
+              </p>
             </div>
             <div className="actions">
               <Link className="btn btn--navy" href={starting ? `/deals/new?client=${client.id}` : `/deals/${dealId}/edit#from-report`}>

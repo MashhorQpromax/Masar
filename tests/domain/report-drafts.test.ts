@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { emptyReport, type CreditReport, type Facility, type Judgment } from "@/domain/credit";
-import { itemDrafts, owedFrom, pendingDrafts, reportDrafts, type DealItem, type ItemDraft } from "@/domain/deal";
+import { itemDrafts, owedFrom, pendingDrafts, recordDifferences, reportDrafts, type DealItem, type ItemDraft } from "@/domain/deal";
 
 /**
  * What a credit record puts in front of a person who builds a deal: the commitments the record shows,
@@ -11,7 +11,7 @@ import { itemDrafts, owedFrom, pendingDrafts, reportDrafts, type DealItem, type 
 const report = (parts: Partial<CreditReport>): CreditReport => ({ ...emptyReport(), ...parts });
 const loan = (parts: Partial<Facility>): Facility => ({ lender: "بنك", creditorType: "bank", product: "قرض شخصي", status: "current", ...parts });
 const order = (parts: Partial<Judgment>): Judgment => ({ kind: "enforcement", active: true, ...parts });
-const item = (parts: Partial<DealItem>): Pick<DealItem, "kind" | "label" | "original"> => ({ kind: "personal_payoff", label: "مخالصة الشخصي — بنك", original: 0, ...parts });
+const item = (parts: Partial<DealItem>): Pick<DealItem, "kind" | "label" | "original" | "confirmed"> => ({ kind: "personal_payoff", label: "مخالصة الشخصي — بنك", original: 0, ...parts });
 
 const golden = JSON.parse(readFileSync(path.join(import.meta.dirname, "../golden/credit.json"), "utf8")) as { cases: { report: CreditReport }[] };
 
@@ -220,5 +220,56 @@ describe("what a deal does not hold yet", () => {
     const order = { kind: "execution", source: { from: "judgment", kind: "enforcement", decisionNo: null, creditor: null, date: null }, original: 9000, pay: 9000, by: "company", label: "قرار تنفيذ" } satisfies ItemDraft & { label: string };
     expect(pendingDrafts([bare, order], [item({ kind: "execution", label: bare.label, original: 9000 })])).toEqual([bare]);
     expect(pendingDrafts([bare], [item({ kind: "card", label: bare.label, original: 0 })])).toEqual([bare]);
+  });
+});
+
+describe("what the deal and the record say differently", () => {
+  const order: ItemDraft = { kind: "execution", source: { from: "judgment", kind: "enforcement", decisionNo: "90412", creditor: "شركة تمويل", date: null }, original: 142000, pay: 142000, by: "company" };
+  const unpaid: ItemDraft = { kind: "default", source: { from: "default", lender: "بنك الجزيرة", product: "بطاقة ائتمان" }, original: 58000, pay: 58000, by: "company" };
+  const running: ItemDraft = { kind: "personal_payoff", source: { from: "obligation", kind: "personal", lender: "مصرف الراجحي" }, original: 100000, pay: 93000, by: "bank", monthly: 3000 };
+  const drafts = [order, unpaid, running];
+
+  it("names a court order or a default the deal holds at another amount, with both figures", () => {
+    const items = [
+      item({ kind: "personal_payoff", label: "مخالصة الشخصي — مصرف الراجحي", original: 100000 }),
+      item({ kind: "default", label: "تعثر — بنك الجزيرة", original: 40000 }),
+      item({ kind: "execution", label: "قرار تنفيذ 90412", original: 90000 }),
+    ];
+    expect(recordDifferences(drafts, items)).toEqual([
+      { draft: unpaid, item: 1, record: 58000, deal: 40000 },
+      { draft: order, item: 2, record: 142000, deal: 90000 },
+    ]);
+    // Placed all the same: the debt is in the deal, at the wrong amount, and is not suggested again.
+    expect(pendingDrafts(drafts, items)).toEqual([]);
+  });
+
+  it("takes a rounding for agreement, the same tolerance two readings of one debt are given", () => {
+    expect(recordDifferences([order], [item({ kind: "execution", label: "قرار تنفيذ 90412", original: 144800 })])).toEqual([]);
+    expect(recordDifferences([order], [item({ kind: "execution", label: "قرار تنفيذ 90412", original: 142000 })])).toEqual([]);
+    expect(recordDifferences([order], [item({ kind: "execution", label: "قرار تنفيذ 90412", original: 145000 })])).toHaveLength(1);
+  });
+
+  it("says nothing of a debt more than the record shows when a letter from the creditor confirmed it", () => {
+    expect(recordDifferences([unpaid], [item({ kind: "default", label: "تعثر — بنك الجزيرة", original: 61000, confirmed: true })])).toEqual([]);
+  });
+
+  it("leaves a running loan to the lender's letter: its balance on the record is older than the deal", () => {
+    expect(recordDifferences([running], [item({ label: "مخالصة الشخصي — مصرف الراجحي", original: 81000 })])).toEqual([]);
+  });
+
+  it("says nothing of an item it cannot tie to the debt by name, nor of an amount nobody gave", () => {
+    // Another creditor's order of another amount is another debt: it is still to be placed, not a difference.
+    expect(recordDifferences([order], [item({ kind: "execution", label: "قرار تنفيذ 77001", original: 90000 })])).toEqual([]);
+    expect(recordDifferences([order], [item({ kind: "execution", label: "قرار تنفيذ 90412", original: 0 })])).toEqual([]);
+    const bare: ItemDraft = { kind: "execution", source: { from: "judgment", kind: "bounced_cheque", decisionNo: null, creditor: "شركة تمويل", date: null }, original: 0, pay: 0, by: "company" };
+    expect(recordDifferences([bare], [item({ kind: "execution", label: "شيك — شركة تمويل", original: 9000 })])).toEqual([]);
+    expect(recordDifferences(drafts, [])).toEqual([]);
+  });
+
+  it("ties each item to one debt: of two orders of one creditor, the one held at its amount is not the one that differs", () => {
+    const first: ItemDraft = { kind: "execution", source: { from: "judgment", kind: "enforcement", decisionNo: null, creditor: "شركة تمويل", date: null }, original: 30000, pay: 30000, by: "company" };
+    const second: ItemDraft = { ...first, original: 60000, pay: 60000 };
+    const items = [item({ kind: "execution", label: "قرار تنفيذ — شركة تمويل", original: 60000 }), item({ kind: "execution", label: "قرار تنفيذ — شركة تمويل", original: 45000 })];
+    expect(recordDifferences([first, second], items)).toEqual([{ draft: first, item: 1, record: 30000, deal: 45000 }]);
   });
 });
