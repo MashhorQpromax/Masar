@@ -9,7 +9,9 @@ import { getCredit } from "@/server/credit/service";
 import type { Connection } from "@/server/db/client";
 import { getDeal } from "@/server/deals/service";
 import { roadView } from "@/server/deals/views";
-import { DEMO_ANSWERED, DEMO_BANK, DEMO_COMPANY, DEMO_PAPER, DEMO_WORD, seedDemoLenders } from "@/server/demo/lenders";
+import { DEMO_ANSWERED, DEMO_BANK, DEMO_COMPANY, DEMO_PAPER, DEMO_REPLY_TEXT, DEMO_WORD, seedDemoLenders, seedDemoReplies } from "@/server/demo/lenders";
+import { DEMO_CONTACT_SOURCE, seedDemoContacts, seedDemoRequests } from "@/server/demo/requests";
+import { contactsOf, requestsBoard } from "@/server/requests/service";
 import { DEMO_APPROVED, DEMO_FALLEN, DEMO_PLAN_FELL, DEMO_PLAN_STANDS, DEMO_REASON, seedDemoApprovals, seedDemoPlans } from "@/server/demo/approvals";
 import { planApprovalsOf, planOf } from "@/server/deals/plan";
 import { seedDemo } from "@/server/demo/seed";
@@ -355,6 +357,47 @@ describe("the demonstration's approvals", () => {
       expect(fell.map((p) => [p.stands, p.moves.figures.map((f) => [f.name, f.then - f.now])])).toEqual([[false, [["clientNet", 4000]]]]);
       await seedDemoPlans(fresh.db, now);
       expect(await plans(DEMO_PLAN_STANDS)).toHaveLength(1);
+    } finally {
+      await fresh.close();
+    }
+  });
+});
+
+describe("the demonstration's requests to lenders", () => {
+  it("reaches only the example lenders, shows one request on its whole road, and sends nothing", async () => {
+    const fresh = await testDb();
+    try {
+      await seedDemo(fresh.db, now);
+      await seedDemoLenders(fresh.db, now);
+      await seedDemoContacts(fresh.db, now);
+      await seedDemoApprovals(fresh.db, now);
+      await seedDemoRequests(fresh.db, now);
+      await seedDemoReplies(fresh.db, now);
+      const today = riyadhDay(now);
+
+      // Ways of reaching a lender exist for the two example lenders only, each made up and saying so.
+      const ways = await contactsOf(fresh.db, { today });
+      expect(new Set(ways.map((w) => w.lenderName))).toEqual(new Set([DEMO_BANK, DEMO_COMPANY]));
+      expect(ways.filter((w) => w.source != null).every((w) => w.source === DEMO_CONTACT_SOURCE)).toBe(true);
+      expect(ways.map((w) => w.state.problem).sort()).toEqual(["EXPIRED", "NO_SOURCE", null, null].sort());
+
+      // One request, to the example bank, from the file that stands approved, answered on itself.
+      const client = (await listClients(fresh.db, { q: DEMO_APPROVED })).rows.find((row) => row.fileNo === DEMO_APPROVED)!;
+      const [request, ...others] = (await requestsBoard(fresh.db, { now })).list;
+      expect(others).toEqual([]);
+      expect(request).toMatchObject({ dealId: client.deal!.id, lenderName: DEMO_BANK, status: "answered", sentTo: { kind: "email" } });
+      expect(request!.answers.map((a) => [a.decision, a.written, a.replyText])).toEqual([["approved", true, DEMO_REPLY_TEXT]]);
+      expect(DEMO_REPLY_TEXT).toContain("تجريبي");
+      // What went out names nobody: the file number is the reference.
+      expect(request!.message).toContain(DEMO_APPROVED);
+      expect(request!.message).not.toContain(client.name);
+      expect(request!.message).not.toContain(client.phone!);
+
+      // Seeding again adds nothing.
+      await seedDemoContacts(fresh.db, now);
+      await seedDemoRequests(fresh.db, now);
+      expect(await contactsOf(fresh.db, { today })).toHaveLength(ways.length);
+      expect((await requestsBoard(fresh.db, { now })).list).toHaveLength(1);
     } finally {
       await fresh.close();
     }

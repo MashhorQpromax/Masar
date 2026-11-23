@@ -24,6 +24,8 @@ const PERMISSIONS = {
   "lender.manage": ["admin", "analyst"],
   /** Saying that a lender's term was checked against its source. The result of every study rests on it. */
   "lender.confirm": ["admin"],
+  /** Approving a request to a lender before anyone sends it: what the lender will be told about a client, signed. The manager's alone until the owner says otherwise. */
+  "request.approve": ["admin"],
   "user.manage": ["admin"],
   /** The office's own settings: the fee policy every new deal starts from. */
   "settings.manage": ["admin"],

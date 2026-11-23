@@ -18,6 +18,9 @@ function refresh(dealId: number): void {
   revalidatePath("/deals");
   revalidatePath(`/deals/${dealId}`);
   revalidatePath(`/deals/${dealId}/lenders`);
+  revalidatePath(`/deals/${dealId}/requests`);
+  revalidatePath(`/deals/${dealId}/opportunities`);
+  revalidatePath("/lenders/requests");
 }
 
 /**

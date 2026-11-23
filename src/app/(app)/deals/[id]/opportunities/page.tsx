@@ -53,6 +53,9 @@ export default async function OpportunitiesPage({ params }: { params: Promise<{ 
           <Link className="note-link" href={`/deals/${deal.id}/lenders`}>
             جهات التمويل وقراراتها
           </Link>
+          <Link className="note-link" href={`/deals/${deal.id}/requests`}>
+            طلبات الجهات
+          </Link>
         </div>
       </div>
 

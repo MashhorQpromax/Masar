@@ -20,6 +20,7 @@ describe("what each role may do", () => {
       "app.manage": "admin analyst officer",
       "lender.manage": "admin analyst",
       "lender.confirm": "admin",
+      "request.approve": "admin",
       "user.manage": "admin",
       "settings.manage": "admin",
       "audit.view": "admin",

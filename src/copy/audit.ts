@@ -15,6 +15,8 @@ import { FINANCE_TYPE, PAPER_FACT, SPECIAL_KIND } from "./eligibility";
 import { DECISION, PART, RULE_KIND } from "./knowledge";
 import { LENDER_TYPE, SOURCE_KIND } from "./lenders";
 import { MESSAGE_KIND } from "./messages";
+import { CONSENT_WAY, CONTACT_KIND } from "./requests";
+import { CONTACT_KINDS, type ContactKind } from "@/domain/request";
 
 export const AUDIT_AREA: Record<AuditArea, string> = {
   signin: "الدخول",
@@ -86,6 +88,16 @@ const AUDIT_ACTION: Record<AuditAction, string> = {
   "lender.rule_add": "ملاحظة عن جهة",
   "lender.rule_archive": "حذف ملاحظة عن جهة",
   "lender.decision": "تسجيل قرار جهة",
+  "lender.contact_add": "وسيلة تواصل لجهة",
+  "lender.contact_check": "التحقق من وسيلة تواصل",
+  "lender.contact_stop": "إيقاف وسيلة تواصل",
+  "request.prepare": "تجهيز طلب لجهة",
+  "request.approve": "اعتماد طلب لجهة",
+  "request.send": "تسجيل إرسال طلب لجهة",
+  "request.close": "إغلاق طلب لجهة",
+  "client.share_consent": "موافقة العميل على المشاركة مع جهة",
+  "client.share_withdraw": "سحب موافقة المشاركة مع جهة",
+  "settings.requests": "تغيير مدة المتابعة",
 };
 
 /** What an event is called. An event from a newer build than this wording still gets a name. */
@@ -180,6 +192,8 @@ function keptPolicy(value: unknown): FeePolicy | null {
   const max = number(kept.max);
   return fee && min != null && max != null ? { settlePct: fee.settlePct, financePct: fee.financePct, financeBase: fee.financeBase, min, max } : null;
 }
+
+const isContactKind = (value: unknown): value is ContactKind => (CONTACT_KINDS as readonly unknown[]).includes(value);
 
 const fields = (value: unknown): string => joined(strings(value).map((name) => FIELD[name]));
 const role = (value: unknown): string | null => (isRole(value) ? ROLE[value] : null);
@@ -338,6 +352,25 @@ export function auditDetail(action: string, details: Record<string, unknown> | n
       return joined([isRuleKind(d.kind) && RULE_KIND[d.kind], text(d.lender) ?? "كل الجهات", text(d.title)]);
     case "lender.rule_archive":
       return text(d.title) ?? "";
+    case "lender.contact_add":
+    case "lender.contact_check":
+    case "lender.contact_stop":
+      return joined([text(d.lender), isContactKind(d.kind) && CONTACT_KIND[d.kind]]);
+    case "request.prepare":
+    case "request.approve":
+    case "request.close":
+      return joined([text(d.lender), text(d.reason)]);
+    case "request.send":
+      return joined([text(d.lender), isContactKind(d.kind) && `عبر ${CONTACT_KIND[d.kind]}`]);
+    case "client.share_consent":
+      return joined([text(d.lender), (d.way === "written" || d.way === "verbal") && CONSENT_WAY[d.way]]);
+    case "client.share_withdraw":
+      return text(d.lender) ?? "";
+    case "settings.requests": {
+      const before = number(d.before);
+      const after = number(d.after);
+      return before != null && after != null ? `من ${days(before)} إلى ${days(after)}` : "";
+    }
     case "lender.decision":
       return joined([isDecision(d.decision) && DECISION[d.decision], text(d.lender), isPart(d.part) && PART[d.part], d.written === true && "برد مكتوب", d.onDeal === true && "حُسبت الصفقة عليه"]);
     default:

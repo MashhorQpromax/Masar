@@ -3,7 +3,7 @@ import { and, desc, eq, isNotNull } from "drizzle-orm";
 import { addMonths, dayOf, termsOf, type FinanceType, type SourceKind } from "@/domain/eligibility";
 import type { Db } from "../db/client";
 import { answerCondition } from "../clients/conditions";
-import { clients, deals, lenders, outcomes, termSources, users } from "../db/schema";
+import { clients, deals, lenderRequests, lenders, outcomes, termSources, users } from "../db/schema";
 import { addPaper, keepFile } from "../documents/service";
 import { getFunding } from "../funding/service";
 import { recordDecision } from "../knowledge/service";
@@ -128,6 +128,9 @@ export async function seedDemoLenders(db: Db, now: Date): Promise<void> {
 export const DEMO_REPLIED = "C-017";
 export const DEMO_REFUSED = "C-014";
 
+/** The bank's answer in its own words, as the demonstration has it. Made up, and says so. */
+export const DEMO_REPLY_TEXT = "نص تجريبي للعرض فقط: نفيدكم بالموافقة المبدئية على طلب التمويل بالمبلغ المذكور، والموافقة النهائية بعد استكمال المستندات وتوقيع العميل.";
+
 /**
  * What the example lenders answered about two invented clients. The bank said yes to one in a letter
  * kept in her file, so her opportunity with it reads as confirmed by the lender. The finance company
@@ -151,17 +154,37 @@ export async function seedDemoReplies(db: Db, now: Date): Promise<void> {
   if (replied && bank) {
     const funding = await getFunding(db, { dealId: replied.dealId, now });
     const route = funding?.routes.find((r) => [r.mortgage, r.personal].every((leg) => !leg || leg.product.lenderName === DEMO_BANK));
+    // The office's request to the bank, when one went out: the answer is written on it, the day it came.
+    const [request] = await db
+      .select({ id: lenderRequests.id })
+      .from(lenderRequests)
+      .where(and(eq(lenderRequests.dealId, replied.dealId), eq(lenderRequests.lenderId, bank), eq(lenderRequests.status, "sent")))
+      .limit(1);
+    const when = request ? now : at;
     if (route) {
-      const { code } = await addPaper(db, { clientId: replied.clientId, label: `رد ${DEMO_BANK} المكتوب`, actor, now: at });
-      const { paperId } = await db.transaction((tx) => keepFile(tx, { clientId: replied.clientId, code, name: "رد الجهة.pdf", bytes: madeUpPdf(`${DEMO_REPLIED} reply`), actor, now: at }));
+      const { code } = await addPaper(db, { clientId: replied.clientId, label: `رد ${DEMO_BANK} المكتوب`, actor, now: when });
+      const { paperId } = await db.transaction((tx) => keepFile(tx, { clientId: replied.clientId, code, name: "رد الجهة.pdf", bytes: madeUpPdf(`${DEMO_REPLIED} reply`), actor, now: when }));
       for (const part of ["mortgage", "personal"] as const) {
         const leg = route[part];
         if (!leg) continue;
         await recordDecision(db, {
           dealId: replied.dealId,
-          decision: { lenderId: bank, part, decision: "approved", approvedAmount: leg.amount, asks: [], reason: null, note: "رد تجريبي للعرض فقط", onDeal: false, replyPaperId: paperId },
+          decision: {
+            lenderId: bank,
+            part,
+            decision: "approved",
+            approvedAmount: leg.amount,
+            asks: [],
+            reason: null,
+            note: "رد تجريبي للعرض فقط",
+            onDeal: false,
+            replyPaperId: paperId,
+            requestId: request?.id ?? null,
+            on: request ? dayOf(when) : null,
+            replyText: request ? DEMO_REPLY_TEXT : null,
+          },
           actor,
-          now: at,
+          now: when,
         });
       }
     }

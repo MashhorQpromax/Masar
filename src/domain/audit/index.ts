@@ -18,11 +18,11 @@ export const AUDIT_AREAS = {
     "user.passkey_remove",
     "user.sessions_end",
   ],
-  clients: ["client.create", "client.update", "client.contact", "client.note", "client.consent", "client.condition_answer", "client.fact_rely", "study.approve", "client.reject", "client.reopen", "credit.report_add", "credit.report_review", "project.save"],
-  deals: ["deal.save", "deal.fee", "deal.fee_approve", "deal.report", "deal.stage", "deal.route", "settings.fees"],
+  clients: ["client.create", "client.update", "client.contact", "client.note", "client.consent", "client.condition_answer", "client.fact_rely", "study.approve", "client.reject", "client.reopen", "credit.report_add", "credit.report_review", "project.save", "client.share_consent", "client.share_withdraw"],
+  deals: ["deal.save", "deal.fee", "deal.fee_approve", "deal.report", "deal.stage", "deal.route", "settings.fees", "settings.requests"],
   papers: ["doc.upload", "doc.remove", "doc.move", "doc.review", "doc.state", "doc.add", "doc.drop", "doc.open"],
   messages: ["wa.send", "wa.handled", "link.open", "link.close"],
-  lenders: ["lender.add", "lender.product_add", "lender.product_update", "lender.product_switch", "lender.terms_confirm", "lender.terms_withdraw", "lender.condition_add", "lender.condition_remove", "lender.rule_add", "lender.rule_archive", "lender.decision"],
+  lenders: ["lender.add", "lender.product_add", "lender.product_update", "lender.product_switch", "lender.terms_confirm", "lender.terms_withdraw", "lender.condition_add", "lender.condition_remove", "lender.rule_add", "lender.rule_archive", "lender.decision", "lender.contact_add", "lender.contact_check", "lender.contact_stop", "request.prepare", "request.approve", "request.send", "request.close"],
 } as const;
 
 /**

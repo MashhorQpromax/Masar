@@ -7,8 +7,9 @@ import { dayOf, FINANCE_TYPES, type FinanceType } from "@/domain/eligibility";
 import type { FundingRoute } from "@/domain/funding";
 import { DECISIONS, RULE_KINDS, type Decision, type DecisionFact, type Rule, type RuleKind } from "@/domain/knowledge";
 import type { LenderReply } from "@/domain/opportunity";
+import { answered, partsOf } from "@/domain/request";
 import type { Db, Tx } from "../db/client";
-import { documentFiles, documents, lenderRules, lenders, outcomes, users } from "../db/schema";
+import { documentFiles, documents, lenderRequests, lenderRules, lenders, outcomes, users } from "../db/schema";
 import { borrowerOf } from "../deals/mapping";
 import { amendDeal } from "../deals/service";
 import { fundingIn } from "../funding/service";
@@ -120,6 +121,8 @@ export async function recordDecision(db: Db, args: { dealId: number; decision: u
     if (input.replyPaperId != null && !(await replyPapers(tx, client.id)).some((paper) => paper.id === input.replyPaperId)) {
       throw new DomainError("REPLY_PAPER", `paper ${input.replyPaperId}`);
     }
+    if (input.on != null && input.on > dayOf(now)) throw new DomainError("INVALID_INPUT", "on: a day still to come");
+    const request = input.requestId != null ? await requestAnswered(tx, { dealId: args.dealId, requestId: input.requestId, lenderId: lender.id, part: input.part, on: input.on }) : null;
     const [row] = await tx
       .insert(outcomes)
       .values({
@@ -138,18 +141,42 @@ export async function recordDecision(db: Db, args: { dealId: number; decision: u
         reason: input.reason,
         note: input.note,
         replyPaperId: input.replyPaperId,
+        requestId: request?.id ?? null,
+        answeredOn: input.on,
+        replyText: input.replyText,
         userId: args.actor.userId,
         createdAt: now,
       })
       .returning({ id: outcomes.id });
+    // A request is answered once every part it asked about has its answer.
+    if (request && answered(request.parts, [...request.done, input.part])) {
+      await tx.update(lenderRequests).set({ status: "answered", answeredAt: now, updatedAt: now }).where(eq(lenderRequests.id, request.id));
+    }
     // The amount a lender approved is an offer: the deal is computed on it from now on.
     const amended =
       input.onDeal && input.approvedAmount != null
         ? await amendDeal(tx, { dealId: args.dealId, terms: input.part === "mortgage" ? { bankMortgage: input.approvedAmount } : { bankPersonal: input.approvedAmount }, actor: args.actor, now })
         : null;
-    await audit(tx, args.actor, "lender.decision", "client", client.id, { lender: lender.name, part: input.part, decision: input.decision, onDeal: amended != null, written: input.replyPaperId != null });
+    await audit(tx, args.actor, "lender.decision", "client", client.id, { lender: lender.name, part: input.part, decision: input.decision, onDeal: amended != null, written: input.replyPaperId != null, request: request?.id ?? null });
     return { id: row!.id, study: amended?.study ?? null };
   });
+}
+
+/**
+ * The request a lender's answer is recorded on: the deal's own, to the same lender, sent and still
+ * waiting for an answer about this part. An answer is not dated before the request went out.
+ */
+async function requestAnswered(tx: Tx, args: { dealId: number; requestId: number; lenderId: number; part: Part; on: string | null }): Promise<{ id: number; parts: Part[]; done: Part[] }> {
+  const [row] = await tx.select().from(lenderRequests).where(eq(lenderRequests.id, args.requestId));
+  if (!row || row.dealId !== args.dealId) throw new DomainError("NOT_FOUND", `request ${args.requestId}`);
+  if (row.lenderId !== args.lenderId) throw new DomainError("INVALID_INPUT", "lenderId: not the request's lender");
+  if (row.status !== "sent") throw new DomainError("INVALID_STAGE", `request ${row.id} is ${row.status}`);
+  const parts = partsOf(row);
+  if (!parts.includes(args.part)) throw new DomainError("INVALID_INPUT", "part: the request did not ask about it");
+  const done = (await tx.select({ part: outcomes.financeType }).from(outcomes).where(eq(outcomes.requestId, row.id))).map((answer) => answer.part as Part);
+  if (done.includes(args.part)) throw new DomainError("INVALID_INPUT", "part: already answered on this request");
+  if (args.on != null && row.sentOn != null && args.on < row.sentOn) throw new DomainError("INVALID_INPUT", "on: before the request was sent");
+  return { id: row.id, parts, done };
 }
 
 /**
@@ -177,14 +204,14 @@ export async function replyPapers(db: Tx, clientId: number): Promise<{ id: numbe
  */
 export async function lenderReplies(db: Tx, clientId: number): Promise<LenderReply[]> {
   const rows = await db
-    .select({ lenderId: outcomes.lenderId, part: outcomes.financeType, decision: outcomes.decision, amount: outcomes.approvedAmount, at: outcomes.createdAt, paper: outcomes.replyPaperId })
+    .select({ lenderId: outcomes.lenderId, part: outcomes.financeType, decision: outcomes.decision, amount: outcomes.approvedAmount, at: outcomes.createdAt, on: outcomes.answeredOn, paper: outcomes.replyPaperId })
     .from(outcomes)
     .where(eq(outcomes.clientId, clientId))
     .orderBy(desc(outcomes.createdAt), desc(outcomes.id));
   const papers = new Set((await replyPapers(db, clientId)).map((paper) => paper.id));
   return rows.flatMap((row) =>
     (row.part === "mortgage" || row.part === "personal") && (DECISIONS as readonly string[]).includes(row.decision)
-      ? [{ lenderId: String(row.lenderId), part: row.part, decision: row.decision, amount: row.amount, on: dayOf(row.at), written: row.paper != null && papers.has(row.paper) }]
+      ? [{ lenderId: String(row.lenderId), part: row.part, decision: row.decision, amount: row.amount, on: row.on ?? dayOf(row.at), written: row.paper != null && papers.has(row.paper) }]
       : [],
   );
 }

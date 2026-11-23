@@ -87,11 +87,15 @@ async function open(): Promise<Connection> {
   const { seedDemo } = await import("../demo/seed");
   const { seedDemoLenders, seedDemoReplies } = await import("../demo/lenders");
   const { seedDemoApprovals, seedDemoPlans } = await import("../demo/approvals");
+  const { seedDemoContacts, seedDemoRequests } = await import("../demo/requests");
   const now = new Date();
   await seedDemo(connection.db, now);
   await seedDemoLenders(connection.db, now);
-  await seedDemoReplies(connection.db, now);
+  await seedDemoContacts(connection.db, now);
+  // The request goes out from an approved file, and the bank's answer is written on it.
   await seedDemoApprovals(connection.db, now);
+  await seedDemoRequests(connection.db, now);
+  await seedDemoReplies(connection.db, now);
   await seedDemoPlans(connection.db, now);
   return connection;
 }

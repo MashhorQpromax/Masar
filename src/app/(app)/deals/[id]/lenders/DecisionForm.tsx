@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { askText, DECISION, knowledgeError, PART, refusalText } from "@/copy/knowledge";
 import { ASKS, REFUSALS, type Ask, type Decision, type Refusal } from "@/domain/knowledge";
-import { Check, NumberField, Segmented, SelectField, TextField } from "@/ui/fields";
+import { Check, DayField, NumberField, Segmented, SelectField, TextField } from "@/ui/fields";
 import { CheckIcon } from "@/ui/icons";
 import { saveDecision, type DecisionAnswer } from "./actions";
 
@@ -28,6 +28,7 @@ export function DecisionForm({
   parts,
   mayAmend,
   papers,
+  request,
 }: {
   dealId: number;
   lenders: { id: number; name: string }[];
@@ -35,12 +36,20 @@ export function DecisionForm({
   mayAmend: boolean;
   /** The papers of the client's file that can hold the lender's answer in writing. */
   papers: { id: number; name: string }[];
+  /** The request the answer comes on: its lender is fixed, it asks about its own parts, and the answer keeps its words and day. */
+  request?: {
+    id: number;
+    lenderId: number;
+    parts: Part[];
+    sentOn: string | null;
+    today: string;
+  };
 }) {
-  const offered = (Object.keys(PART) as Part[]).filter((part) => parts[part]);
+  const offered = (Object.keys(PART) as Part[]).filter((part) => parts[part] && (!request || request.parts.includes(part)));
   /** The lender the deal is on for a part. Only its amount goes on the deal without being asked. */
   const dealOn = (part: Part, lender: string): boolean => mayAmend && parts[part]?.lenderId != null && lender === `l${parts[part].lenderId}`;
   const [part, setPart] = useState<Part>(offered[0] ?? "mortgage");
-  const [lender, setLender] = useState(`l${parts[offered[0] ?? "mortgage"]?.lenderId ?? lenders[0]?.id ?? 0}`);
+  const [lender, setLender] = useState(request ? `l${request.lenderId}` : `l${parts[offered[0] ?? "mortgage"]?.lenderId ?? lenders[0]?.id ?? 0}`);
   const [decision, setDecision] = useState<Decision>("approved");
   const [amount, setAmount] = useState<number | null>(parts[offered[0] ?? "mortgage"]?.amount ?? null);
   const [asks, setAsks] = useState<Ask[]>([]);
@@ -49,17 +58,27 @@ export function DecisionForm({
   const [paper, setPaper] = useState(SAID);
   const [onDeal, setOnDeal] = useState(() => dealOn(part, lender));
   const [answer, setAnswer] = useState<DecisionAnswer>({});
+  const [on, setOn] = useState<string | null>(request?.today ?? null);
+  const [replyText, setReplyText] = useState("");
   const [busy, start] = useTransition();
-  const touched = <T,>(set: (value: T) => void) => (value: T) => {
-    set(value);
-    setAnswer({});
-  };
+  const touched =
+    <T,>(set: (value: T) => void) =>
+    (value: T) => {
+      set(value);
+      setAnswer({});
+    };
 
   const refused = decision === "rejected";
   const lenderOptions = Object.fromEntries(lenders.map((l) => [`l${l.id}`, l.name])) as Record<string, string>;
   const partOptions = Object.fromEntries(offered.map((p) => [p, PART[p]])) as Record<Part, string>;
-  const paperOptions = { [SAID]: "لا رد مكتوب", ...Object.fromEntries(papers.map((p) => [`d${p.id}`, p.name])) } as Record<string, string>;
-  const reasonOptions = { [UNSAID]: "لم تذكر السبب", ...Object.fromEntries(REFUSALS.map((code) => [code, refusalText(code)])) } as Record<Refusal | typeof UNSAID, string>;
+  const paperOptions = {
+    [SAID]: "لا رد مكتوب",
+    ...Object.fromEntries(papers.map((p) => [`d${p.id}`, p.name])),
+  } as Record<string, string>;
+  const reasonOptions = {
+    [UNSAID]: "لم تذكر السبب",
+    ...Object.fromEntries(REFUSALS.map((code) => [code, refusalText(code)])),
+  } as Record<Refusal | typeof UNSAID, string>;
   const ready = refused || (amount != null && amount > 0);
 
   return (
@@ -78,6 +97,13 @@ export function DecisionForm({
             note: note || null,
             onDeal: !refused && mayAmend && onDeal,
             replyPaperId: paper === SAID ? null : Number(paper.slice(1)),
+            ...(request
+              ? {
+                  requestId: request.id,
+                  on,
+                  replyText: replyText.trim() || null,
+                }
+              : {}),
           });
           setAnswer(said);
           if (said.saved) {
@@ -85,22 +111,27 @@ export function DecisionForm({
             setNote("");
             setReason(UNSAID);
             setPaper(SAID);
+            setReplyText("");
           }
         });
       }}
     >
       <div className="ruling-main">
         <div className="ruling-pair">
-          <SelectField
-            label="الجهة"
-            value={lender}
-            onChange={(next) => {
-              setLender(next);
-              setOnDeal(dealOn(part, next));
-              setAnswer({});
-            }}
-            options={lenderOptions}
-          />
+          {request ? (
+            <DayField label="يوم الرد" value={on} onChange={touched(setOn)} max={request.today} />
+          ) : (
+            <SelectField
+              label="الجهة"
+              value={lender}
+              onChange={(next) => {
+                setLender(next);
+                setOnDeal(dealOn(part, next));
+                setAnswer({});
+              }}
+              options={lenderOptions}
+            />
+          )}
           {offered.length > 1 && (
             <div className="field">
               <span className="field-label">التمويل</span>
@@ -145,12 +176,30 @@ export function DecisionForm({
           </fieldset>
         )}
         <SelectField label="الرد المكتوب" value={paper} onChange={touched(setPaper)} options={paperOptions} />
+        {request && (
+          <div className="field" data-wide>
+            <label className="field-label" htmlFor={`reply-${request.id}`}>
+              نص الرد
+            </label>
+            <div className="field-box">
+              <textarea
+                id={`reply-${request.id}`}
+                className="field-input req-reply-text"
+                rows={3}
+                maxLength={2000}
+                value={replyText}
+                onChange={(event) => touched(setReplyText)(event.target.value)}
+                placeholder="ما كتبته الجهة، كما هو"
+              />
+            </div>
+          </div>
+        )}
         <TextField label="ملاحظة" value={note} onChange={touched(setNote)} placeholder={refused ? "ما قالته الجهة" : "ما يفيد من يقدّم لها بعدك"} maxLength={500} />
       </div>
       <div className="ruling-save">
         {!refused && mayAmend && <Check label="احسب الصفقة على هذا المبلغ" checked={onDeal} onChange={touched(setOnDeal)} />}
         <button type="submit" className="btn btn--navy" disabled={busy || !ready} aria-busy={busy}>
-          سجّل القرار
+          {request ? "سجّل الرد" : "سجّل القرار"}
         </button>
         {answer.error ? (
           <p key={answer.error} role="alert" className="said" data-bad>

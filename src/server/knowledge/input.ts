@@ -40,6 +40,12 @@ export const decisionSchema = z
     onDeal: z.boolean(),
     /** The paper in the client's file that holds the answer in writing. Null: it was said, not written. */
     replyPaperId: id.nullable().default(null),
+    /** The office's request this answers. Null: the answer came without one. */
+    requestId: id.nullable().default(null),
+    /** The day the lender answered. Null: today. */
+    on: z.iso.date().nullable().default(null),
+    /** The lender's answer in its own words, kept with the request. */
+    replyText: said(2000).default(null),
   })
   .superRefine((value, context) => {
     // A yes says how much. A no says nothing about an amount.
