@@ -10,6 +10,7 @@ import { months, percent, plainMoney } from "@/copy/format";
 import {
   advise,
   largestOffer,
+  openOffers,
   QUICK_DEFAULTS,
   quickBasicSalary,
   quickProfile,
@@ -231,7 +232,7 @@ export function Calculator({ products, kinds, first }: { products: Product[]; ki
   const assumedBasic = quickBasicSalary({ totalSalary: facts.totalSalary, basicSalary: null });
 
   const asked = !!settled.totalSalary;
-  const open = answer.matches.filter((match) => match.verdict !== "fail");
+  const open = openOffers(answer);
   const closed = answer.matches.filter((match) => match.verdict === "fail");
   const top = largestOffer(answer);
   const verdict = quickVerdict(answer);

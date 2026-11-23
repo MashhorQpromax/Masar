@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { advise, BASIC_SHARE_ASSUMED, QUICK_DEFAULTS, QUICK_FINANCE_TYPES, quickBasicSalary, quickProfile, type Product, type Profile, type QuickFacts } from "@/domain/eligibility";
+import { advise, BASIC_SHARE_ASSUMED, largestOffer, openOffers, QUICK_DEFAULTS, QUICK_FINANCE_TYPES, quickBasicSalary, quickProfile, type Product, type Profile, type QuickFacts } from "@/domain/eligibility";
 
 /**
  * The calculator's facts become the profile the old calculator built: a citizen with no salary bank
@@ -96,6 +96,22 @@ describe("a quick estimate on the base catalogue", () => {
     const settle = owing.ways.find((way) => way.code === "SETTLE");
     expect(settle?.amount).toBe(free.bestAmount);
     expect(settle?.gain).toBe(free.bestAmount - owing.bestAmount);
+  });
+
+  it("lists the lender the answer names first, then the rest as the engine ranked them", () => {
+    for (const change of [{}, { installments: 2500 }, { financeType: "mortgage", totalSalary: 16000, installments: 2000, age: 41, propertyValue: 1_100_000 }, { financeType: "auto" }, { sector: "retired", age: 62 }] as Partial<QuickFacts>[]) {
+      const answer = advise(quickProfile(facts(change)), catalogue);
+      const open = answer.matches.filter((m) => m.verdict !== "fail");
+      const listed = openOffers(answer);
+      const top = largestOffer(answer);
+      expect(listed[0] ?? null).toBe(top);
+      expect(listed[0]?.maxPrincipal ?? 0).toBe(answer.bestAmount);
+      // Nothing is added or lost, and the rest keep their order.
+      expect(listed).toHaveLength(open.length);
+      expect(listed.slice(1)).toEqual(open.filter((m) => m !== top));
+    }
+    const none = advise(quickProfile(facts({ simah: "default" })), catalogue);
+    expect(openOffers(none)).toEqual([]);
   });
 
   it("finds no lender for a client with a standing default, and says the record is what to fix", () => {

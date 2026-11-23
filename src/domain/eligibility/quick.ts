@@ -108,3 +108,13 @@ export function largestOffer(s: Pick<Study, "matches">): Match | null {
   for (const m of s.matches) if (m.verdict !== "fail" && m.maxPrincipal > (best?.maxPrincipal ?? 0)) best = m;
   return best;
 }
+
+/**
+ * The products that take the client, in the order an estimate reads them: the one the answer names
+ * first, then the rest as the engine ranked them.
+ */
+export function openOffers(s: Pick<Study, "matches">): Match[] {
+  const open = s.matches.filter((m) => m.verdict !== "fail");
+  const top = largestOffer(s);
+  return top ? [top, ...open.filter((m) => m !== top)] : open;
+}
