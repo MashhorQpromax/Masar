@@ -33,6 +33,9 @@ export const TERM_FIELDS = {
 /** The terms that decide whether the lender takes the client. The others decide how much, and at what cost. */
 export const CONDITION_TERMS = ["salary", "sector", "nationality", "age", "service", "transfer", "late", "settled"] as const satisfies readonly Term[];
 
+/** The terms that decide how much a product lends and at what cost. */
+export const AMOUNT_TERMS = ["amount", "tenor", "ltv", "rate"] as const satisfies readonly Term[];
+
 /** The terms a product of this kind has. Only a mortgage has a share of the property's value. */
 export function termsOf(financeType: FinanceType): Term[] {
   return TERMS.filter((term) => term !== "ltv" || financeType === "mortgage");
@@ -155,4 +158,12 @@ export function sourceGroups(financeType: FinanceType, standings: Partial<Record
 /** The terms of a product that cannot be relied on today, in the order terms are always listed. */
 export function openTerms(financeType: FinanceType, standings: Partial<Record<Term, TermStanding>> | undefined): Term[] {
   return termsOf(financeType).filter((term) => standings?.[term]?.state !== "confirmed");
+}
+
+/**
+ * What a product would lend is an estimate while a term that sets it cannot be relied on today.
+ * Whether the lender takes the client is another question, answered by its conditions.
+ */
+export function amountsOpen(financeType: FinanceType, standings: Partial<Record<Term, TermStanding>> | undefined): boolean {
+  return openTerms(financeType, standings).some((term) => (AMOUNT_TERMS as readonly Term[]).includes(term));
 }

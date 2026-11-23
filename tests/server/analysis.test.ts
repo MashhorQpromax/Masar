@@ -51,7 +51,8 @@ describe("a client's analysis", () => {
     const a = view.analysis!;
     expect(view.deal).toMatchObject({ open: true });
     expect(view.salaryBank).toBe("مصرف الراجحي");
-    expect(a.verdict).toBe("conditional");
+    // No real lender's terms are confirmed in the demonstration: as written they take him, and nobody knows that they do.
+    expect(a.verdict).toBe("needs_verification");
     expect(a.afterClearing).toBeNull();
     // The salary is on the file and the paper that states it was sent back, so it is stated and not verified.
     expect(a.income).toEqual({ basis: "stated", salary: 15200, basicOnly: false, other: 0, total: 15200 });
@@ -66,33 +67,48 @@ describe("a client's analysis", () => {
       expect(k.cleared).toBeNull();
       expect(k.today.fits[0]!.product.lenderName).toBe("مصرف الراجحي");
       expect(codes(k.today.fits[0]!)).toEqual(["SETTLED_UNCONFIRMED"]);
+      expect(k.today.fits.every((fit) => fit.eligibility === "needs_verification" || fit.eligibility === "not_eligible")).toBe(true);
+      expect([k.today.open, k.today.conditional]).toEqual([0, 0]);
     }
     expect(a.gaps.map((gap) => [gap.kind, gap.code])).toEqual([
       ["unconfirmed", "INCOME_PROOF"],
       ["unconfirmed", "CARD_SHARE"],
       ["unconfirmed", "TERMS"],
     ]);
-    expect(stepCodes(a)).toEqual(["VERIFY_INCOME", "APPLY", "APPLY"]);
+    // His bank is asked once, for both kinds of finance, before anybody is told to apply.
+    expect(stepCodes(a)).toEqual(["VERIFY_INCOME", "CONFIRM_TERMS", "APPLY", "APPLY"]);
+    expect(a.steps[1]).toMatchObject({ lender: "مصرف الراجحي", kinds: ["personal", "mortgage"], beforePaying: false });
+    for (const step of a.steps) if (step.code === "APPLY") expect(step).toMatchObject({ lender: "مصرف الراجحي", eligibility: "needs_verification", afterClearing: false });
   });
 
   it("holds the lenders against the record as it is and as it will be, and promises nothing", async () => {
     const a = await analysed("نورة");
     expect(a.verdict).toBe("not_eligible");
-    expect(a.afterClearing).toBe("conditional");
+    expect(a.afterClearing).toBe("needs_verification");
     for (const k of a.kinds) {
-      // Today the unpaid order closes every lender.
+      // Today the unpaid order closes every lender, and that is certain whoever confirmed what.
       for (const fit of k.today.fits) {
         expect(fit.status).toBe("fail");
         expect(codes(fit)).toContain("RECORD_OPEN");
+        expect(fit.eligibility).toBe("not_eligible");
       }
-      // Once it is paid nobody refuses, and nobody takes her as she is: no lender was asked what it does with a default just paid.
-      expect(k.cleared!.open).toBe(0);
-      expect(k.cleared!.conditional).toBe(k.cleared!.fits.length);
+      // Once it is paid nobody refuses, and nobody takes her either: no lender was asked what it does with a default just paid.
+      expect([k.cleared!.open, k.cleared!.conditional]).toEqual([0, 0]);
+      expect(k.cleared!.unsure).toBe(k.cleared!.fits.length);
       for (const fit of k.cleared!.fits) expect(codes(fit)).toContain("SETTLED_UNCONFIRMED");
     }
     expect(a.steps[0]).toEqual({ code: "COMPLETE_FILE", missing: ["SALARY_BANK"] });
-    expect(stepCodes(a)).toEqual(["COMPLETE_FILE", "LIFT_SUSPENSION", "SETTLE_JUDGMENTS", "PAY_DEFAULT", "REFRESH_REPORT", "VERIFY_INCOME", "APPLY", "APPLY"]);
-    for (const step of a.steps) if (step.code === "APPLY") expect(step).toMatchObject({ afterClearing: true, conditional: true, verified: false });
+    // Each lender she would go to is asked before anything is paid for her: paying a default does not buy a yes.
+    expect(stepCodes(a)).toEqual(["COMPLETE_FILE", "CONFIRM_TERMS", "CONFIRM_TERMS", "LIFT_SUSPENSION", "SETTLE_JUDGMENTS", "PAY_DEFAULT", "REFRESH_REPORT", "VERIFY_INCOME", "APPLY", "APPLY"]);
+    const asked = a.steps.flatMap((step) => (step.code === "CONFIRM_TERMS" ? [step] : []));
+    const applied = a.steps.flatMap((step) => (step.code === "APPLY" ? [step] : []));
+    expect(asked.map((step) => [step.lender, step.kinds])).toEqual(applied.map((step) => [step.lender, [step.kind]]));
+    for (const step of asked) {
+      expect(step.beforePaying).toBe(true);
+      // What the lender does with a client who has just paid a default is the first thing to ask.
+      expect(step.terms).toContain("settled");
+    }
+    for (const step of applied) expect(step).toMatchObject({ afterClearing: true, eligibility: "needs_verification", estimated: false });
   });
 
   it("lists what the record does not give instead of guessing it", async () => {
@@ -140,7 +156,7 @@ describe("a client's analysis", () => {
     const a = await analysed("سالم");
     expect(a.income.basis).toBe("verified");
     expect(a.gaps.some((gap) => gap.code === "INCOME_PROOF")).toBe(false);
-    expect(stepCodes(a)).toEqual(["APPLY", "APPLY"]);
+    expect(stepCodes(a)).toEqual(["CONFIRM_TERMS", "APPLY", "APPLY"]);
     // A paper that came in and nobody has checked yet proves nothing.
     await c.db.update(documents).set({ status: "received" }).where(and(eq(documents.clientId, clientId), eq(documents.code, "salary_cert")));
     expect((await analysed("سالم")).income.basis).toBe("stated");

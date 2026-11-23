@@ -8,31 +8,63 @@ import type { Capacity } from "@/domain/eligibility";
 import { actionText, actionTitle, blockerText, findingText } from "./credit";
 import { capRuleText, checkText, FINANCE_TYPE, pointText } from "./eligibility";
 import { counted, ltr, money, months, type CountForms } from "./format";
-import { routeCheckText } from "./funding";
+import { ELIGIBILITY, routeCheckText, strictDoubtLines, strictLines, strictRefusalLines } from "./funding";
+import { TERM_NAME } from "./lenders";
 
+/**
+ * The four results, in the words every page uses for them. An analysis that cannot be read yet is in
+ * need of checking like any other: its sentence says what to check.
+ */
 export const ANALYSIS_VERDICT: Record<AnalysisVerdict, string> = {
-  eligible: "مؤهل مبدئياً",
-  conditional: "مؤهل بشروط",
+  eligible: ELIGIBILITY.eligible,
+  conditional: ELIGIBILITY.conditional,
   not_eligible: "غير مؤهل الآن",
-  pending: "بحاجة إلى تحقق",
+  needs_verification: ELIGIBILITY.needs_verification,
+  pending: ELIGIBILITY.needs_verification,
 };
 
 /** What every page and every printed copy of the analysis says about itself. */
 export const DECISION_SUPPORT = "هذا التحليل يدعم قرار الموظف، وليس موافقة تمويلية. القرار النهائي للجهة الممولة.";
 
-const TAKE: CountForms = { one: "جهة واحدة تقبله", two: "جهتان تقبلانه", few: "جهات تقبله", many: "جهة تقبله" };
-const TAKE_ON_TERMS: CountForms = { one: "جهة واحدة تقبله بشروط", two: "جهتان تقبلانه بشروط", few: "جهات تقبله بشروط", many: "جهة تقبله بشروط" };
+const TAKE: CountForms = { one: "جهة واحدة تقبله وشروطها مؤكدة", two: "جهتان تقبلانه وشروطهما مؤكدة", few: "جهات تقبله وشروطها مؤكدة", many: "جهة تقبله وشروطها مؤكدة" };
+const TAKE_ON_TERMS: CountForms = {
+  one: "جهة واحدة تقبله إذا أكمل ما تشترطه",
+  two: "جهتان تقبلانه إذا أكمل ما تشترطانه",
+  few: "جهات تقبله إذا أكمل ما تشترطه",
+  many: "جهة تقبله إذا أكمل ما تشترطه",
+};
+const MAY_TAKE: CountForms = {
+  one: "جهة واحدة قد تقبله بشروطها المسجلة",
+  two: "جهتان قد تقبلانه بشروطهما المسجلة",
+  few: "جهات قد تقبله بشروطها المسجلة",
+  many: "جهة قد تقبله بشروطها المسجلة",
+};
 
-/** How many lenders, not products, answer one way in a reading of every kind studied. */
-function lendersIn(readings: readonly Reading[], status: Fit["status"]): number {
-  return new Set(readings.flatMap((r) => r.fits.filter((fit) => fit.status === status).map((fit) => fit.product.lenderId))).size;
+/** How many lenders, not products, answer one way in a reading of every kind studied. A lender that would lend nothing takes nobody. */
+function lendersIn(readings: readonly Reading[], is: (fit: Fit) => boolean): number {
+  return new Set(readings.flatMap((r) => r.fits.filter((fit) => fit.amount > 0 && is(fit)).map((fit) => fit.product.lenderId))).size;
 }
 
-function takers(readings: readonly Reading[]): string | null {
-  const open = lendersIn(readings, "pass");
-  if (open) return counted(open, TAKE);
-  const onTerms = lendersIn(readings, "warn");
-  return onTerms ? counted(onTerms, TAKE_ON_TERMS) : null;
+/** Said after the lenders that take the client when none of them has anything in writing behind its answer. */
+const BY_WORD = "، على إفادة موظف لا على مستند";
+
+/** Who takes the client, by the best result any lender gives. `sure` is false when nobody confirmed the terms it rests on. */
+function takers(readings: readonly Reading[]): { say: string; sure: boolean } | null {
+  for (const [result, forms] of [
+    ["eligible", TAKE],
+    ["conditional", TAKE_ON_TERMS],
+  ] as const) {
+    const all = lendersIn(readings, (fit) => fit.eligibility === result);
+    const written = lendersIn(readings, (fit) => fit.eligibility === result && fit.strength !== "verbal");
+    if (all) return { say: `${counted(all, forms)}${written ? "" : BY_WORD}`, sure: true };
+  }
+  const maybe = lendersIn(readings, (fit) => fit.eligibility === "needs_verification" && !fit.blockedAsWritten);
+  return maybe ? { say: counted(maybe, MAY_TAKE), sure: false } : null;
+}
+
+/** Why nobody takes the client: every lender is certain, or the record says so and nobody confirmed it. */
+function noTakers(readings: readonly Reading[]): string {
+  return readings.some((r) => r.unsure > 0) ? "لا جهة تقبله بشروطها المسجلة، وهذه الشروط لم تؤكَّد" : "لا جهة في القائمة تقبله، والمانع مؤكد";
 }
 
 /**
@@ -47,11 +79,16 @@ export function verdictSay(a: Pick<ClientAnalysis, "verdict" | "afterClearing" |
     if (!a.kinds.length) return "لا جهات في القائمة نقيس عليها. أضف الجهات وشروطها أولاً.";
     return "قراءة التقرير ضعيفة الثقة. طابقها على التقرير الأصلي قبل الاعتماد على ما هنا.";
   }
-  if (a.afterClearing == null) return `${takers(today) ?? "لا جهة في القائمة تقبله بشروطها المسجلة"}.`;
-  const cleared = takers(a.kinds.flatMap((k) => (k.cleared ? [k.cleared] : [])));
+  if (a.afterClearing == null) {
+    const now = takers(today);
+    if (!now) return `${noTakers(today)}.`;
+    return now.sure ? `${now.say}.` : `${now.say}. لم يتأكد ذلك بعد.`;
+  }
+  const after = a.kinds.flatMap((k) => (k.cleared ? [k.cleared] : []));
+  const cleared = takers(after);
   const first = toClear > 0 ? `لا جهة تقبله قبل سداد ${money(toClear)}.` : "لا جهة تقبله قبل رفع ما يمنع.";
-  if (!cleared) return `${first} وبعده لا جهة في القائمة تقبله بشروطها المسجلة.`;
-  return `${first} بعده ${cleared}، والسداد لا يضمن القبول.`;
+  if (!cleared) return `${first} وبعده ${noTakers(after)}.`;
+  return cleared.sure ? `${first} بعده ${cleared.say}، والسداد لا يضمن القبول.` : `${first} بعده ${cleared.say}. لم يتأكد ذلك بعد، والسداد لا يضمن القبول.`;
 }
 
 export const INCOME_BASIS: Record<IncomeBasis, string> = {
@@ -96,11 +133,17 @@ export function fitCheckText(check: FitCheck): string {
   return routeCheckText(check);
 }
 
-export const FIT_STATUS: Record<Fit["status"], string> = {
-  pass: "تقبل",
-  warn: "تقبل بشروط",
-  fail: "لا تقبل",
-};
+/** What stands between a lender and a reliable answer: the missing facts, then its open and expired terms by name. */
+export const fitDoubtLines = (fit: Pick<Fit, "doubts">): string[] => strictDoubtLines(fit, fitCheckText);
+
+/** What a lender's row says under its figures. */
+export const fitLines = (fit: Pick<Fit, "doubts" | "leans" | "actions" | "remarks" | "eligibility" | "estimated" | "strength">): string[] => strictLines(fit, fitCheckText);
+
+/** Why a lender does not take the client. With no condition against them, nothing is left of the income for it. */
+export function fitRefusalLines(fit: Pick<Fit, "blockers" | "leans">): string[] {
+  const lines = strictRefusalLines(fit, fitCheckText);
+  return lines.length ? lines : ["لا يبقى في دخله قسط لها."];
+}
 
 export const MARK_SOURCE: Record<Mark["source"], string> = { file: "من الملف", record: "من سمة" };
 
@@ -141,7 +184,7 @@ export function gapText(gap: Gap): string {
     case "SUSPENSION":
       return "إيقاف الخدمات مفترض من قرار التنفيذ، ولم يؤكَّد من أبشر أو ناجز.";
     case "TERMS":
-      return gap.unverified === gap.of ? "شروط الجهات استرشادية، ولم تؤكَّد مع أي جهة بعد." : `شروط ${ltr(gap.unverified)} من ${ltr(gap.of)} منتجاً استرشادية، ولم تؤكَّد مع جهاتها.`;
+      return gap.unverified === gap.of ? "شروط الجهات استرشادية، ولم تؤكَّد مع أي جهة بعد." : `شروط ${ltr(gap.unverified)} من ${ltr(gap.of)} منتجاً لم تؤكَّد كلها مع جهاتها.`;
     case "CONSENT":
       return "موافقة العميل على معالجة بياناته وتقريره غير مسجلة.";
   }
@@ -173,8 +216,11 @@ export function stepTitle(step: Step): string {
       return "افتح هامشاً للقسط";
     case "VERIFY_INCOME":
       return "وثّق الدخل";
+    case "CONFIRM_TERMS":
+      return step.beforePaying ? `قبل أي سداد: أكّد شروط ${step.lender}` : `أكّد شروط ${step.lender}`;
     case "APPLY":
-      return step.afterClearing ? `بعد السداد: ${step.lender}` : `قدّم إلى ${step.lender}`;
+      if (step.afterClearing) return `بعد السداد: ${step.lender}`;
+      return step.eligibility === "needs_verification" ? `بعد التأكيد: ${step.lender}` : `قدّم إلى ${step.lender}`;
   }
 }
 
@@ -197,12 +243,17 @@ export function stepText(step: Step): string {
       return `لا قسط متاح اليوم. سداد ${step.lender} يحرر ${money(step.monthly)} في الشهر، وهو أصغر التزام رصيداً.`;
     case "VERIFY_INCOME":
       return "اطلب تعريف الراتب أو كشف التأمينات وراجعه قبل التقديم. المبالغ هنا محسوبة على الراتب المكتوب في الملف.";
+    case "CONFIRM_TERMS": {
+      const what = `${step.kinds.map((kind) => kindTitle({ kind })).join(" و")}. لم يؤكَّد: ${step.terms.map((term) => TERM_NAME[term]).join("، ")}.`;
+      return step.beforePaying ? `${what} اسأل الجهة واحفظ مصدر جوابها قبل أن يُسدَّد عن العميل شيء: السداد لا يضمن القبول.` : `${what} اسأل الجهة واحفظ مصدر جوابها قبل وعد العميل أو التقديم.`;
+    }
     case "APPLY": {
       const offer = `${kindTitle(step)} حتى ${money(step.amount)} بقسط ${money(step.installment)} لمدة ${months(step.months)}.`;
       const notes = [
-        step.conditional ? "تقبل بشروط مذكورة عندها." : null,
+        step.eligibility === "conditional" ? "تقبل بشروط مذكورة عندها." : null,
+        step.eligibility === "needs_verification" ? "الأرقام على شروطها المسجلة، ولم تؤكَّد." : null,
         step.afterClearing ? "سداد التعثر لا يضمن القبول." : null,
-        step.verified ? null : "شروطها استرشادية، فأكّدها معها قبل وعد العميل.",
+        step.estimated ? "المبلغ والهامش استرشاديان حتى يؤكَّدا." : null,
       ].filter(Boolean);
       return [offer, ...notes].join(" ");
     }

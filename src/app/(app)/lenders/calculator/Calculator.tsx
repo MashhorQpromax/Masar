@@ -3,10 +3,11 @@
 import Link from "next/link";
 import { useDeferredValue, useMemo, useState, type CSSProperties } from "react";
 import { conditionDetail, conditionExit, conditionTitle, CONDITION_LEVEL, EFFORT, wayDetail, waySteps, wayTitle } from "@/copy/advisor";
-import { afterRetirementText, heldByText, largestOfferText, othersText, QUICK_VERDICT, RECORD_STANDING, refusingText, stepsDownText, takingText, upToText } from "@/copy/calculator";
+import { afterRetirementText, heldByText, largestOfferText, othersText, QUICK_VERDICT, RECORD_STANDING, refusingText, stepsDownText, takingText, upToText, WAYS_BASIS } from "@/copy/calculator";
 import { SECTOR } from "@/copy/editor";
 import { capacityWarningText, checkText, STUDY_VERDICT } from "@/copy/eligibility";
 import { months, percent, plainMoney } from "@/copy/format";
+import { BY_WORD, ELIGIBILITY, strictLines, strictRefusalLines } from "@/copy/funding";
 import {
   advise,
   largestOffer,
@@ -15,7 +16,9 @@ import {
   quickBasicSalary,
   quickProfile,
   quickVerdict,
+  strictMatch,
   type Capacity,
+  type Check as Asked,
   type Condition,
   type Match,
   type Product,
@@ -95,14 +98,17 @@ function Split({ capacity }: { capacity: Capacity }) {
 
 function LenderRow({ match }: { match: Match }) {
   const steps = match.retirement && match.retirement.after < match.installment ? match.retirement.after : null;
-  const asks = match.checks.filter((check) => check.status === "warn");
+  const read = strictMatch(match);
+  // The installment after retirement stands under the installment, so here it is only named.
+  const say = (check: Asked): string => (check.code === "RETIRES_IN_TERM" && steps != null ? stepsDownText(check.params.months) : checkText(check));
+  const lines = strictLines(read, say);
   return (
     <li className="route">
       <div className="route-who">
         <b>{match.product.lenderName}</b>
         <small>{match.product.name}</small>
-        <span className="route-state" data-status={match.verdict}>
-          {match.verdict === "pass" ? "تقبل" : "بشروط"}
+        <span className="route-state" data-result={read.eligibility}>
+          {ELIGIBILITY[read.eligibility]}
         </span>
       </div>
       <dl className="route-figures">
@@ -127,11 +133,10 @@ function LenderRow({ match }: { match: Match }) {
         <Num value={match.offerPrincipal} />
         {match.maxPrincipal > match.offerPrincipal && <small>{upToText(match.maxPrincipal)}</small>}
       </p>
-      {asks.length > 0 && (
+      {lines.length > 0 && (
         <ul className="route-notes">
-          {asks.map((check) => (
-            // The installment after retirement stands under the installment, so here it is only named.
-            <li key={check.code}>{check.code === "RETIRES_IN_TERM" && steps != null ? stepsDownText(check.params.months) : checkText(check)}</li>
+          {lines.map((line) => (
+            <li key={line}>{line}</li>
           ))}
         </ul>
       )}
@@ -236,7 +241,11 @@ export function Calculator({ products, kinds, first }: { products: Product[]; ki
   const closed = answer.matches.filter((match) => match.verdict === "fail");
   const top = largestOffer(answer);
   const verdict = quickVerdict(answer);
-  const best = answer.bestAmount;
+  // The figure beside the result is the named lender's own: a confirmed result is never said with an unconfirmed lender's amount.
+  const best = top?.maxPrincipal ?? 0;
+  // A yes on an employee's word says so where the result is said, not only in the lender's row.
+  const named = top ? strictMatch(top) : null;
+  const byWord = !!named && (named.eligibility === "eligible" || named.eligibility === "conditional") && named.strength === "verbal";
   const ways = answer.ways.slice(0, WAYS_SHOWN);
   const conditions = answer.conditions.filter((condition) => condition.code !== "ONE_AT_A_TIME").slice(0, CONDITIONS_SHOWN);
   const figure = plainMoney(best);
@@ -244,7 +253,7 @@ export function Calculator({ products, kinds, first }: { products: Product[]; ki
   return (
     <div className="calc">
       <p className="calc-bar" data-verdict={asked && top ? "go" : "short"} aria-hidden="true">
-        <span>{asked ? (top ? "أعلى مبلغ" : QUICK_VERDICT[verdict]) : "اكتب الراتب"}</span>
+        <span>{asked ? (top ? "حتى" : QUICK_VERDICT[verdict]) : "اكتب الراتب"}</span>
         {asked && top && (
           <b key={figure} className="num tick">
             {figure}
@@ -325,13 +334,14 @@ export function Calculator({ products, kinds, first }: { products: Product[]; ki
                 {top ? (
                   <>
                     <p className="verdict-keep">
-                      <span>أعلى مبلغ</span>{" "}
+                      <span>حتى</span>{" "}
                       <b key={figure} className="num tick">
                         {figure}
                       </b>{" "}
                       <span>ريال</span>
                     </p>
                     <p className="calc-at">{largestOfferText(top)}</p>
+                    {byWord && <p className="calc-at">{BY_WORD}</p>}
                   </>
                 ) : (
                   <p className="calc-at">{answer.matches.length ? "لا جهة تقبل بهذه الأرقام. ما يمنع كل جهة مكتوب تحتها." : "لا منتج من هذا النوع في قائمة الجهات."}</p>
@@ -373,12 +383,13 @@ export function Calculator({ products, kinds, first }: { products: Product[]; ki
                 <summary>{refusingText(closed.length)}</summary>
                 <div>
                   {closed.map((match) => {
-                    const why = match.checks.find((check) => check.status === "fail");
+                    const read = strictMatch(match);
+                    const why = strictRefusalLines(read, checkText);
                     return (
-                      <p key={match.product.id} className="note" data-level="block">
+                      <p key={match.product.id} className="note" data-level={read.eligibility === "not_eligible" ? "block" : "ask"}>
                         <span>
-                          <b>{match.product.lenderName}</b> {match.product.name}
-                          {why ? `: ${checkText(why)}` : ""}
+                          <b>{match.product.lenderName}</b> {match.product.name} · {ELIGIBILITY[read.eligibility]}
+                          {why.length ? `: ${why.join(" ")}` : ""}
                         </span>
                       </p>
                     );
@@ -400,6 +411,7 @@ export function Calculator({ products, kinds, first }: { products: Product[]; ki
             {ways.length > 0 && (
               <section className="tile calc-ways">
                 <p className="label">{ways.some((way) => way.gain > 0) ? "طرق لرفع المبلغ" : "طرق لنتيجة أفضل"}</p>
+                <p className="calc-basis">{WAYS_BASIS}</p>
                 {ways.map((way) => (
                   <Way key={wayKey(way)} way={way} />
                 ))}

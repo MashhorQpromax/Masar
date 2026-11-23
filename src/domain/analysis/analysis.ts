@@ -1,21 +1,32 @@
 import type { CreditReport, Finding } from "../credit";
 import { runningFinance } from "../deal";
 import {
+  amountsOpen,
   capacity,
+  eligibilityOf,
+  eligibilityRank,
+  findingOf,
   fitScore,
   incomeOf,
+  leansBlocked,
   matchProduct,
+  openTerms,
   study,
+  tell,
+  TERMS,
+  weakestStrength,
   type Capacity,
   type Check,
   type CheckStatus,
+  type Eligibility,
   type Obligation,
   type Point,
   type Product,
   type ProductKind,
   type Profile,
+  type Term,
 } from "../eligibility";
-import { knownRecord, recordChecks, type RecordAfter, type RouteCheck } from "../funding";
+import { knownRecord, recordChecks, ROUTE_RULES, type RecordAfter, type RouteCheck } from "../funding";
 import type { AnalysisVerdict, Burden, ClientAnalysis, Commitment, FileFacts, Fit, FitCheck, Gap, Income, KindFit, Mark, Reading, RecordFacts, Step } from "./types";
 
 /** A report at least this many months old may no longer show what the client owes. */
@@ -90,8 +101,19 @@ function fitOf(profile: Profile, room: Capacity, product: Product, record: Recor
   // A term cut short by the lender's age limit is already in the months and the amount: nothing the client has to meet.
   const conditions = checks.filter((check) => check.status === "warn" && check.code !== "TENOR_SHORTENED");
   const refusals = checks.filter((check) => check.status === "fail");
+  // The same conditions, each asked whether its answer can be relied on.
+  const findings = checks.map((check) => findingOf(check, ROUTE_RULES[check.code], product.terms));
   const asked = profile.requestedAmount ?? 0;
   return {
+    ...tell(
+      findings,
+      (finding) => finding,
+      () => product.lenderName,
+    ),
+    eligibility: eligibilityOf(findings),
+    blockedAsWritten: leansBlocked(findings),
+    strength: weakestStrength(findings),
+    estimated: amountsOpen(product.financeType, product.terms),
     score: fitScore({
       fails: refusals.length,
       warns: conditions.length,
@@ -112,25 +134,52 @@ function fitOf(profile: Profile, room: Capacity, product: Product, record: Recor
   };
 }
 
+const rank = (fit: Fit): number => eligibilityRank(fit.eligibility, fit.blockedAsWritten);
 /**
- * The lenders that take the client come first, in the order of the eligibility engine's score: the
- * bank the salary is paid into, the fewer conditions, the cheaper rate. Among those that refuse, the
- * one with the fewest reasons is the closest. The larger amount settles a tie.
+ * How much of a product nobody confirmed. It counts the product's terms, not the conditions this
+ * client happened to raise: a lender that asks for less is no closer to being confirmed.
+ */
+const openTermsOf = (fit: Fit): number => openTerms(fit.product.financeType, fit.product.terms).length;
+
+/**
+ * An answer that can be relied on comes before one that cannot, a lender whose unconfirmed terms
+ * would take the client before one whose terms would not, and the lender with the fewest terms left
+ * to confirm before the others. Then the order of the eligibility engine's score: the bank the salary
+ * is paid into, the fewer conditions, the cheaper rate. Among those that refuse, the one with the
+ * fewest reasons is the closest. The larger amount settles a tie.
  */
 function better(a: Scored, b: Scored): number {
-  return REFUSES[a.status] - REFUSES[b.status] || (a.status === "fail" ? a.refusals.length - b.refusals.length : 0) || b.score - a.score || b.amount - a.amount || a.apr - b.apr;
+  return (
+    rank(b) - rank(a) ||
+    openTermsOf(a) - openTermsOf(b) ||
+    REFUSES[a.status] - REFUSES[b.status] ||
+    (a.status === "fail" ? a.refusals.length - b.refusals.length : 0) ||
+    b.score - a.score ||
+    b.amount - a.amount ||
+    a.apr - b.apr
+  );
 }
+
+/** A lender that would lend nothing is not a lender that takes the client, whatever its conditions answer. */
+const gives = (fit: Fit, result: Eligibility): boolean => fit.eligibility === result && fit.amount > 0;
 
 function reading(profile: Profile, room: Capacity, products: readonly Product[], record: RecordAfter): Reading {
   const fits: Fit[] = products
     .map((product) => fitOf(profile, room, product, record))
     .sort(better)
     .map(({ score: _score, ...fit }) => fit);
-  return { record, fits, open: fits.filter((fit) => fit.status === "pass").length, conditional: fits.filter((fit) => fit.status === "warn").length };
+  return {
+    record,
+    fits,
+    open: fits.filter((fit) => gives(fit, "eligible")).length,
+    conditional: fits.filter((fit) => gives(fit, "conditional")).length,
+    unsure: fits.filter((fit) => fit.eligibility === "needs_verification").length,
+  };
 }
 
-const verdictOf = (readings: readonly Reading[]): Exclude<AnalysisVerdict, "pending"> =>
-  readings.some((r) => r.open > 0) ? "eligible" : readings.some((r) => r.conditional > 0) ? "conditional" : "not_eligible";
+/** The best result any lender gives. A lender nobody confirmed never makes the client eligible, and never makes them refused. */
+const verdictOf = (readings: readonly Reading[]): Eligibility =>
+  readings.some((r) => r.open > 0) ? "eligible" : readings.some((r) => r.conditional > 0) ? "conditional" : readings.some((r) => r.unsure > 0) ? "needs_verification" : "not_eligible";
 
 /** Points the eligibility engine makes about the record. Here the record speaks for itself, in more detail. */
 const RECORD_POINTS: ReadonlySet<Point["code"]> = new Set(["CLEAN_RECORD", "LATE_RECORD", "DEFAULT_RECORD"]);
@@ -243,7 +292,7 @@ export function analyzeClient(args: { file: FileFacts; record: RecordFacts; prod
   const assumed = report.serviceSuspension && !!report.suspensionAssumed;
   if (assumed) gaps.push({ kind: "unconfirmed", code: "SUSPENSION" });
   const studied = kinds.flatMap((k) => k.today.fits.map((fit) => fit.product));
-  const unverified = studied.filter((product) => !product.verified).length;
+  const unverified = studied.filter((product) => openTerms(product.financeType, product.terms).length > 0).length;
   if (unverified > 0) gaps.push({ kind: "unconfirmed", code: "TERMS", unverified, of: studied.length });
   if (!file.consent) gaps.push({ kind: "missing", code: "CONSENT" });
 
@@ -263,29 +312,41 @@ export function analyzeClient(args: { file: FileFacts; record: RecordFacts; prod
       .sort((a, b) => a.balance! - b.balance!)[0];
     if (smallest) steps.push({ code: "FREE_ROOM", lender: smallest.lender, kind: smallest.kind, monthly: smallest.monthly! });
   }
-  const applies: Step[] = kinds.flatMap((k): Step[] => {
+  // Where to go, kind by kind: the best lender today, or the best one once the record is cleared.
+  const picks = kinds.flatMap((k) => {
     const now = k.today.fits[0];
     const later = k.cleared?.fits[0];
     const pick = now && now.status !== "fail" ? { fit: now, afterClearing: false } : later && later.status !== "fail" ? { fit: later, afterClearing: true } : null;
-    if (!pick || pick.fit.amount <= 0) return [];
-    const { fit } = pick;
-    return [
-      {
-        code: "APPLY",
-        kind: k.kind,
-        lender: fit.product.lenderName,
-        product: fit.product.name,
-        amount: fit.amount,
-        installment: fit.installment,
-        months: fit.months,
-        conditional: fit.status === "warn",
-        afterClearing: pick.afterClearing,
-        verified: !!fit.product.verified,
-      },
-    ];
+    return pick && pick.fit.amount > 0 ? [{ kind: k.kind, ...pick }] : [];
   });
+  // A lender whose terms nobody confirmed is asked first, and before the office pays anything on the strength of them.
+  const confirms: Extract<Step, { code: "CONFIRM_TERMS" }>[] = [];
+  for (const { kind, fit, afterClearing } of picks) {
+    const open = fit.doubts.flatMap((doubt): Term[] => (doubt.doubt !== "FACT_MISSING" && doubt.term ? [doubt.term] : []));
+    if (!open.length) continue;
+    const lender = fit.product.lenderName;
+    const same = confirms.find((step) => step.lender === lender && step.beforePaying === afterClearing);
+    if (!same) confirms.push({ code: "CONFIRM_TERMS", lender, kinds: [kind], terms: TERMS.filter((term) => open.includes(term)), beforePaying: afterClearing });
+    else Object.assign(same, { kinds: [...same.kinds, kind], terms: TERMS.filter((term) => same.terms.includes(term) || open.includes(term)) });
+  }
+  const applies: Step[] = picks.map(({ kind, fit, afterClearing }) => ({
+    code: "APPLY",
+    kind,
+    lender: fit.product.lenderName,
+    product: fit.product.name,
+    amount: fit.amount,
+    installment: fit.installment,
+    months: fit.months,
+    eligibility: fit.eligibility,
+    afterClearing,
+    estimated: fit.eligibility !== "needs_verification" && fit.estimated,
+  }));
+  // Asking a lender costs nothing and clearing a record does: what must be asked first goes ahead of what the record needs.
+  const early = confirms.filter((step) => step.beforePaying);
+  const clearing = steps.findIndex((step) => step.code === "CREDIT");
+  steps.splice(clearing >= 0 ? clearing : steps.length, 0, ...early);
   if (applies.length && income.basis === "stated") steps.push({ code: "VERIFY_INCOME" });
-  steps.push(...applies);
+  steps.push(...confirms.filter((step) => !early.includes(step)), ...applies);
 
   return { verdict, afterClearing, income, commitments, burden, kinds, strengths, risks, gaps, steps };
 }

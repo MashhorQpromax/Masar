@@ -10,6 +10,7 @@
  */
 import { dealStudy, splitItems, STRUCTURES, structureOf, type Borrower, type CreditFlags, type DealInput, type DealStudy } from "../deal";
 import {
+  amountsOpen,
   capacity,
   CHECK_RULES,
   eligibilityOf,
@@ -18,6 +19,7 @@ import {
   leansBlocked,
   matchProduct,
   SECTORS,
+  tell,
   UNCONFIRMED,
   weakestStrength,
   type Check,
@@ -190,8 +192,12 @@ export interface FundingRoute {
   actions: RouteFinding[];
   /** Reliable answers that are met and still worth saying, such as late payments a lender is confirmed to take. */
   remarks: RouteFinding[];
+  /** Answers on a term nobody confirmed that, as written, refuse the client or ask something of them. */
+  leans: RouteFinding[];
   /** The weakest source the reliable answers rest on. */
   strength: SourceStrength | null;
+  /** A term that sets an amount, a margin or a term of months is not confirmed: the figures are an estimate. */
+  estimated: boolean;
 }
 
 /** A flat rate as the reducing rate that gives the same installment. */
@@ -345,30 +351,11 @@ function route(args: Args, mortgageProduct: Product | null, personalProduct: Pro
     findings.push({ lender: personal.product.lenderName, finding: findingOf(check, ROUTE_RULES.TWO_SALARY_TRANSFERS, { transfer: both }) });
   }
   const read = findings.map((f) => f.finding);
-  // One lender's unconfirmed term is said once, and a fact the file lacks is said once for every lender.
-  const said = new Set<string>();
-  const doubts = findings.filter(({ lender, finding }) => {
-    if (finding.outcome !== "unknown") return false;
-    const id = finding.doubt === "FACT_MISSING" ? finding.check.code : `${lender}:${finding.term}`;
-    if (said.has(id)) return false;
-    said.add(id);
-    return true;
-  });
-  // One lender's condition is said once, and one that holds for every lender is said once for all.
-  const once = (keep: (finding: Finding<RouteCheck>) => boolean): RouteFinding[] => {
-    const told = new Set<string>();
-    return findings.filter(({ lender, finding }) => {
-      if (!keep(finding)) return false;
-      const id = finding.basis === "lender" ? `${lender}:${finding.check.code}` : finding.check.code;
-      if (told.has(id)) return false;
-      told.add(id);
-      return true;
-    });
-  };
-  const blockers = once((finding) => finding.outcome === "blocked");
-  const actions = once((finding) => finding.outcome === "action");
-  // A term cut short by the age limit is already in the leg's months and amount.
-  const remarks = once((finding) => finding.outcome === "met" && finding.check.status === "warn" && finding.check.code !== "TENOR_SHORTENED");
+  const told = tell(
+    findings,
+    (f) => f.finding,
+    (f) => f.lender,
+  );
 
   return {
     key: [mortgageProduct ? `m${mortgageProduct.id}` : "", personalProduct ? `p${personalProduct.id}` : ""].filter(Boolean).join("-"),
@@ -384,11 +371,9 @@ function route(args: Args, mortgageProduct: Product | null, personalProduct: Pro
     verified: [mortgageProduct, personalProduct].every((p) => !p || !!p.verified),
     eligibility: eligibilityOf(read),
     blockedAsWritten: leansBlocked(read),
-    doubts,
-    blockers,
-    actions,
-    remarks,
+    ...told,
     strength: weakestStrength(read),
+    estimated: [mortgageProduct, personalProduct].some((p) => p != null && amountsOpen(p.financeType, p.terms)),
   };
 }
 

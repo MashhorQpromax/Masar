@@ -15,7 +15,7 @@
  * Everything in this module is pure: no database, no clock, no text in any language.
  */
 import type { SourceStrength, Term, TermStanding } from "./terms";
-import { UNCONFIRMED } from "./terms";
+import { amountsOpen, UNCONFIRMED } from "./terms";
 import type { Check, CheckStatus, Match } from "./types";
 
 export type Outcome = "met" | "action" | "blocked" | "unknown";
@@ -131,14 +131,76 @@ export function eligibilityRank(eligibility: Eligibility, blockedAsWritten: bool
   return 0;
 }
 
+/** What a set of findings has to say, each thing once. */
+export interface Telling<T> {
+  /** What has no reliable answer yet: each lender's term and each missing fact once. */
+  doubts: T[];
+  /** Confirmed conditions that refuse the client. No calculation overrides them. */
+  blockers: T[];
+  /** Answers on a term nobody confirmed that, as written, refuse the client or ask something of them. */
+  leans: T[];
+  /** What the client has to do first, on terms that can be relied on. */
+  actions: T[];
+  /** Reliable answers that are met and still worth saying, such as late payments a lender is confirmed to take. */
+  remarks: T[];
+}
+
+/**
+ * Sorts findings into what is worth saying. One lender's condition is said once, whichever of its
+ * products raised it, and one that holds for every lender is said once for all. `owner` names the
+ * lender an item belongs to.
+ */
+export function tell<T>(items: readonly T[], read: (item: T) => Finding, owner: (item: T) => string): Telling<T> {
+  const once = (keep: (finding: Finding) => boolean, id: (finding: Finding, who: string) => string): T[] => {
+    const told = new Set<string>();
+    return items.filter((item) => {
+      const finding = read(item);
+      if (!keep(finding)) return false;
+      const key = id(finding, owner(item));
+      if (told.has(key)) return false;
+      told.add(key);
+      return true;
+    });
+  };
+  const byCode = (finding: Finding, who: string) => (finding.basis === "lender" ? `${who}:${finding.check.code}` : finding.check.code);
+  // A term cut short by the age limit is already in the months and the amount: nothing to say of it.
+  const said = (finding: Finding) => finding.check.status !== "pass" && finding.check.code !== "TENOR_SHORTENED";
+  return {
+    doubts: once(
+      (finding) => finding.outcome === "unknown",
+      (finding, who) => (finding.doubt === "FACT_MISSING" ? finding.check.code : `${who}:${finding.term}`),
+    ),
+    blockers: once((finding) => finding.outcome === "blocked", byCode),
+    leans: once((finding) => finding.outcome === "unknown" && finding.leans != null && said(finding), byCode),
+    actions: once((finding) => finding.outcome === "action", byCode),
+    remarks: once((finding) => finding.outcome === "met" && finding.check.status === "warn" && said(finding), byCode),
+  };
+}
+
 /** One product held against one client, read strictly. */
-export interface StrictMatch {
+export interface StrictMatch extends Telling<Finding<Check>> {
   eligibility: Eligibility;
   findings: Finding<Check>[];
   blockedAsWritten: boolean;
+  /** The weakest source the reliable answers rest on. */
+  strength: SourceStrength | null;
+  /** A term that sets the amount, the months or the rate is not confirmed: the figures are an estimate. */
+  estimated: boolean;
 }
 
 export function strictMatch(match: Pick<Match, "checks" | "product">): StrictMatch {
-  const findings = match.checks.map((check) => findingOf(check, CHECK_RULES[check.code], match.product.terms));
-  return { eligibility: eligibilityOf(findings), findings, blockedAsWritten: leansBlocked(findings) };
+  const { product } = match;
+  const findings = match.checks.map((check) => findingOf(check, CHECK_RULES[check.code], product.terms));
+  return {
+    ...tell(
+      findings,
+      (finding) => finding,
+      () => product.lenderName,
+    ),
+    eligibility: eligibilityOf(findings),
+    findings,
+    blockedAsWritten: leansBlocked(findings),
+    strength: weakestStrength(findings),
+    estimated: amountsOpen(product.financeType, product.terms),
+  };
 }

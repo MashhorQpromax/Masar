@@ -3,7 +3,12 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { analyzeClient, commitmentsOf, reportAgeMonths, STALE_REPORT_MONTHS, type FileFacts, type RecordFacts } from "@/domain/analysis";
 import { analyzeCredit, emptyReport, type CreditReport, type Facility, type Judgment } from "@/domain/credit";
-import type { Product } from "@/domain/eligibility";
+import { TERMS, termStanding, type Product, type SourceKind, type Term } from "@/domain/eligibility";
+
+/** Every term of a product confirmed three weeks ago, except the ones left open. A lender whose terms nobody confirmed has none. */
+const confirmed = (open: Term[] = [], kind: SourceKind = "lender_document"): Product["terms"] =>
+  Object.fromEntries(TERMS.filter((term) => !open.includes(term)).map((term) => [term, termStanding({ kind, reference: "نشرة المنتج، نوفمبر 2026", confirmedOn: "2026-11-01" }, "2026-11-23")]));
+const unconfirmed: Partial<Product> = { verified: false, terms: undefined };
 
 /**
  * Worked examples of a client's credit and financial analysis, small enough to check by hand.
@@ -59,6 +64,7 @@ const product = (id: string, lender: string, parts: Partial<Product> = {}): Prod
   notes: null,
   settledDefaultWaitMonths: 0,
   verified: true,
+  terms: confirmed(),
   ...parts,
 });
 const mortgageOf = (id: string, lender: string, parts: Partial<Product> = {}): Product =>
@@ -200,7 +206,7 @@ describe("the lenders held against a record nothing blocks", () => {
   it("is eligible, and names the lender to apply to for each kind", () => {
     expect([a.verdict, a.afterClearing]).toEqual(["eligible", null]);
     expect(a.steps).toEqual([
-      { code: "APPLY", kind: "personal", lender: "جهة a", product: "منتج", amount: 177000, installment: 3422, months: 60, conditional: false, afterClearing: false, verified: true },
+      { code: "APPLY", kind: "personal", lender: "جهة a", product: "منتج", amount: 177000, installment: 3422, months: 60, eligibility: "eligible", afterClearing: false, estimated: false },
       expect.objectContaining({ code: "APPLY", kind: "mortgage", lender: "جهة a", afterClearing: false }),
     ]);
   });
@@ -257,13 +263,94 @@ describe("the lenders held against a record that blocks them all", () => {
 
   it("puts paying the debt before any application, and marks the application as coming after", () => {
     expect(a.steps.map((s) => (s.code === "CREDIT" ? s.action.code : s.code))).toEqual(["PAY_DEFAULT", "REFRESH_REPORT", "APPLY"]);
-    expect(a.steps.at(-1)).toMatchObject({ code: "APPLY", lender: "جهة a", afterClearing: true, conditional: false });
+    expect(a.steps.at(-1)).toMatchObject({ code: "APPLY", lender: "جهة a", afterClearing: true, eligibility: "eligible" });
   });
 
-  it("is only conditional after the debt is paid when no lender has confirmed it takes such a client", () => {
+  it("needs verification after the debt is paid when no lender is known to take such a client, and asks before anything is paid", () => {
     const b = analyzeClient({ file: file(), record: record(unpaid), products: [lenders[1]!, lenders[2]!] });
-    expect([b.verdict, b.afterClearing]).toEqual(["not_eligible", "conditional"]);
-    expect(b.steps.at(-1)).toMatchObject({ code: "APPLY", lender: "جهة b", afterClearing: true, conditional: true });
+    // The debt stands at every lender today: that is certain, whoever confirmed what.
+    expect([b.verdict, b.afterClearing]).toEqual(["not_eligible", "needs_verification"]);
+    expect(b.kinds[0]!.cleared!.fits.map((f) => [f.product.id, f.eligibility])).toEqual([
+      ["2", "needs_verification"],
+      // A year's wait, in writing: paying changes nothing there.
+      ["3", "not_eligible"],
+    ]);
+    expect(b.steps.map((s) => (s.code === "CREDIT" ? s.action.code : s.code))).toEqual(["CONFIRM_TERMS", "PAY_DEFAULT", "REFRESH_REPORT", "APPLY"]);
+    expect(b.steps[0]).toEqual({ code: "CONFIRM_TERMS", lender: "جهة b", kinds: ["personal"], terms: ["settled"], beforePaying: true });
+    expect(b.steps.at(-1)).toMatchObject({ code: "APPLY", lender: "جهة b", afterClearing: true, eligibility: "needs_verification", estimated: false });
+  });
+
+  it("never calls a client eligible on terms nobody confirmed, and never calls them refused on such terms", () => {
+    const clean = record(report({ facilities: running }));
+    const open = [product("1", "a", unconfirmed), product("2", "b", { ...unconfirmed, sectors: ["private"] })];
+    const b = analyzeClient({ file: file(), record: clean, products: open });
+    expect(b.verdict).toBe("needs_verification");
+    expect(b.kinds[0]!.today.fits.map((f) => [f.product.id, f.status, f.eligibility, f.blockedAsWritten])).toEqual([
+      // As written it takes the client. Nobody knows that it does.
+      ["1", "pass", "needs_verification", false],
+      // As written it refuses the client. Nobody knows that either.
+      ["2", "fail", "needs_verification", true],
+    ]);
+    expect([b.kinds[0]!.today.open, b.kinds[0]!.today.conditional, b.kinds[0]!.today.unsure]).toEqual([0, 0, 2]);
+    expect(b.steps.map((s) => s.code)).toEqual(["CONFIRM_TERMS", "APPLY"]);
+    expect(b.steps[0]).toMatchObject({ lender: "جهة a", beforePaying: false, terms: ["salary", "sector", "nationality", "age", "service", "transfer"] });
+    expect(b.steps[1]).toMatchObject({ lender: "جهة a", eligibility: "needs_verification", afterClearing: false });
+
+    // The same lenders refuse for certain once the term that refuses is confirmed.
+    const sure = analyzeClient({ file: file(), record: clean, products: [product("2", "b", { sectors: ["private"] })] });
+    expect(sure.verdict).toBe("not_eligible");
+    expect(sure.kinds[0]!.today.fits[0]!.blockers.map((f) => f.check.code)).toEqual(["SECTOR"]);
+  });
+
+  it("puts a lender with confirmed terms ahead of one that reads better and that nobody confirmed", () => {
+    const clean = record(report({ facilities: running }));
+    // The salary is paid into b, its rate is lower, and nobody confirmed a word of it.
+    const b = analyzeClient({ file: file({ salaryBank: "b" }), record: clean, products: [product("1", "a"), product("2", "b", { ...unconfirmed, rate: 2 })] });
+    expect(b.kinds[0]!.today.fits.map((f) => [f.product.id, f.eligibility])).toEqual([
+      ["1", "conditional"],
+      ["2", "needs_verification"],
+    ]);
+    expect(b.verdict).toBe("conditional");
+    expect(b.kinds[0]!.today.fits[0]!.actions.map((f) => f.check.code)).toEqual(["SALARY_TRANSFER"]);
+    expect(b.steps.at(-1)).toMatchObject({ code: "APPLY", lender: "جهة a", eligibility: "conditional" });
+
+    // A lender confirmed all but one term is closer to an answer than one confirmed in nothing.
+    const c = analyzeClient({ file: file(), record: clean, products: [product("1", "a", unconfirmed), product("2", "b", { terms: confirmed(["service"]), requiresSalaryTransfer: false })] });
+    expect(c.kinds[0]!.today.fits.map((f) => [f.product.id, f.doubts.map((d) => d.term)])).toEqual([
+      ["2", ["service"]],
+      ["1", ["salary", "sector", "nationality", "age", "service", "transfer"]],
+    ]);
+  });
+
+  it("asks one lender once for both kinds of finance, naming every term left open in either", () => {
+    const clean = record(report({ facilities: running }));
+    const b = analyzeClient({
+      file: file({ request: { kind: "mortgage", amount: 500000, tenor: 240 }, propertyValue: 700000 }),
+      record: clean,
+      products: [product("1", "a", { terms: confirmed(["service"]) }), mortgageOf("2", "a", { terms: confirmed(["salary", "age"]) })],
+    });
+    expect(b.verdict).toBe("needs_verification");
+    expect(b.steps.filter((s) => s.code === "CONFIRM_TERMS")).toEqual([{ code: "CONFIRM_TERMS", lender: "جهة a", kinds: ["mortgage", "personal"], terms: ["salary", "age", "service"], beforePaying: false }]);
+    expect(b.steps.map((s) => s.code)).toEqual(["CONFIRM_TERMS", "APPLY", "APPLY"]);
+  });
+
+  it("calls the figures an estimate when the lender is confirmed to take the client and its amount terms are not", () => {
+    const clean = record(report({ facilities: running }));
+    const b = analyzeClient({ file: file(), record: clean, products: [product("1", "a", { terms: confirmed(["rate", "settled"]) })] });
+    const fit = b.kinds[0]!.today.fits[0]!;
+    // What it does after a paid default is open too, and this client never had one: it is not in the way.
+    expect([fit.eligibility, fit.estimated, fit.doubts]).toEqual(["eligible", true, []]);
+    expect(b.steps.at(-1)).toMatchObject({ code: "APPLY", eligibility: "eligible", estimated: true });
+    expect(b.gaps).toContainEqual({ kind: "unconfirmed", code: "TERMS", unverified: 1, of: 1 });
+
+    const firm = analyzeClient({ file: file(), record: clean, products: [product("1", "a", { terms: confirmed(["settled"]) })] });
+    expect(firm.kinds[0]!.today.fits[0]!.estimated).toBe(false);
+  });
+
+  it("says what a source rests on: an employee's word is weaker than a paper", () => {
+    const clean = record(report({ facilities: running }));
+    const b = analyzeClient({ file: file(), record: clean, products: [product("1", "a", { terms: confirmed([], "lender_staff") }), product("2", "b")] });
+    expect(Object.fromEntries(b.kinds[0]!.today.fits.map((f) => [f.product.id, f.strength]))).toEqual({ "1": "verbal", "2": "written" });
   });
 
   it("reads a paid court order the way it reads a paid default", () => {
@@ -382,7 +469,7 @@ describe("what the analysis could not stand on", () => {
         readingWarnings: 2,
         ageMonths: STALE_REPORT_MONTHS,
       }),
-      products: [product("1", "a", { verified: false }), product("2", "b")],
+      products: [product("1", "a", unconfirmed), product("2", "b")],
     });
     expect(a.gaps).toEqual([
       { kind: "unconfirmed", code: "INCOME_PROOF" },
@@ -408,6 +495,8 @@ describe("what the analysis could not stand on", () => {
       "VERIFY_INCOME",
       "APPLY",
     ]);
+    // The lender to go to has its terms confirmed: what it waits for is the file, and nobody has to ask it anything.
+    expect(a.steps.at(-1)).toMatchObject({ code: "APPLY", lender: "جهة b", eligibility: "needs_verification", afterClearing: true });
     expect(a.steps[1]).toEqual({ code: "COMPLETE_FILE", missing: ["AGE", "SERVICE", "SALARY_BANK"] });
   });
 
@@ -475,5 +564,60 @@ describe("every record in the golden file", () => {
     if (blocked) expect(a.verdict === "not_eligible" || a.verdict === "pending").toBe(true);
     // An application is named after the payment only when something has to be paid first.
     for (const step of a.steps) if (step.code === "APPLY") expect(step.afterClearing).toBe(blocked);
+  });
+
+  // The same lenders three ways: every term confirmed, none, and some left open.
+  const open = catalogue.map((p): Product => ({ ...p, ...unconfirmed }));
+  const mixed = catalogue.map((p, index): Product => (index % 2 ? p : { ...p, verified: false, terms: confirmed(["transfer", "late", "settled", "rate"]) }));
+
+  it.each(golden.cases.map((c, index) => [c.name ?? `case ${index + 1}`, c.report] as const))("%s is read strictly, whoever confirmed the lenders' terms", (_name, r) => {
+    const blocked = analyzeCredit(r).blockers.length > 0;
+    for (const products of [catalogue, open, mixed]) {
+      const a = analyzeClient({ file: file({ salaryBank: "x" }), record: record(r), products });
+      for (const kind of a.kinds) {
+        for (const reading of [kind.today, ...(kind.cleared ? [kind.cleared] : [])]) {
+          for (const fit of reading.fits) {
+            // A result that can be acted on has nothing unknown behind it and nothing that refuses.
+            if (fit.eligibility === "eligible" || fit.eligibility === "conditional") expect([fit.doubts, fit.blockers, fit.status === "fail"]).toEqual([[], [], false]);
+            if (fit.eligibility === "conditional") expect(fit.actions.length).toBeGreaterThan(0);
+            // A refusal is always for a reason that is certain, and an open question always names what is open.
+            if (fit.eligibility === "not_eligible") expect(fit.blockers.length).toBeGreaterThan(0);
+            if (fit.eligibility === "needs_verification") expect(fit.doubts.length).toBeGreaterThan(0);
+            expect(fit.blockedAsWritten).toBe(fit.leans.some((lean) => lean.leans === "blocked"));
+            // Nothing is ever relied on at a lender nobody confirmed. Only what binds every lender is certain there.
+            if (products === open) {
+              expect(["needs_verification", "not_eligible"]).toContain(fit.eligibility);
+              expect(fit.blockers.every((blocker) => blocker.basis !== "lender")).toBe(true);
+              expect(fit.strength).toBeNull();
+            }
+          }
+          expect(reading.open).toBe(reading.fits.filter((fit) => fit.eligibility === "eligible" && fit.amount > 0).length);
+          expect(reading.unsure).toBe(reading.fits.filter((fit) => fit.eligibility === "needs_verification").length);
+          // Among the lenders, a reliable answer is never listed under an unreliable one.
+          const order = reading.fits.map((fit) => (fit.eligibility === "eligible" ? 3 : fit.eligibility === "conditional" ? 2 : fit.eligibility === "needs_verification" ? 1 : 0));
+          expect(order).toEqual([...order].sort((x, y) => y - x));
+        }
+        // A debt that stands refuses at every lender, and no lender has to confirm that.
+        if (blocked) expect(kind.today.fits.every((fit) => fit.eligibility === "not_eligible")).toBe(true);
+      }
+      if (products === open) expect(["needs_verification", "not_eligible", "pending"]).toContain(a.verdict);
+      if (products === open && a.afterClearing) expect(["needs_verification", "not_eligible"]).toContain(a.afterClearing);
+
+      const codes = a.steps.map((step) => step.code);
+      for (const [index, step] of a.steps.entries()) {
+        // A lender is asked before the office pays anything on the strength of its terms.
+        if (step.code === "CONFIRM_TERMS") {
+          expect(step.terms.length).toBeGreaterThan(0);
+          expect(step.beforePaying).toBe(blocked);
+          if (step.beforePaying) expect(codes.slice(0, index)).not.toContain("CREDIT");
+          for (const kind of step.kinds) expect(a.steps.slice(index + 1).some((later) => later.code === "APPLY" && later.lender === step.lender && later.kind === kind)).toBe(true);
+          // One lender is asked once.
+          expect(a.steps.filter((other) => other.code === "CONFIRM_TERMS" && other.lender === step.lender)).toHaveLength(1);
+        }
+        // Nobody is sent to a lender that refuses.
+        if (step.code === "APPLY") expect(step.eligibility).not.toBe("not_eligible");
+        if (step.code === "APPLY" && products === catalogue) expect(codes).not.toContain("CONFIRM_TERMS");
+      }
+    }
   });
 });

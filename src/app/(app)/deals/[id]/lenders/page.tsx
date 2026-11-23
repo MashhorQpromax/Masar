@@ -85,8 +85,11 @@ function Figures({ route }: { route: FundingRoute }) {
 /** A result that can be acted on: the lender's terms behind it are confirmed. */
 const reliable = (route: FundingRoute): boolean => route.eligibility === "eligible" || route.eligibility === "conditional";
 
+/** Of what the record leans to, only what would turn the client down: all a closed route has room to say. */
+const refusing = (route: FundingRoute): Pick<FundingRoute, "leans" | "oneLender"> => ({ leans: route.leans.filter((lean) => lean.finding.leans === "blocked"), oneLender: route.oneLender });
+
 /** What the client keeps is an estimate while a term that sets an amount is not confirmed. */
-const estimated = (route: FundingRoute): boolean => reliable(route) && !route.verified;
+const estimated = (route: FundingRoute): boolean => reliable(route) && route.estimated;
 
 /** What the office knows about the lender of one part of a route, with the names to say it under. */
 interface Known extends Bearing<Rule> {
@@ -337,7 +340,12 @@ export default async function LendersPage({ params, searchParams }: { params: Pr
                   {others.map((route) => {
                     const names = routeLenders(route);
                     const before = knownOf(route).filter((item) => item.record);
-                    const said = [...routeDoubtCount(route), ...[...route.actions, ...route.remarks].map((finding) => routeFindingText(finding, route)), ...(estimated(route) ? ["المبلغ والهامش استرشاديان."] : [])];
+                    const said = [
+                      ...routeDoubtCount(route),
+                      ...routeLeanLines(route),
+                      ...[...route.actions, ...route.remarks].map((finding) => routeFindingText(finding, route)),
+                      ...(estimated(route) ? ["المبلغ والهامش استرشاديان."] : []),
+                    ];
                     return (
                       <li key={route.key} className="route" data-chosen={route.key === chosen || undefined}>
                         <div className="route-who">
@@ -391,7 +399,7 @@ export default async function LendersPage({ params, searchParams }: { params: Pr
                         <span>
                           <b>{routeLenders(route).main}</b>
                           {routeLenders(route).also ? ` ${routeLenders(route).also}` : ""} · {ELIGIBILITY[route.eligibility]}:{" "}
-                          {[...route.blockers.map((blocker) => routeFindingText(blocker, route)), ...routeLeanLines(route)].join(" ")}
+                          {[...route.blockers.map((blocker) => routeFindingText(blocker, route)), ...routeLeanLines(refusing(route))].join(" ")}
                         </span>
                       </p>
                     ))}

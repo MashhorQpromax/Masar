@@ -2,7 +2,7 @@
  * The wording of funding routes: which lender would fund a deal, what it asks of the client and why it
  * would refuse. The engine returns codes and numbers; this file turns them into Arabic.
  */
-import type { Basis, CheckStatus, Eligibility, Term } from "@/domain/eligibility";
+import type { Basis, CheckStatus, Eligibility, Finding, SourceStrength, Term } from "@/domain/eligibility";
 import type { FundingRoute, RouteCheck, RouteFinding, RouteNote } from "@/domain/funding";
 import { checkText } from "./eligibility";
 import { counted, months, type CountForms } from "./format";
@@ -42,41 +42,99 @@ const OPEN_TERMS: CountForms = { one: "شرط واحد لم يؤكَّد", two: 
 
 const named = (terms: (Term | null)[]): string => [...new Set(terms.flatMap((term) => (term ? [TERM_NAME[term]] : [])))].join("، ");
 
-type Doubtful = Pick<FundingRoute, "doubts" | "oneLender">;
+/** A condition read strictly, with the lender it belongs to. */
+interface Told<C> {
+  lender: string;
+  finding: Finding<C & { status: CheckStatus; code: string }>;
+}
+
+/** What the lines below are written from: the doubts, and whether one lender stands behind them all. */
+interface Doubtful<C> {
+  doubts: Told<C>[];
+  oneLender: boolean;
+}
 
 /**
- * What stands between a route and a reliable answer, in as few lines as it takes: each fact the file
+ * What stands between an answer and a reliable one, in as few lines as it takes: each fact the file
  * lacks, then for each lender the terms nobody confirmed, the ones whose confirmation ran out, and
- * what nobody knows of it at all.
+ * what nobody knows of it at all. `say` words one condition.
  */
-export function routeDoubtLines(route: Doubtful): string[] {
-  const lines = route.doubts.filter((doubt) => doubt.finding.doubt === "FACT_MISSING").map((doubt) => routeCheckText(doubt.finding.check));
-  for (const lender of [...new Set(route.doubts.map((doubt) => doubt.lender))]) {
-    const of = route.doubts.filter((doubt) => doubt.lender === lender);
-    const say = (text: string) => lines.push(route.oneLender ? text : `${lender}: ${text}`);
+export function doubtLines<C>({ doubts, oneLender }: Doubtful<C>, say: (check: Told<C>["finding"]["check"]) => string): string[] {
+  const lines = doubts.filter((doubt) => doubt.finding.doubt === "FACT_MISSING").map((doubt) => say(doubt.finding.check));
+  for (const lender of [...new Set(doubts.map((doubt) => doubt.lender))]) {
+    const of = doubts.filter((doubt) => doubt.lender === lender);
+    const add = (text: string) => lines.push(oneLender ? text : `${lender}: ${text}`);
     const open = of.filter((doubt) => doubt.finding.doubt === "TERM_UNCONFIRMED");
     const expired = of.filter((doubt) => doubt.finding.doubt === "TERM_EXPIRED");
-    if (open.length) say(`لم يؤكَّد: ${named(open.map((doubt) => doubt.finding.term))}.`);
-    if (expired.length) say(`انتهى تأكيده: ${named(expired.map((doubt) => doubt.finding.term))}.`);
-    for (const doubt of of) if (doubt.finding.doubt === "TERM_NOT_KNOWN") say(routeCheckText(doubt.finding.check));
+    if (open.length) add(`لم يؤكَّد: ${named(open.map((doubt) => doubt.finding.term))}.`);
+    if (expired.length) add(`انتهى تأكيده: ${named(expired.map((doubt) => doubt.finding.term))}.`);
+    for (const doubt of of) if (doubt.finding.doubt === "TERM_NOT_KNOWN") add(say(doubt.finding.check));
   }
   return lines;
 }
 
 /** The same, counted: for a row that has room for one line. */
-export function routeDoubtCount(route: Doubtful): string[] {
-  const facts = route.doubts.filter((doubt) => doubt.finding.doubt === "FACT_MISSING").map((doubt) => routeCheckText(doubt.finding.check));
-  const terms = route.doubts.length - facts.length;
+export function doubtCount<C>({ doubts }: Pick<Doubtful<C>, "doubts">, say: (check: Told<C>["finding"]["check"]) => string): string[] {
+  const facts = doubts.filter((doubt) => doubt.finding.doubt === "FACT_MISSING").map((doubt) => say(doubt.finding.check));
+  const terms = doubts.length - facts.length;
   return terms > 0 ? [...facts, `${counted(terms, OPEN_TERMS)}.`] : facts;
 }
 
+/** What comes before an answer that rests on a term nobody confirmed: it holds only if the record is right. */
+export const asWritten = (text: string): string => `إن صحّ المسجل عندنا: ${text}`;
+
+/** Said of an answer that can be relied on and has only an employee's word behind it. */
+export const BY_WORD = "على إفادة موظف في الجهة، لا على مستند منها.";
+
+/** One product of one lender, read strictly: what there is to say of it. */
+export interface StrictRead<C> {
+  doubts: Told<C>["finding"][];
+  blockers: Told<C>["finding"][];
+  leans: Told<C>["finding"][];
+  actions: Told<C>["finding"][];
+  remarks: Told<C>["finding"][];
+  eligibility: Eligibility;
+  strength: SourceStrength | null;
+  estimated: boolean;
+}
+
+/** One lender stands behind every line, so none of them names it. */
+const alone = <C,>(findings: Told<C>["finding"][]): Doubtful<C> => ({ doubts: findings.map((finding) => ({ lender: "", finding })), oneLender: true });
+
+/** What stands between one lender and a reliable answer: the missing facts, then its open and expired terms by name. */
+export function strictDoubtLines<C>(read: Pick<StrictRead<C>, "doubts">, say: (check: Told<C>["finding"]["check"]) => string): string[] {
+  return doubtLines(alone(read.doubts), say);
+}
+
 /**
- * Refusals that rest on a term nobody confirmed. As written the lender would turn the client down,
- * and nobody knows that it would: the line says both.
+ * What a lender's row says under its figures: how much of it is unconfirmed, what the record leans
+ * to, what the client has to do, what the lender is confirmed to take, and whether the figures are firm.
  */
-export function routeLeanLines(route: Pick<FundingRoute, "refusals" | "blockers" | "oneLender">): string[] {
-  const certain = (note: RouteNote) => route.blockers.some((blocker) => blocker.finding.check.code === note.check.code && (blocker.finding.basis !== "lender" || blocker.lender === note.lender));
-  return route.refusals.filter((note) => !certain(note)).map((note) => `إن صحّ المسجل عندنا: ${routeNoteText(note, route)}`);
+export function strictLines<C>(read: Omit<StrictRead<C>, "blockers">, say: (check: Told<C>["finding"]["check"]) => string): string[] {
+  const reliable = read.eligibility === "eligible" || read.eligibility === "conditional";
+  return [
+    ...doubtCount(alone(read.doubts), say),
+    ...read.leans.map((lean) => asWritten(say(lean.check))),
+    ...[...read.actions, ...read.remarks].map((finding) => say(finding.check)),
+    ...(reliable && read.strength === "verbal" ? [BY_WORD] : []),
+    ...(reliable && read.estimated ? ["المبلغ والهامش استرشاديان."] : []),
+  ];
+}
+
+/** Why a lender does not take the client: what is certain, said as it is, and what the record only leans to, said as that. */
+export function strictRefusalLines<C>(read: Pick<StrictRead<C>, "blockers" | "leans">, say: (check: Told<C>["finding"]["check"]) => string): string[] {
+  return [...read.blockers.map((blocker) => say(blocker.check)), ...read.leans.filter((lean) => lean.leans === "blocked").map((lean) => asWritten(say(lean.check)))];
+}
+
+export const routeDoubtLines = (route: Pick<FundingRoute, "doubts" | "oneLender">): string[] => doubtLines(route, routeCheckText);
+export const routeDoubtCount = (route: Pick<FundingRoute, "doubts">): string[] => doubtCount(route, routeCheckText);
+
+/**
+ * What the record leans to on terms nobody confirmed: as written the lender would turn the client
+ * down, or ask something of them, and nobody knows that it would. The line says both.
+ */
+export function routeLeanLines(route: Pick<FundingRoute, "leans" | "oneLender">): string[] {
+  return route.leans.map((lean) => asWritten(routeFindingText(lean, route)));
 }
 
 /** One thing a lender asks or holds against the client. The lender is the subject of the sentence. */

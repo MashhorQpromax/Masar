@@ -5,6 +5,7 @@
  * enough for an estimate, and nothing of it is kept. What is not asked takes the value an ordinary
  * file has: a citizen, a first home, a salary bank nobody named.
  */
+import { eligibilityRank, strictMatch, type Eligibility } from "./strict";
 import type { FinanceType, Match, Obligation, Profile, RecordStanding, Sector, Study } from "./types";
 
 /** The kinds of finance a quick estimate is made for. */
@@ -92,29 +93,53 @@ export function quickProfile(f: QuickFacts): Profile {
 }
 
 /**
- * What a quick estimate says about the client. A file waits when facts are missing; an estimate never
- * does, because the salary bank and the amount asked for are not part of it.
+ * What a quick estimate says about the client: the best result any product gives when read strictly.
+ * An estimate is still an answer about lenders, so it is no surer than their terms are: a product
+ * nobody confirmed never makes the client eligible, and never makes them refused.
  */
-export type QuickVerdict = "eligible" | "conditional" | "not_eligible";
+export type QuickVerdict = Eligibility;
 
-export function quickVerdict(s: Pick<Study, "eligible" | "conditional">): QuickVerdict {
-  if (s.eligible) return "eligible";
-  return s.conditional ? "conditional" : "not_eligible";
+const RESULTS = ["eligible", "conditional", "needs_verification"] as const;
+
+export function quickVerdict(s: Pick<Study, "matches">): QuickVerdict {
+  const given = new Set(s.matches.map((m) => strictMatch(m).eligibility));
+  return RESULTS.find((result) => given.has(result)) ?? "not_eligible";
 }
 
-/** The product that lends the most among those that take the client, the better ranked first on a tie. */
+/** How far a product's answer can be relied on, as a number to order by. */
+function reliance(m: Match): number {
+  const read = strictMatch(m);
+  return eligibilityRank(read.eligibility, read.blockedAsWritten);
+}
+
+/** The products that, as their terms are written, take the client: the ones that can be relied on first, then as the engine ranked them. */
+function open(s: Pick<Study, "matches">): Match[] {
+  return s.matches
+    .filter((m) => m.verdict !== "fail")
+    .map((m, index) => ({ m, index, rank: reliance(m) }))
+    .sort((a, b) => b.rank - a.rank || a.index - b.index)
+    .map(({ m }) => m);
+}
+
+/**
+ * The product the estimate names: among those whose answer can be relied on most, the one that lends
+ * the most, the better ranked first on a tie. The figure said beside the result is this product's,
+ * so a result that is confirmed is never said with the amount of a lender that is not.
+ */
 export function largestOffer(s: Pick<Study, "matches">): Match | null {
+  const offers = open(s);
+  const top = offers[0] ? reliance(offers[0]) : 0;
   let best: Match | null = null;
-  for (const m of s.matches) if (m.verdict !== "fail" && m.maxPrincipal > (best?.maxPrincipal ?? 0)) best = m;
+  for (const m of offers) if (reliance(m) === top && m.maxPrincipal > (best?.maxPrincipal ?? 0)) best = m;
   return best;
 }
 
 /**
  * The products that take the client, in the order an estimate reads them: the one the answer names
- * first, then the rest as the engine ranked them.
+ * first, then the rest, the ones that can be relied on ahead of the others.
  */
 export function openOffers(s: Pick<Study, "matches">): Match[] {
-  const open = s.matches.filter((m) => m.verdict !== "fail");
+  const offers = open(s);
   const top = largestOffer(s);
-  return top ? [top, ...open.filter((m) => m !== top)] : open;
+  return top ? [top, ...offers.filter((m) => m !== top)] : offers;
 }

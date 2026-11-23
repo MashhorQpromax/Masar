@@ -14,7 +14,7 @@
  * Amounts are Saudi riyals, tenors are months, rates are percent a year.
  */
 import type { Blocker, CreditAction, CreditAnalysis, CreditReport, Finding, ParsedReport } from "../credit";
-import type { Capacity, Check, CheckStatus, Limit, Nationality, Obligation, Point, Product, ProductKind, Sector } from "../eligibility";
+import type { Capacity, Check, CheckStatus, Eligibility, Finding as StrictFinding, Limit, Nationality, Obligation, Point, Product, ProductKind, Sector, SourceStrength, Telling, Term } from "../eligibility";
 import type { RecordAfter, RouteCheck } from "../funding";
 
 /** What the client's file says about them, as far as the analysis reads it. */
@@ -102,13 +102,30 @@ export interface Burden {
 /** A condition of a product held against the client: the person and the room from the eligibility engine, the record from the funding rules. */
 export type FitCheck = Exclude<Check, { key: "simah" }> | Extract<RouteCheck, { key: "simah" }>;
 
-/** One lender's product held against the client. */
-export interface Fit {
+/** A condition of a product, with how far its answer can be relied on. */
+export type FitFinding = StrictFinding<FitCheck>;
+
+/**
+ * One lender's product held against the client.
+ *
+ * It is read twice. `status`, `conditions` and `refusals` are what the stored terms say, whoever
+ * confirmed them or nobody. `eligibility` and the lists beside it are the strict reading: an answer
+ * on a term nobody confirmed is no answer yet, whichever way it points.
+ */
+export interface Fit extends Telling<FitFinding> {
   product: Product;
-  /** `fail` when the lender would refuse, `warn` when it takes the client on a condition. */
+  /** As written: `fail` when the lender would refuse, `warn` when it takes the client on a condition. */
   status: CheckStatus;
   conditions: FitCheck[];
   refusals: FitCheck[];
+  /** The result of the strict reading. */
+  eligibility: Eligibility;
+  /** A term nobody confirmed would, as written, refuse the client. */
+  blockedAsWritten: boolean;
+  /** The weakest source the reliable answers rest on. Null when none rests on a lender's term. */
+  strength: SourceStrength | null;
+  /** A term that sets the amount, the months or the rate is not confirmed: the figures are an estimate. */
+  estimated: boolean;
   /** The most it would lend on the room the client has left, in whole thousands. */
   most: number;
   /** The amount asked for when the product covers it, otherwise the most it would lend. */
@@ -124,10 +141,12 @@ export interface Fit {
 export interface Reading {
   record: RecordAfter;
   fits: Fit[];
-  /** Products that take the client as they are. */
+  /** Products that take the client as they are, on confirmed terms. */
   open: number;
-  /** Products that take the client on a condition. */
+  /** Products that take the client once they have done something clear, on confirmed terms. */
   conditional: number;
+  /** Products with no reliable answer yet: a term is unconfirmed or a fact is missing. */
+  unsure: number;
 }
 
 /** One kind of finance: the room for it and the lenders that offer it. */
@@ -160,6 +179,7 @@ export type Gap = { kind: "missing" | "unconfirmed" } & (
   | { code: "REPORT_AGE"; months: number }
   | { code: "READING"; confidence: "medium" | "low"; warnings: number }
   | { code: "SUSPENSION" }
+  /** Products with a term that cannot be relied on today, out of the products studied. */
   | { code: "TERMS"; unverified: number; of: number }
   | { code: "CONSENT" }
 );
@@ -176,16 +196,38 @@ export type Step =
   | { code: "REFRESH_REPORT"; months: number }
   | { code: "FREE_ROOM"; lender: string; kind: Obligation["kind"]; monthly: number }
   | { code: "VERIFY_INCOME" }
-  | { code: "APPLY"; kind: ProductKind; lender: string; product: string; amount: number; installment: number; months: number; conditional: boolean; afterClearing: boolean; verified: boolean };
+  /**
+   * The lender to go to rests on terms nobody confirmed: ask it, and keep the source, before anything
+   * is promised. One step for a lender, whichever kinds of finance it is the one to go to for.
+   * `beforePaying`: the office would pay the client's debts first, so it asks before it pays.
+   */
+  | { code: "CONFIRM_TERMS"; lender: string; kinds: ProductKind[]; terms: Term[]; beforePaying: boolean }
+  | {
+      code: "APPLY";
+      kind: ProductKind;
+      lender: string;
+      product: string;
+      amount: number;
+      installment: number;
+      months: number;
+      /** The lender's result when read strictly. Never `not_eligible`: nobody is sent to a lender that refuses. */
+      eligibility: Eligibility;
+      afterClearing: boolean;
+      /** The result can be relied on and a term that sets the figures cannot. */
+      estimated: boolean;
+    };
 
 /**
- * - `eligible`: a lender takes the client as they are.
- * - `conditional`: a lender takes the client on a condition.
- * - `not_eligible`: no lender takes the client today.
+ * The four results, as the best lender gives them when read strictly, and one more for an analysis
+ * that cannot be read at all.
+ * - `eligible`: a lender takes the client as they are, on confirmed terms. The lender still decides.
+ * - `conditional`: a lender takes the client once they have done something clear.
+ * - `not_eligible`: a confirmed condition stands in the way at every lender. No calculation overrides it.
+ * - `needs_verification`: a lender's term is unconfirmed or a fact is missing, so no reliable answer exists.
  * - `pending`: the analysis has too little to stand on, or the client's consent to it is not on file.
- *   A person has to complete or check it first.
+ *   A person has to complete or check it first. It is said in the same words as `needs_verification`.
  */
-export type AnalysisVerdict = "eligible" | "conditional" | "not_eligible" | "pending";
+export type AnalysisVerdict = Eligibility | "pending";
 
 export interface ClientAnalysis {
   verdict: AnalysisVerdict;

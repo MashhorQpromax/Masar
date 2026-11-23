@@ -2,6 +2,7 @@
 import type { Capacity, Match, QuickVerdict, RecordStanding } from "@/domain/eligibility";
 import { capRuleText } from "./eligibility";
 import { counted, money, months, type CountForms } from "./format";
+import { ELIGIBILITY } from "./funding";
 
 export const RECORD_STANDING: Record<RecordStanding, string> = {
   clean: "نظيف",
@@ -10,17 +11,23 @@ export const RECORD_STANDING: Record<RecordStanding, string> = {
   unknown: "غير معروف",
 };
 
-export const QUICK_VERDICT: Record<QuickVerdict, string> = {
-  eligible: "مؤهل",
-  conditional: "مؤهل بشروط",
-  not_eligible: "غير مؤهل الآن",
+/** An estimate gives the same four results as a file, in the same words. */
+export const QUICK_VERDICT: Record<QuickVerdict, string> = { ...ELIGIBILITY, not_eligible: "غير مؤهل الآن" };
+
+// The lists are sorted by what each lender's recorded terms say. Whether a lender confirmed them is on its row.
+const TAKING: CountForms = { one: "جهة واحدة تقبل بشروطها المسجلة", two: "جهتان تقبلان بشروطهما المسجلة", few: "جهات تقبل بشروطها المسجلة", many: "جهة تقبل بشروطها المسجلة" };
+const OTHERS: CountForms = { one: "جهة أخرى", two: "جهتان أخريان", few: "جهات أخرى", many: "جهة أخرى" };
+const REFUSING: CountForms = {
+  one: "جهة لا تقبل بشروطها المسجلة",
+  two: "جهتان لا تقبلان بشروطهما المسجلة",
+  few: "جهات لا تقبل بشروطها المسجلة",
+  many: "جهة لا تقبل بشروطها المسجلة",
 };
 
-const TAKING: CountForms = { one: "جهة واحدة تقبل", two: "جهتان تقبلان", few: "جهات تقبل", many: "جهة تقبل" };
-const OTHERS: CountForms = { one: "جهة أخرى تقبل", two: "جهتان أخريان تقبلان", few: "جهات أخرى تقبل", many: "جهة أخرى تقبل" };
-const REFUSING: CountForms = { one: "جهة لا تقبل الآن", two: "جهتان لا تقبلان الآن", few: "جهات لا تقبل الآن", many: "جهة لا تقبل الآن" };
+/** What the ways to a better answer are worked out on. */
+export const WAYS_BASIS = "محسوبة على الشروط المسجلة، ولا تُغني عن تأكيدها مع الجهة.";
 
-/** How many products take the client. */
+/** How many products take the client, as their terms are written. */
 export const takingText = (n: number): string => (n ? counted(n, TAKING) : "لا جهة تقبل بهذه الأرقام");
 /** The ones kept under the first few. */
 export const othersText = (n: number): string => counted(n, OTHERS);

@@ -6,8 +6,8 @@ import {
   AFTER_CLEARING,
   ANALYSIS_VERDICT,
   DECISION_SUPPORT,
-  FIT_STATUS,
-  fitCheckText,
+  fitLines,
+  fitRefusalLines,
   floorText,
   GAP_KIND,
   gapText,
@@ -24,6 +24,7 @@ import {
 } from "@/copy/analysis";
 import { CONSENT_WITHDRAWN, GRADE } from "@/copy/credit";
 import { counted, dayFull, dayOfRecord, ltr, money, months, percent, plainMoney } from "@/copy/format";
+import { ELIGIBILITY } from "@/copy/funding";
 import type { Fit, KindFit, Mark, Step } from "@/domain/analysis";
 import { can } from "@/domain/auth";
 import { getAnalysis } from "@/server/analysis/service";
@@ -43,7 +44,8 @@ export const metadata: Metadata = { title: "التحليل الائتماني ·
 
 /** How many commitments the installments come from, as it reads after "من". */
 const FROM_COMMITMENTS = { one: "التزام واحد", two: "التزامين", few: "التزامات", many: "التزاماً" };
-const REFUSING = { one: "منتج واحد لا يقبله", two: "منتجان لا يقبلانه", few: "منتجات لا تقبله", many: "منتجاً لا يقبله" };
+/** As the stored terms read. Each row under it says whether the lender confirmed that or nobody did. */
+const REFUSING = { one: "منتج واحد لا يقبله بشروطه المسجلة", two: "منتجان لا يقبلانه بشروطهما المسجلة", few: "منتجات لا تقبله بشروطها المسجلة", many: "منتجاً لا يقبله بشروطه المسجلة" };
 /** The lenders shown for a kind of finance before the rest is folded. */
 const FITS_SHOWN = 3;
 const MARKS_SHOWN = 6;
@@ -131,6 +133,7 @@ function Marks({ marks, good }: { marks: Mark[]; good?: boolean }) {
 }
 
 function FitRow({ fit, salaryBank }: { fit: Fit; salaryBank: string | null }) {
+  const lines = fitLines(fit);
   return (
     <li className="route an-fit">
       <div className="route-who">
@@ -139,8 +142,8 @@ function FitRow({ fit, salaryBank }: { fit: Fit; salaryBank: string | null }) {
           {fit.product.name}
           {salaryBank != null && fit.product.bankCode === salaryBank && " · بنك راتبه"}
         </small>
-        <span className="route-state" data-status={fit.status}>
-          {FIT_STATUS[fit.status]}
+        <span className="route-state" data-result={fit.eligibility}>
+          {ELIGIBILITY[fit.eligibility]}
         </span>
       </div>
       <dl className="route-figures">
@@ -163,10 +166,10 @@ function FitRow({ fit, salaryBank }: { fit: Fit; salaryBank: string | null }) {
         <small>المبلغ</small>
         <Num value={fit.amount} />
       </p>
-      {fit.conditions.length > 0 && (
+      {lines.length > 0 && (
         <ul className="route-notes">
-          {fit.conditions.map((check, index) => (
-            <li key={index}>{fitCheckText(check)}</li>
+          {lines.map((line, index) => (
+            <li key={index}>{line}</li>
           ))}
         </ul>
       )}
@@ -218,9 +221,9 @@ function KindTile({ k, salaryBank }: { k: KindFit; salaryBank: string | null }) 
           <summary>{counted(closed.length, REFUSING)}</summary>
           <div>
             {closed.map((fit) => (
-              <p key={fit.product.id} className="note" data-level="block">
+              <p key={fit.product.id} className="note" data-level={fit.eligibility === "not_eligible" ? "block" : "ask"}>
                 <span>
-                  <b>{fit.product.lenderName}</b>، {fit.product.name}: {fit.refusals.length ? fit.refusals.map(fitCheckText).join(" ") : "لا يبقى في دخله قسط لها."}
+                  <b>{fit.product.lenderName}</b>، {fit.product.name} · {ELIGIBILITY[fit.eligibility]}: {fitRefusalLines(fit).join(" ")}
                 </span>
               </p>
             ))}
@@ -251,6 +254,8 @@ function stepDoor(step: Step, at: { clientId: number; deal: { id: number; open: 
       return at.deal ? { href: `/deals/${at.deal.id}`, label: "افتح الصفقة" } : null;
     case "VERIFY_INCOME":
       return at.deal ? { href: `/deals/${at.deal.id}/documents`, label: "افتح المستندات" } : null;
+    case "CONFIRM_TERMS":
+      return { href: "/lenders", label: "شروط الجهات" };
     case "APPLY":
       return at.deal?.open ? { href: `/deals/${at.deal.id}/lenders`, label: "جهات الصفقة" } : fresh;
   }
