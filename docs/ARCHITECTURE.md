@@ -346,7 +346,7 @@ Choices the owner has not reviewed: the manager alone approves, the length of a 
 
 ## Fees and the client's net
 
-Phase two of the owner's roadmap. Its first four parts are built; the client sees no fee anywhere until the owner decides whether they should.
+Phase two of the owner's roadmap. Its five parts are built, apart from the tax, the due date and the collection, which wait on the owner's fee answers; the client sees no fee anywhere until the owner decides whether they should.
 
 ### The fee policy
 
@@ -390,6 +390,16 @@ Where it shows:
 - In the client's study message and on their own page, each financing part is said as written when the lender's offer gives it (to the riyal, "بعرض مكتوب من الجهة"), and as near when counted ("نحو …" and "(تقديري)"). What the client keeps is marked the same way. The note under the figures appears only when one of them is an estimate. `ClientFacts` carries each part's certainty and the net's, and still nothing of the fee.
 
 Choices the owner has not reviewed: the lender's admin fee counts as an estimate even with a written offer, since the offer's own fee is not recorded; the valuation has no confirmed state, so the taxes on it stay estimates; the client is told a confirmed amount to the riyal.
+
+### Two scenarios side by side
+
+`/deals/[id]/compare` puts the deal as it stands beside a scenario of it, on the same rows (the mortgage, the personal financing, the obligations, the costs, the office's fee, what the client keeps, and the capital the office puts in), with the difference in riyals on each (`src/domain/deal/compare.ts`). A row that is nothing in both is left out.
+
+- A scenario moves a few levers (`Levers`): the structure, the two percents and the finance base, a discount on the court orders and defaults the company settles (`withDiscount`, which also drops their confirmation: a discounted amount is not what the letter says), a lender's offer, and the valuation. Anything not moved stays as the deal has it (`scenarioInput`).
+- The levers live in the page's address (`src/server/deals/levers.ts`): anything empty, unknown or out of bounds is left as the deal has it, so a scenario never fails. A scenario can be shared and opened again.
+- The page opens on the likeliest scenario: for a deal that does not close, the discount that closes it (from `dealAlternatives`); then the fee at the policy's floor when the deal is above it; then the other structures. These are offered as quick choices above the table, and a form below takes any other.
+- The rows are the same lines the client's net is read on, so both columns add up the same way (checked on every golden case). Beneath, the deal as it stands says which of its lines are confirmed.
+- A scenario changes nothing and is never offered to the client. Nothing is saved or logged.
 
 ## What the office knows about lenders
 

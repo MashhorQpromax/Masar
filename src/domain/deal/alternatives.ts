@@ -54,6 +54,15 @@ const negotiable = (i: DealItem) => i.by === "company" && (i.kind === "execution
 const discounted = (x: DealInput, d: number): DealItem[] =>
   x.items.map((i) => (negotiable(i) ? { ...i, pay: round0(i.pay * (1 - d)) } : i));
 
+/**
+ * The deal's items with a discount share `d` (0.2 is twenty percent) on the court orders and defaults
+ * the company settles, the only amounts a negotiation moves. A discounted amount is no longer what the
+ * creditor's letter says, so it is not confirmed.
+ */
+export function withDiscount(x: Pick<DealInput, "items">, d: number): DealItem[] {
+  return x.items.map((i) => (negotiable(i) && d > 0 ? { ...i, pay: round0(i.pay * (1 - d)), confirmed: false } : i));
+}
+
 /** Alternatives worked out automatically when the current structure does not close. */
 export function dealAlternatives(x: DealInput, b: Borrower, credit?: CreditFlags | null): Alternative[] {
   const current = dealStudy(x, b, credit);

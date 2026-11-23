@@ -154,6 +154,11 @@ export default async function DealPage({ params }: { params: Promise<{ id: strin
           <Link className="edit-link" data-soft href={`/deals/${deal.id}/lenders`}>
             جهات التمويل
           </Link>
+          {!ended && (
+            <Link className="edit-link" data-soft href={`/deals/${deal.id}/compare`}>
+              قارن سيناريو
+            </Link>
+          )}
           {maySeeCredit && (
             <Link className="edit-link" data-soft href={`/deals/${deal.id}/messages`}>
               الرسائل

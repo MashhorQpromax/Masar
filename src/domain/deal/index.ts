@@ -12,3 +12,4 @@ export * from "./borrower";
 export * from "./from-credit";
 export * from "./plan";
 export * from "./net";
+export * from "./compare";

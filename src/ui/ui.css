@@ -1107,6 +1107,142 @@
     color: var(--color-coral-ink);
   }
 
+  /* ---------- Two scenarios side by side ---------- */
+  .cmp {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+  }
+  .cmp-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 14px 28px;
+  }
+  .cmp-head h2 {
+    margin-top: 4px;
+    font-size: 22px;
+    font-weight: 700;
+    line-height: 1.5;
+  }
+  .cmp-presets {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .cmp-presets .chip {
+    background: var(--color-ground);
+    color: var(--color-navy);
+    min-height: 40px;
+    transition: background 0.2s var(--ease-out), color 0.2s var(--ease-out);
+  }
+  .cmp-presets .chip:hover {
+    background: var(--color-dot);
+  }
+  .cmp-presets .chip[aria-current] {
+    background: var(--color-navy);
+    color: #fff;
+  }
+  .cmp-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1.3fr) repeat(3, minmax(0, 1fr));
+    align-items: center;
+    gap: 12px;
+    padding: 13px 0;
+    border-bottom: 1px solid var(--color-line);
+    font-size: 15px;
+  }
+  .cmp-row > span:not(:first-child) {
+    white-space: nowrap;
+    font-weight: 500;
+  }
+  .cmp-row--head {
+    align-items: end;
+    padding-top: 0;
+    border-bottom: 2px solid var(--color-ink);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--color-muted);
+  }
+  .cmp-row--head > span:not(:first-child) {
+    font-weight: 600;
+    white-space: normal;
+  }
+  .cmp-row--head small {
+    display: block;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--color-ink);
+  }
+  .cmp-row[data-row="clientNet"],
+  .cmp-row[data-row="fee"] {
+    font-weight: 700;
+  }
+  .cmp-row[data-row="clientNet"] > span:not(:first-child) {
+    font-size: 18px;
+    font-weight: 700;
+  }
+  .cmp-row [data-deficit="true"] {
+    color: var(--color-coral-ink);
+  }
+  .cmp-diff {
+    color: var(--color-muted);
+  }
+  .cmp-diff[data-sign="1"],
+  .cmp-diff[data-sign="-1"] {
+    color: var(--color-navy);
+  }
+  .cmp-row[data-row="clientNet"] .cmp-diff[data-sign="-1"] {
+    color: var(--color-coral-ink);
+  }
+  .cmp-foot {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px 10px;
+    font-size: 13.5px;
+    line-height: 1.75;
+    color: var(--color-body);
+  }
+  .cmp-own > summary {
+    cursor: pointer;
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    font-size: 17px;
+    font-weight: 600;
+    list-style: none;
+  }
+  .cmp-own > summary::-webkit-details-marker {
+    display: none;
+  }
+  .cmp-form {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 16px;
+    margin-top: 12px;
+  }
+  .cmp-form .fields {
+    align-self: stretch;
+  }
+  @media (max-width: 560px) {
+    .cmp-row {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 4px 10px;
+    }
+    .cmp-row > span:first-child {
+      grid-column: 1 / -1;
+    }
+    .cmp-row--head > span:first-child {
+      display: none;
+    }
+    .cmp-row[data-row="clientNet"] > span:not(:first-child) {
+      font-size: 16px;
+    }
+  }
+
   /* ---------- Confirmed or estimated, beside a figure ---------- */
   /* A written word stands behind it: solid, with a tick. Counted from general terms: a dashed outline. */
   .certain {
