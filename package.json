@@ -20,7 +20,8 @@
     "golden:deal": "tsx legacy/tools/gen-deal-golden.ts",
     "golden:credit": "tsx legacy/tools/gen-credit-golden.ts",
     "golden:simah": "tsx legacy/tools/gen-simah-golden.ts",
-    "golden:eligibility": "tsx legacy/tools/gen-eligibility-golden.ts"
+    "golden:eligibility": "tsx legacy/tools/gen-eligibility-golden.ts",
+    "golden:advisor": "tsx legacy/tools/gen-advisor-golden.ts"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.3.7",

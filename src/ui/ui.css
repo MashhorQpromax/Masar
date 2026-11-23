@@ -5085,6 +5085,539 @@
     }
   }
 
+  /* ---------- Calculator ---------- */
+  /* The few facts on one side and the answer on the other. The facts stay in view while the answer is read. */
+  .calc {
+    display: grid;
+    grid-template-columns: clamp(340px, 30%, 400px) minmax(0, 1fr);
+    gap: 16px;
+    align-items: start;
+  }
+  .calc-form {
+    position: sticky;
+    top: 16px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 18px;
+    max-height: calc(100dvh - 132px);
+    overflow: hidden auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+  }
+  .calc-form .fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px 12px;
+  }
+  /* Half a narrow tile holds seven digits only when the unit steps aside. The labels say what is an amount. */
+  .calc-form .fields .field-suffix[data-money] {
+    display: none;
+  }
+  .calc-form .seg {
+    display: flex;
+    justify-self: stretch;
+  }
+  .calc-form .seg button {
+    flex: 1 1 0;
+    min-height: 46px;
+    font-size: 15px;
+  }
+  /* The salary is the one number every answer starts from, so it is the largest thing in the form. */
+  .calc-salary {
+    display: grid;
+    gap: 6px;
+  }
+  .calc-salary .field-box {
+    min-height: 66px;
+  }
+  .calc-salary .field-input {
+    font-size: 32px;
+    font-weight: 700;
+    padding-block: 6px;
+  }
+  .calc-range {
+    appearance: none;
+    width: 100%;
+    height: 44px;
+    margin: 0;
+    background: transparent;
+    cursor: pointer;
+  }
+  .calc-range::-webkit-slider-runnable-track {
+    height: 8px;
+    border-radius: 999px;
+    background: linear-gradient(to left, var(--color-navy) var(--fill), var(--color-line) var(--fill));
+  }
+  .calc-range::-moz-range-track {
+    height: 8px;
+    border-radius: 999px;
+    background: linear-gradient(to left, var(--color-navy) var(--fill), var(--color-line) var(--fill));
+  }
+  .calc-range::-webkit-slider-thumb {
+    appearance: none;
+    width: 28px;
+    height: 28px;
+    margin-top: -10px;
+    border: 4px solid #fff;
+    border-radius: 50%;
+    background: var(--color-coral);
+    box-shadow: 0 2px 10px rgba(15, 42, 67, 0.28);
+    transition: scale 0.2s var(--ease-spring);
+  }
+  .calc-range::-moz-range-thumb {
+    width: 20px;
+    height: 20px;
+    border: 4px solid #fff;
+    border-radius: 50%;
+    background: var(--color-coral);
+    box-shadow: 0 2px 10px rgba(15, 42, 67, 0.28);
+  }
+  .calc-range:active::-webkit-slider-thumb {
+    scale: 1.15;
+  }
+  .calc-range:focus-visible {
+    outline: none;
+  }
+  .calc-range:focus-visible::-webkit-slider-thumb {
+    box-shadow:
+      0 0 0 3px var(--color-coral),
+      0 2px 10px rgba(15, 42, 67, 0.28);
+  }
+  .calc-more > summary {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 44px;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--color-navy);
+    cursor: pointer;
+    list-style: none;
+  }
+  .calc-more > summary::-webkit-details-marker {
+    display: none;
+  }
+  .calc-more > summary svg {
+    color: var(--color-muted);
+    transition: rotate 0.3s var(--ease-out);
+  }
+  .calc-more[open] > summary svg {
+    rotate: 180deg;
+  }
+  .calc-more > .fields {
+    margin-top: 8px;
+  }
+  .calc-checks {
+    display: grid;
+    margin-top: 12px;
+  }
+
+  .calc-out {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+    min-width: 0;
+    container-type: inline-size;
+  }
+  .calc-out > .tile--verdict {
+    grid-column: auto;
+    grid-row: auto;
+    justify-content: flex-start;
+    gap: 24px;
+  }
+  .calc .verdict-say {
+    font-size: clamp(30px, 3.2vw, 46px);
+  }
+  .calc-at {
+    font-size: 16px;
+    line-height: 1.7;
+    color: var(--color-navy-mist);
+    margin-top: 4px;
+  }
+  .calc-verdict .result-note {
+    margin-top: 0;
+  }
+  .climb-step {
+    animation: pop 0.5s 0.3s var(--ease-out) backwards;
+  }
+
+  /* A month of income as one bar: what is owed, what a new installment may take, what is left to live on. */
+  .split {
+    display: grid;
+    gap: 12px;
+    border-top: 1px solid rgba(255, 255, 255, 0.14);
+    padding-top: 20px;
+  }
+  .split-head {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    font-size: 14px;
+    color: #8fa1b3;
+  }
+  .split-head .num {
+    font-size: 18px;
+    font-weight: 600;
+    color: #fff;
+  }
+  .split-bar {
+    display: flex;
+    gap: 4px;
+    height: 20px;
+  }
+  .split-bar span {
+    flex: 0 1 auto;
+    min-width: 10px;
+    border-radius: 8px;
+    transition: flex-basis 0.6s var(--ease-out);
+  }
+  .split-bar span[data-none] {
+    display: none;
+  }
+  .split-bar [data-part="owed"] {
+    background: #5b7894;
+  }
+  .split-bar [data-part="room"] {
+    background: var(--color-sun);
+  }
+  .split-bar [data-part="left"] {
+    flex: 1 1 0;
+    background: rgba(255, 255, 255, 0.14);
+  }
+  .split-legend {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px 24px;
+  }
+  .split-legend dt {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: #8fa1b3;
+  }
+  .split-legend dt::before {
+    content: "";
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex: none;
+    background: rgba(255, 255, 255, 0.22);
+  }
+  .split-legend [data-part="owed"] dt::before {
+    background: #5b7894;
+  }
+  .split-legend [data-part="room"] dt::before {
+    background: var(--color-sun);
+  }
+  .split-legend dd {
+    font-size: 24px;
+    font-weight: 600;
+    line-height: 1.4;
+    text-align: right;
+  }
+  .split-rule {
+    font-size: 13px;
+    line-height: 1.7;
+    color: #8fa1b3;
+  }
+
+  /* Who takes the client: the name, what it costs every month, and the amount at the end of the line. */
+  .calc-lenders .route {
+    grid-template-columns: minmax(0, 1.25fr) minmax(0, 2fr) minmax(0, 0.9fr);
+  }
+  .calc-lenders .route-figures {
+    gap: 12px 28px;
+  }
+  .calc-lenders .more > summary {
+    color: var(--color-body);
+  }
+  .calc-lenders .routes + .more,
+  .calc-lenders .more + .more {
+    border-top: 1px solid var(--color-line);
+    padding-top: 6px;
+  }
+  .calc-lenders > .label + .more {
+    margin-top: 10px;
+  }
+  .calc-rest[open] {
+    padding-top: 0;
+  }
+  .calc-rest > .routes {
+    margin-top: 0;
+  }
+  .calc-terms {
+    margin-top: 10px;
+    padding-top: 14px;
+    border-top: 1px solid var(--color-line);
+    font-size: 13px;
+    line-height: 1.7;
+    color: var(--color-muted);
+  }
+  .calc-lenders > .label + .calc-terms {
+    border-top: 0;
+    padding-top: 0;
+  }
+
+  .calc-pair {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(340px, 100%), 1fr));
+    gap: 16px;
+    align-items: start;
+  }
+  .calc-pair > .tile--notes {
+    grid-column: auto;
+  }
+  /* A way to a larger amount: what to do, and what it adds. Its steps open under it. */
+  .lift + .lift {
+    border-top: 1px solid var(--color-line);
+  }
+  .lift > summary {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    align-items: center;
+    gap: 4px 14px;
+    min-height: 68px;
+    padding: 10px 0;
+    cursor: pointer;
+    list-style: none;
+  }
+  .lift > summary::-webkit-details-marker,
+  .cond > summary::-webkit-details-marker {
+    display: none;
+  }
+  .lift > summary svg,
+  .cond > summary svg {
+    flex: none;
+    color: var(--color-muted);
+    transition: rotate 0.3s var(--ease-out);
+  }
+  .lift[open] > summary svg,
+  .cond[open] > summary svg {
+    rotate: 180deg;
+  }
+  .lift-what b {
+    display: block;
+    font-size: 16px;
+    font-weight: 600;
+    line-height: 1.5;
+  }
+  .lift-what small,
+  .lift-gain small {
+    display: block;
+    font-size: 12.5px;
+    color: var(--color-muted);
+  }
+  .lift-gain {
+    text-align: left;
+    white-space: nowrap;
+  }
+  .lift-gain b {
+    display: block;
+    font-size: 21px;
+    font-weight: 700;
+    line-height: 1.35;
+  }
+  .lift-more {
+    display: grid;
+    gap: 10px;
+    padding-bottom: 18px;
+    font-size: 14px;
+    line-height: 1.8;
+    color: var(--color-body);
+    animation: rise 0.4s var(--ease-out);
+  }
+  .lift-more ol {
+    display: grid;
+    gap: 6px;
+    counter-reset: step;
+  }
+  .lift-more li {
+    display: flex;
+    gap: 10px;
+    color: var(--color-ink);
+  }
+  .lift-more li::before {
+    counter-increment: step;
+    content: counter(step);
+    display: grid;
+    place-items: center;
+    flex: none;
+    width: 22px;
+    height: 22px;
+    margin-top: 2px;
+    border-radius: 50%;
+    background: var(--color-ground);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--color-navy);
+  }
+  /* What a lender may ask for beyond its terms. The reason and what to do open under each. */
+  .calc-asks {
+    gap: 0;
+  }
+  .calc-asks > .label {
+    margin-bottom: 6px;
+  }
+  .cond + .cond {
+    border-top: 1px solid rgba(122, 90, 0, 0.14);
+  }
+  .cond > summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    min-height: 50px;
+    padding: 6px 0;
+    cursor: pointer;
+    list-style: none;
+  }
+  .cond > summary svg {
+    color: var(--color-sun-ink);
+  }
+  .cond .note {
+    font-weight: 500;
+  }
+  .cond .note small {
+    display: inline-block;
+    margin-inline-start: 8px;
+    padding: 0 10px;
+    border-radius: 999px;
+    background: rgba(122, 90, 0, 0.1);
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--color-sun-ink);
+  }
+  .cond .note[data-level="block"] small {
+    background: var(--color-coral-soft);
+    color: var(--color-coral-ink);
+  }
+  .cond-more {
+    display: grid;
+    gap: 8px;
+    padding: 0 20px 16px;
+    font-size: 14px;
+    line-height: 1.8;
+    color: var(--color-navy);
+    animation: rise 0.4s var(--ease-out);
+  }
+  .cond-more b {
+    font-weight: 600;
+    color: var(--color-sun-ink);
+  }
+  .calc-bar {
+    display: none;
+  }
+
+  /* Beside the form on a laptop the answer column is narrow: the drawing gives its corner to the figure. */
+  @container (max-width: 860px) {
+    .calc .verdict-art {
+      display: none;
+    }
+    .calc .verdict-text > .label,
+    .calc .verdict-say {
+      padding-inline-end: 0;
+    }
+  }
+  /* Narrower still, and on a phone, a lender takes two lines: the name and the amount, then what it costs. */
+  @container (max-width: 700px) {
+    .calc-lenders .route {
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 10px 16px;
+    }
+    .calc-lenders .route-who {
+      grid-column: 1;
+      grid-row: 1;
+    }
+    .calc-lenders .route-keep {
+      grid-column: 2;
+      grid-row: 1;
+      text-align: left;
+    }
+    .calc-lenders .route-figures {
+      grid-column: 1 / -1;
+      grid-row: 2;
+      gap: 10px 28px;
+    }
+    .calc-lenders .route-figures dd {
+      font-size: 18px;
+    }
+  }
+  @container (max-width: 520px) {
+    .split-legend {
+      gap: 10px 12px;
+    }
+    .split-legend dd {
+      font-size: 19px;
+    }
+    .split-legend dt {
+      font-size: 12px;
+      gap: 6px;
+    }
+  }
+  @media (max-width: 1000px) {
+    /* A block, not a grid: the bar must be free to follow the whole calculator down the screen. */
+    .calc {
+      display: block;
+    }
+    .calc > * + * {
+      margin-top: 12px;
+    }
+    .calc-form {
+      position: static;
+      max-height: none;
+      overflow: visible;
+    }
+    .calc-out {
+      gap: 12px;
+    }
+    .calc-pair {
+      gap: 12px;
+    }
+    /* What the numbers give, in sight while they are typed. */
+    .calc-bar {
+      position: sticky;
+      top: 8px;
+      z-index: 20;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      min-height: 52px;
+      padding: 6px 20px;
+      border-radius: 20px;
+      background: var(--color-navy);
+      box-shadow: 0 12px 28px rgba(15, 42, 67, 0.28);
+      font-size: 13.5px;
+      color: var(--color-navy-mist);
+    }
+    .calc-bar b {
+      font-size: 24px;
+      font-weight: 700;
+      color: var(--color-sun);
+    }
+    .calc-bar[data-verdict="short"] span {
+      font-size: 15px;
+      font-weight: 600;
+      color: #fff;
+    }
+  }
+  @media (max-width: 560px) {
+    .calc-salary .field-input {
+      font-size: 28px;
+    }
+    .lift-gain b {
+      font-size: 19px;
+    }
+    .cond-more {
+      padding-inline: 20px 0;
+    }
+  }
+  @media (max-width: 359px) {
+    .calc-form .fields {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+
   /* ---------- Small screens ---------- */
   @media (max-width: 900px) {
     .page {

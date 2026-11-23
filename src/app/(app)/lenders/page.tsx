@@ -9,6 +9,7 @@ import { getDb } from "@/server/db/client";
 import { listCatalogue } from "@/server/lenders/service";
 import { ChevronIcon } from "@/ui/icons";
 import { Num } from "@/ui/Num";
+import { LendersNav } from "./LendersNav";
 import { ProductForm } from "./ProductForm";
 
 export const dynamic = "force-dynamic";
@@ -72,6 +73,7 @@ export default async function LendersPage() {
           </p>
         </div>
       </div>
+      <LendersNav current="/lenders" />
 
       {!catalogue.length ? (
         <section className="empty">

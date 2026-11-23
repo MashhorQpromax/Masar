@@ -18,7 +18,9 @@ src/
                means for banks and finance companies.
     auth/      The four roles, what each may do, and the rule a new password must meet.
     clients/   Where a file stands, and the check of an identity number.
-    eligibility/ What SAMA's rules leave in an income, and what each lender's product would give.
+    eligibility/ What SAMA's rules leave in an income, what each lender's product would give,
+               what a lender may ask for beyond its terms, the ways to a larger amount,
+               and the profile a quick estimate is made from.
     funding/   Which lender funds the new financing of a bridge deal.
     documents/ What a client's file needs today and where each paper stands.
     messages/  What may be said to a client and what a client may be told.
@@ -158,6 +160,16 @@ The numbers are locked to the old engine by `npm run golden:eligibility`. Old be
 
 One thing changed on purpose: the old list of documents could name a paper twice (a self-employed client asking for project finance), and the old screen then stored it twice. The new list names each paper once.
 
+### The advisor and the calculator
+
+`advisor.ts` says what the formula does not. `hiddenConditions` lists what a lender may ask for or hold against the client that no term of a product shows: 26 conditions, each with a level (`block`, `warn`, `info`) and a source (SAMA or market practice). `waysOut` lists the ways to a larger amount, and each one is the engine run again on the changed profile, so its effect is a number: paying off or selling one debt, one lender buying them all, the longest term, a co-borrower (with the smallest income that covers what is asked, found by search), housing support, a clean record, a term that ends at retirement. `advise` is the study with both. The sentences are in `src/copy/advisor.ts`.
+
+Both are locked to the old advisor by `npm run golden:advisor`: 360 clients against the seeded catalogue, every condition with its level, source and numbers, and every way with its amount, gain, verdict and numbers. The alerts the old advisor took from a credit report (`credit_block`, `credit_warn`, `credit_fc`, `credit_clear`) were not ported: the credit record screen says them, from the record itself.
+
+`quick.ts` builds the profile of a quick estimate from the few facts a person has on the phone (`quickProfile`), as the old calculator did: a citizen with no salary bank named, a basic salary taken as 70 percent of the total when it is not typed, and what is paid every month as one consumer installment and one mortgage installment. An estimate never waits for facts, so its verdict comes from who takes the client (`quickVerdict`).
+
+The calculator is `/lenders/calculator`. Anyone who works in the office may open it. The page reads the catalogue once, and the engine then runs in the browser as each number is typed: nothing typed there is sent or kept. It shows the verdict and the largest amount, a month of income in three parts (what is owed, what a new installment may take, what is left), the lenders that take the client with what each costs, the ones that refuse with the first reason, the first five ways out and the first five conditions. `/lenders` and the calculator share one row of links (`LendersNav`).
+
 ## Funding routes
 
 `src/domain/funding` answers the question a bridge deal ends with: which lender funds the new financing. It is new, not a port: the old system matched products to a client and studied deals apart, and the two disagreed about a client whose default was just paid.
@@ -242,7 +254,7 @@ Old module (under `legacy/lib`) and its state in the rebuild:
 - [x] keeping the uploaded PDF with the client's documents: `keepFile` under the `simah` paper
 - [ ] importing commitments from a report, and suggesting a new deal's items from it in the editor (`itemDrafts` is ready)
 - [ ] `project.ts` project finance
-- [ ] `advisor.ts`
+- [x] `advisor.ts` hidden conditions and ways to a larger amount: `src/domain/eligibility/advisor.ts`, `src/copy/advisor.ts`, locked by `tests/golden/advisor.json` (360 clients). Its alerts from a credit report were left to the credit record screen
 - [x] `whatsapp.ts`, `wa-cloud.ts` messages and Meta Cloud API: `src/domain/messages`, `src/copy/messages.ts`, `src/server/messages`, `/deals/[id]/messages`, `/api/wa/webhook` (migration `0004_messages_links`)
 - [x] `auth.ts`, `totp.ts` sign-in with a password, sessions, roles and permissions, lockouts, the authenticator as a second step and as a code: `src/domain/auth`, `src/server/auth`, the `/login` screen
 - [x] `auth-methods.ts` passkeys, enrolling an authenticator, changing a password and signing other devices out: `src/server/auth/passkeys.ts`, `account.ts`, the `/account` screen
@@ -259,7 +271,8 @@ Old module (under `legacy/lib`) and its state in the rebuild:
 - [x] the client portal, where the client follows their file and uploads their own papers: `/s/[token]`, `src/server/messages/portal.ts`
 - [x] screens: clients, a client's file, the inbox
 - [x] managing accounts from `auth.ts` and `actions.ts`, and the audit log: `src/server/auth/users.ts`, `src/domain/audit`, `src/server/audit`, `/users`, `/audit`
-- [ ] screens still to build: calculator, knowledge
+- [x] the calculator: `src/domain/eligibility/quick.ts`, `src/copy/calculator.ts`, `/lenders/calculator`
+- [ ] screens still to build: knowledge
 - [ ] data migration from the live database, then the domain switch (only after the owner approves)
 
-To regenerate a golden file while `legacy/` still exists: `npm run golden:deal`, `npm run golden:credit`, `npm run golden:simah`. Each generator is seeded, so it writes the same file every time.
+To regenerate a golden file while `legacy/` still exists: `npm run golden:deal`, `npm run golden:credit`, `npm run golden:simah`, `npm run golden:eligibility`, `npm run golden:advisor`. Each generator is seeded, so it writes the same file every time.
