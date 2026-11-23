@@ -14,6 +14,8 @@ const PERMISSIONS = {
   "deal.edit": ["admin", "analyst", "officer"],
   /** Setting a deal's fee away from what it had, with the reason. Whoever may change a deal sees its fee; this changes it. */
   "fee.set": ["admin", "analyst"],
+  /** Approving a deal's fee plan: the office's fee and what the client keeps, signed. The manager's alone until the owner says otherwise. */
+  "fee.approve": ["admin"],
   /** Approving a client's analysis: the office's recommendation, signed. Until the owner says otherwise, the manager's alone. */
   "study.approve": ["admin"],
   "doc.upload": ["admin", "analyst", "officer"],

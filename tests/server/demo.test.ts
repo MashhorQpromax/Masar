@@ -10,7 +10,8 @@ import type { Connection } from "@/server/db/client";
 import { getDeal } from "@/server/deals/service";
 import { roadView } from "@/server/deals/views";
 import { DEMO_ANSWERED, DEMO_BANK, DEMO_COMPANY, DEMO_PAPER, DEMO_WORD, seedDemoLenders } from "@/server/demo/lenders";
-import { DEMO_APPROVED, DEMO_FALLEN, DEMO_REASON, seedDemoApprovals } from "@/server/demo/approvals";
+import { DEMO_APPROVED, DEMO_FALLEN, DEMO_PLAN_FELL, DEMO_PLAN_STANDS, DEMO_REASON, seedDemoApprovals, seedDemoPlans } from "@/server/demo/approvals";
+import { planApprovalsOf, planOf } from "@/server/deals/plan";
 import { seedDemo } from "@/server/demo/seed";
 import { relyOnPaper } from "@/server/documents/facts";
 import { getPapers } from "@/server/documents/service";
@@ -341,6 +342,19 @@ describe("the demonstration's approvals", () => {
       // Seeding again adds nothing.
       await seedDemoApprovals(fresh.db, now);
       expect(await of(DEMO_APPROVED)).toHaveLength(1);
+
+      // And the fee plans: one stands, one fell when the client was left another amount.
+      await seedDemoPlans(fresh.db, now);
+      const plans = async (fileNo: string) => {
+        const client = (await listClients(fresh.db, { q: fileNo })).rows.find((row) => row.fileNo === fileNo)!;
+        const view = (await getDeal(fresh.db, { dealId: client.deal!.id, now }))!;
+        return planApprovalsOf(fresh.db, { dealId: view.deal.id, now: planOf(view.input, view.study) });
+      };
+      expect((await plans(DEMO_PLAN_STANDS)).map((p) => p.stands)).toEqual([true]);
+      const fell = await plans(DEMO_PLAN_FELL);
+      expect(fell.map((p) => [p.stands, p.moves.figures.map((f) => [f.name, f.then - f.now])])).toEqual([[false, [["clientNet", 4000]]]]);
+      await seedDemoPlans(fresh.db, now);
+      expect(await plans(DEMO_PLAN_STANDS)).toHaveLength(1);
     } finally {
       await fresh.close();
     }

@@ -17,6 +17,7 @@ import {
 import { GRADE } from "@/copy/credit";
 import { missingText } from "@/copy/documents";
 import { differenceText } from "@/copy/editor";
+import { feeText, planLine, planState } from "@/copy/fees";
 import { counted, days, dayShort, dueIn, ltr, money, percent, plainMoney } from "@/copy/format";
 import {
   dealAlternatives,
@@ -33,6 +34,7 @@ import { can } from "@/domain/auth";
 import { requireActor } from "@/server/auth/actor";
 import { getDb } from "@/server/db/client";
 import { borrowerOf } from "@/server/deals/mapping";
+import { planApprovalsOf, planOf } from "@/server/deals/plan";
 import { getDeal } from "@/server/deals/service";
 import { papersOf } from "@/server/documents/service";
 import { BackIcon, ChevronIcon, PenIcon } from "@/ui/icons";
@@ -40,6 +42,7 @@ import { Num } from "@/ui/Num";
 import { SubmitButton } from "@/ui/SubmitButton";
 import { reportOffer } from "../report-offer";
 import { moveDealStage } from "./actions";
+import { ApprovePlan } from "./ApprovePlan";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "ملف الصفقة · مسار" };
@@ -75,6 +78,12 @@ export default async function DealPage({ params }: { params: Promise<{ id: strin
       ? dealAlternatives(input, borrowerOf(client, now), view.creditFlags).sort((a, b) => TONE_ORDER[a.tone] - TONE_ORDER[b.tone])
       : [];
   const bestWay = alternatives.find((a) => a.tone === "good") ?? alternatives.find((a) => a.tone === "maybe");
+
+  // The fee plan is held against the deal as it stands: an approval stands only while its numbers print the same.
+  const mayApprovePlan = can(me.role, "fee.approve");
+  const current = planOf(input, study);
+  const planLog = await planApprovalsOf(db, { dealId: deal.id, now: current });
+  const planSaid = planState({ latest: planLog[0] ?? null, closing: closes, may: mayApprovePlan });
 
   const plan: Stage[] = stagesFor(deal.structure)
     .map((s) => s.stage)
@@ -372,6 +381,31 @@ export default async function DealPage({ params }: { params: Promise<{ id: strin
             </div>
           </section>
         )}
+
+        <section className="tile tile--wide an-approval" data-state={planSaid.state}>
+          <div>
+            <p className="label">اعتماد خطة الأتعاب</p>
+            <h2>{planSaid.title}</h2>
+            <p className="due">{planSaid.text}</p>
+            <small className="an-why">{feeText(input.fee)}</small>
+          </div>
+          {mayApprovePlan && !ended && closes && planSaid.state !== "stands" && <ApprovePlan key={current.print} dealId={deal.id} />}
+          {planLog.length > 0 && (
+            <details className="more">
+              <summary>سجل اعتماد الأتعاب ({ltr(planLog.length)})</summary>
+              <div>
+                {planLog.map((entry) => (
+                  <p key={entry.id} className="note" data-level={entry.stands ? "good" : undefined}>
+                    <span>
+                      {planLine(entry)}
+                      <small className="an-why">{feeText(entry.plan.fee)}</small>
+                    </span>
+                  </p>
+                ))}
+              </div>
+            </details>
+          )}
+        </section>
 
         <details className="tile tile--wide ledger">
           <summary>

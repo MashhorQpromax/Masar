@@ -19,7 +19,7 @@ export const AUDIT_AREAS = {
     "user.sessions_end",
   ],
   clients: ["client.create", "client.update", "client.contact", "client.note", "client.consent", "client.condition_answer", "client.fact_rely", "study.approve", "client.reject", "client.reopen", "credit.report_add", "credit.report_review", "project.save"],
-  deals: ["deal.save", "deal.fee", "deal.stage", "deal.route", "settings.fees"],
+  deals: ["deal.save", "deal.fee", "deal.fee_approve", "deal.stage", "deal.route", "settings.fees"],
   papers: ["doc.upload", "doc.remove", "doc.move", "doc.review", "doc.state", "doc.add", "doc.drop", "doc.open"],
   messages: ["wa.send", "wa.handled", "link.open", "link.close"],
   lenders: ["lender.add", "lender.product_add", "lender.product_update", "lender.product_switch", "lender.terms_confirm", "lender.terms_withdraw", "lender.condition_add", "lender.condition_remove", "lender.rule_add", "lender.rule_archive", "lender.decision"],

@@ -10,7 +10,7 @@ import { STAGE } from "./deal";
 import { feeText, policyText } from "./fees";
 import type { PaperFact } from "@/domain/eligibility";
 import { factValue, PAPER_STATUS, paperLabel, sourcePaper, statedLine } from "./documents";
-import { counted, dayFull, dayLong, dayOfIso, days, ltr, type CountForms } from "./format";
+import { counted, dayFull, dayLong, dayOfIso, days, ltr, money, type CountForms } from "./format";
 import { FINANCE_TYPE, PAPER_FACT, SPECIAL_KIND } from "./eligibility";
 import { DECISION, PART, RULE_KIND } from "./knowledge";
 import { LENDER_TYPE, SOURCE_KIND } from "./lenders";
@@ -58,6 +58,7 @@ const AUDIT_ACTION: Record<AuditAction, string> = {
   "project.save": "حفظ دراسة مشروع",
   "deal.save": "حفظ أرقام الصفقة",
   "deal.fee": "تعديل أتعاب الصفقة",
+  "deal.fee_approve": "اعتماد خطة الأتعاب",
   "settings.fees": "تغيير سياسة الأتعاب",
   "deal.stage": "نقل الصفقة",
   "deal.route": "اعتماد جهة التمويل",
@@ -265,6 +266,12 @@ export function auditDetail(action: string, details: Record<string, unknown> | n
       const before = keptFee(d.before);
       const after = keptFee(d.after);
       return joined([before && after && `من ${feeText(before)} إلى ${feeText(after)}`, text(d.reason)]);
+    }
+    case "deal.fee_approve": {
+      const fee = keptFee(d.fee);
+      const amount = number(d.amount);
+      const net = number(d.clientNet);
+      return joined([amount != null && `أتعاب ${money(amount)}`, net != null && `يبقى للعميل ${money(net)}`, fee && feeText(fee)]);
     }
     case "settings.fees": {
       const before = keptPolicy(d.before);

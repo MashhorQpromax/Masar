@@ -86,11 +86,12 @@ async function open(): Promise<Connection> {
   await connection.migrate();
   const { seedDemo } = await import("../demo/seed");
   const { seedDemoLenders } = await import("../demo/lenders");
-  const { seedDemoApprovals } = await import("../demo/approvals");
+  const { seedDemoApprovals, seedDemoPlans } = await import("../demo/approvals");
   const now = new Date();
   await seedDemo(connection.db, now);
   await seedDemoLenders(connection.db, now);
   await seedDemoApprovals(connection.db, now);
+  await seedDemoPlans(connection.db, now);
   return connection;
 }
 

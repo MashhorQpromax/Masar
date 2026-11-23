@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { auditDetail } from "@/copy/audit";
 import { FEE_REFUSALS, saveError } from "@/copy/editor";
-import { feeText, policyError, policyText, POLICY_PROBLEMS, rangeText } from "@/copy/fees";
+import { feeText, movesText, planError, planLine, planState, PLAN_REFUSALS, policyError, policyText, POLICY_PROBLEMS, rangeText } from "@/copy/fees";
 import { DEFAULT_POLICY, policyFee } from "@/domain/deal";
 
 const plain = (text: string) => text.replace(/[⁦⁩]/g, "");
@@ -40,5 +40,27 @@ describe("the wording of fees", () => {
     const policy = auditDetail("settings.fees", { before: DEFAULT_POLICY, after: { ...DEFAULT_POLICY, max: 30 } });
     expect(plain(policy)).toContain("صارت: تبدأ كل صفقة جديدة بـ 10% على السداد و10% على كامل التمويل. الحدود من 10% إلى 30%.");
     expect(policy).not.toMatch(wordy);
+  });
+
+  it("tells a fee plan that stands with who, when and what it comes to, and one that fell with what moved", () => {
+    const at = new Date("2026-11-23T09:00:00Z");
+    const plan = { amounts: { settle: 14000, finance: 92000, fixed: 0, total: 106000 }, clientNet: 222000 };
+    const stands = planState({ latest: { by: "سارة", at, plan, stands: true, moves: { figures: [], fee: [] } }, closing: true, may: true });
+    expect(stands.state).toBe("stands");
+    expect(plain(stands.text)).toMatch(/^اعتمدها سارة في .+: أتعاب 106,000، ويبقى للعميل 222,000\. تسقط إن تغيّر رقم في الصفقة\.$/);
+    const moves = { figures: [{ name: "fee" as const, then: 106000, now: 104000 }, { name: "clientNet" as const, then: 222000, now: 204000 }], fee: [] };
+    const fell = planState({ latest: { by: null, at, plan, stands: false, moves }, closing: true, may: true });
+    expect(plain(fell.text)).toBe("تغيّر منذ اعتمادها أتعاب المكتب من 106,000 إلى 104,000، وما يبقى للعميل من 222,000 إلى 204,000. الاعتماد يحفظ منها نسخة لا تتغير.");
+    expect(movesText({ figures: [], fee: ["settlePct"] })).toBe("الأتعاب نفسها");
+    expect(planState({ latest: null, closing: false, may: true }).text).toBe("لا تُعتمد صفقة لا تُغلق: فيها عجز، أو ينقصها ما يُحكم به.");
+    expect(planState({ latest: null, closing: true, may: false })).toEqual({ state: "none", title: "خطة الأتعاب غير معتمدة", text: "يعتمدها مدير النظام." });
+    expect(plain(planLine({ by: null, at, plan, stands: false }))).toMatch(/^.+ · حساب محذوف · أتعاب 106,000 · للعميل 222,000 · سقط$/);
+  });
+
+  it("words every refusal of a plan, and logs an approval with the fee and what the client keeps", () => {
+    for (const reason of PLAN_REFUSALS) expect(planError("PLAN_REFUSED", { reason })).not.toMatch(wordy);
+    expect(planError("FORBIDDEN")).toBe("اعتماد الأتعاب لمدير النظام وحده.");
+    const detail = auditDetail("deal.fee_approve", { fee: policyFee(DEFAULT_POLICY), amount: 106000, clientNet: 222000 });
+    expect(plain(detail)).toBe("أتعاب 106,000، يبقى للعميل 222,000، 10% على السداد و10% على كامل التمويل");
   });
 });

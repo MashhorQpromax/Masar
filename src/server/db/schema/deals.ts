@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { boolean, index, integer, text, unique, uniqueIndex } from "drizzle-orm/pg-core";
+import { boolean, index, integer, jsonb, text, unique, uniqueIndex } from "drizzle-orm/pg-core";
 import { at, createdAt, id, masar, money, percent } from "./_shared";
 import { clients } from "./clients";
 import { users } from "./identity";
@@ -127,4 +127,27 @@ export const dealStageEvents = masar.table(
     createdAt: createdAt(),
   },
   (t) => [index("deal_stage_events_deal_idx").on(t.dealId, t.createdAt)],
+);
+
+/**
+ * A deal's fee plan as the manager approved it: a copy that never changes. The approval stands while
+ * the deal's numbers print the same; a later change drops it, and approving again adds a new copy.
+ */
+export const feeApprovals = masar.table(
+  "fee_approvals",
+  {
+    id: id(),
+    dealId: integer()
+      .notNull()
+      .references(() => deals.id, { onDelete: "cascade" }),
+    userId: integer().references(() => users.id, { onDelete: "set null" }),
+    /** The approver's name as it was, so the log reads the same after their account is gone. */
+    approver: text(),
+    /** The print of everything the plan rests on: the deal's inputs and what the engine made of them. */
+    print: text().notNull(),
+    /** The plan as approved: `FeePlan`. */
+    plan: jsonb().$type<Record<string, unknown>>().notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [index("fee_approvals_deal_idx").on(t.dealId)],
 );

@@ -363,6 +363,17 @@ Choices the owner has not reviewed: the analyst may set a fee; ten characters of
 
 Four bases (`FinanceBase`): all the new financing, the personal part, the mortgage part, and `net`, what is left of the financing once every obligation the deal settles (by the office or by the lender) and every cost (the lender's admin fee, the taxes, the fixed costs) is paid, before the office's fee. It is the summary's `afterSettle`, now worked out once before the fee and reused, and it is never below nothing: a deal with nothing left pays no finance percent. The first three are locked to the old engine by the golden tests; the fourth is new (migration `0011` adds it to `finance_base`) and is checked by hand in `tests/domain/deal.examples.test.ts`.
 
+### Approving the fee plan
+
+The manager approves a deal's fee plan (`fee.approve`; `src/domain/deal/plan.ts`, `src/server/deals/plan.ts`, table `fee_approvals`, migration `0012`). What is kept is a copy that never changes (`FeePlan`): the fee as set, what each part comes to and on what, the new financing, the capital, what is left before the fee, what the client keeps, and the verdict. Beside it is the print of everything it rests on: every input of the deal but its notes, and every line the engine worked out (`planOf`), so a change anywhere the numbers come from drops the approval, a fact about the client that moves the estimate included. The office's policy changing does not: a saved deal keeps its fee.
+
+- A deal that does not close (a deficit, or a valuation still missing) is not approved (`NOT_CLOSING`): a deal with a deficit is a rejected file. A deal already approved as it stands is not approved twice (`STANDS`). A finished deal is not approved at all.
+- When it falls, the deal's page says what moved (`planMoves`: the fee, what the client keeps, the financing, the capital, each from and to, or the fee's own parts), and the manager approves again. The new copy sits beside the old in the log, newest first; nothing is deleted.
+- Logged as `deal.fee_approve` with the fee, what it comes to and what the client keeps.
+- The tile sits on `/deals/[id]` above the step-by-step account. In the demonstration one invented deal's plan stands and another's fell (`seedDemoPlans`).
+
+Nothing of the plan reaches a client yet. Whether a client sees the fee waits on the owner; when it does, it will be the approved copy that is shown.
+
 ## What the office knows about lenders
 
 A lender's terms say what it publishes. `src/domain/knowledge` holds what the office learned beyond them, in two kinds:

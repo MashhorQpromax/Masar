@@ -1,7 +1,6 @@
 import "server-only";
-import { createHash } from "node:crypto";
 import { desc, eq } from "drizzle-orm";
-import { analyzeClient, approvalBasis, canonical, reportAgeMonths, type ClientAnalysis, type FileConflict, type FileFacts, type Fingerprint } from "@/domain/analysis";
+import { analyzeClient, approvalBasis, reportAgeMonths, type ClientAnalysis, type FileConflict, type FileFacts, type Fingerprint } from "@/domain/analysis";
 import { contractOf, PRODUCT_KINDS, SECTORS, type Answer, type ProductKind, type Sector } from "@/domain/eligibility";
 import { answersOf } from "../clients/conditions";
 import type { ClientRow } from "../clients/service";
@@ -10,6 +9,7 @@ import type { Db } from "../db/client";
 import { clients, deals, lenders } from "../db/schema";
 import { conflictsOf, fileStanding } from "../documents/facts";
 import { listProducts } from "../lenders/service";
+import { printOf } from "../shared/print";
 import { riyadhDay } from "../shared/clock";
 
 const ENDED = ["closed", "lost"];
@@ -54,8 +54,7 @@ export interface AnalysisView {
   fingerprint: Fingerprint | null;
 }
 
-/** The print of a value: equal values, equal prints. */
-export const printOf = (value: unknown): string => createHash("sha256").update(canonical(value)).digest("hex").slice(0, 32);
+export { printOf };
 
 /**
  * A client's credit and financial analysis, worked out now from what is stored: the file, the newest
