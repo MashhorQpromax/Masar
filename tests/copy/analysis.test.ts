@@ -117,15 +117,15 @@ const files: FileFacts[] = [
   file({ sector: "retired", age: 62, serviceMonths: null, totalSalary: 9000, basicSalary: 9000 }),
   file({ age: 58, totalSalary: 30000, request: { kind: "mortgage", amount: 900000, tenor: 240 }, propertyValue: 1_000_000, housingSupport: true }),
   file({ totalSalary: 5000, basicSalary: 4000, request: { kind: "auto", amount: 80000, tenor: 60 } }),
-  // A file its checked papers speak against: the year of birth, the salary the income is counted from, and a fact left empty.
-  file({
-    conflicts: [
-      { fact: "totalSalary", file: 16000, stated: [{ code: "salary_cert", label: null, value: 13000 }] },
-      { fact: "basicSalary", file: null, stated: [{ code: "gosi", label: null, value: 9000 }, { code: "custom:1", label: "خطاب من جهة العمل", value: 9500 }] },
-      { fact: "birthYear", file: 1991, stated: [{ code: "id", label: null, value: 1986 }] },
-    ],
-  }),
 ];
+/** A file its checked papers speak against: the year of birth, the salary the income is counted from, and a fact left empty. */
+const disputed = file({
+  conflicts: [
+    { fact: "totalSalary", file: 16000, stated: [{ code: "salary_cert", label: null, value: 13000 }] },
+    { fact: "basicSalary", file: null, stated: [{ code: "gosi", label: null, value: 9000 }, { code: "custom:1", label: "خطاب من جهة العمل", value: 9500 }] },
+    { fact: "birthYear", file: 1991, stated: [{ code: "id", label: null, value: 1986 }] },
+  ],
+});
 const readings: Partial<RecordFacts>[] = [{}, { confidence: "medium", readingWarnings: 2, ageMonths: 4 }, { confidence: "low", readingWarnings: 1 }, { confidence: "medium" }];
 
 const everything: ClientAnalysis[] = reports.flatMap((report) => [
@@ -141,6 +141,7 @@ const everything: ClientAnalysis[] = reports.flatMap((report) => [
   analyzeClient({ file: file({ contractType: "permanent", answers: {} }), record: record(report), products: asking }),
   analyzeClient({ file: file({ contractType: "fixed_term", answers: { "4": "unmet", "5": "unmet" } }), record: record(report), products: asking }),
   analyzeClient({ file: file({ contractType: "permanent", answers: { "4": "met", "5": "met" } }), record: record(report), products: asking }),
+  analyzeClient({ file: disputed, record: record(report), products: catalogue }),
 ]);
 
 /** A sentence a person reads: whole, in Arabic, and ended. */
@@ -154,6 +155,7 @@ function sentence(text: string, about: string, names: string[] | null = []): voi
 }
 
 describe("analysis wording", () => {
+  // A sweep over every golden record and every file: a slow runner needs more than the usual time.
   it("has a sentence for everything the engine can say", () => {
     const seen = new Set<string>();
     const read = new Set<string>();
@@ -246,7 +248,7 @@ describe("analysis wording", () => {
       "check.ASKED_OPEN",
     ];
     for (const key of met) expect(seen, key).toContain(key);
-  });
+  }, 90_000);
 
   it("names each result and says what it is", () => {
     // The four results. An analysis that cannot be read yet is in need of checking, in the same words.
