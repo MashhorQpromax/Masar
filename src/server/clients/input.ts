@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { NATIONALITIES } from "@/domain/clients";
 import { SECTORS } from "@/domain/deal";
+import { CONTRACT_TYPES } from "@/domain/eligibility";
 
 const amount = z.number().min(0).max(10_000_000);
 
@@ -13,6 +14,8 @@ export const borrowerInputSchema = z
     basicSalary: amount.nullable(),
     totalSalary: amount.nullable(),
     serviceMonths: z.number().int().min(0).max(720).nullable(),
+    /** How the client is employed. Null: nobody wrote it down. Left out: it stays as it is. */
+    contractType: z.enum(CONTRACT_TYPES).nullable().optional(),
   })
   .superRefine((input, ctx) => {
     if (input.birthYear != null && input.birthYear > new Date().getFullYear() - 18) {

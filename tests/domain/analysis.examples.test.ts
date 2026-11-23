@@ -293,7 +293,7 @@ describe("the lenders held against a record that blocks them all", () => {
     ]);
     expect([b.kinds[0]!.today.open, b.kinds[0]!.today.conditional, b.kinds[0]!.today.unsure]).toEqual([0, 0, 2]);
     expect(b.steps.map((s) => s.code)).toEqual(["CONFIRM_TERMS", "APPLY"]);
-    expect(b.steps[0]).toMatchObject({ lender: "جهة a", beforePaying: false, terms: ["salary", "sector", "nationality", "age", "service", "transfer"] });
+    expect(b.steps[0]).toMatchObject({ lender: "جهة a", beforePaying: false, terms: ["salary", "sector", "nationality", "age", "service", "transfer", "special"] });
     expect(b.steps[1]).toMatchObject({ lender: "جهة a", eligibility: "needs_verification", afterClearing: false });
 
     // The same lenders refuse for certain once the term that refuses is confirmed.
@@ -318,7 +318,7 @@ describe("the lenders held against a record that blocks them all", () => {
     const c = analyzeClient({ file: file(), record: clean, products: [product("1", "a", unconfirmed), product("2", "b", { terms: confirmed(["service"]), requiresSalaryTransfer: false })] });
     expect(c.kinds[0]!.today.fits.map((f) => [f.product.id, f.doubts.map((d) => d.term)])).toEqual([
       ["2", ["service"]],
-      ["1", ["salary", "sector", "nationality", "age", "service", "transfer"]],
+      ["1", ["salary", "sector", "nationality", "age", "service", "transfer", "special"]],
     ]);
   });
 

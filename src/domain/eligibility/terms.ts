@@ -11,7 +11,7 @@
 import type { FinanceType } from "./types";
 
 /** The terms of a product, as the office confirms them: one source may speak for several stored fields. */
-export const TERMS = ["salary", "sector", "nationality", "age", "service", "transfer", "late", "settled", "amount", "tenor", "ltv", "rate"] as const;
+export const TERMS = ["salary", "sector", "nationality", "age", "service", "transfer", "late", "settled", "special", "amount", "tenor", "ltv", "rate"] as const;
 export type Term = (typeof TERMS)[number];
 
 /** The stored fields of a product that each term speaks for. A change to one of them is a change to the term. */
@@ -24,6 +24,8 @@ export const TERM_FIELDS = {
   transfer: ["requiresSalaryTransfer"],
   late: ["acceptsLateSimah"],
   settled: ["settledDefaultWaitMonths"],
+  // The list of the lender's special conditions. It is kept beside the product, and every change to it is a change to the term.
+  special: [],
   amount: ["maxAmount"],
   tenor: ["maxTenor"],
   ltv: ["maxLtv"],
@@ -31,7 +33,7 @@ export const TERM_FIELDS = {
 } as const satisfies Record<Term, readonly string[]>;
 
 /** The terms that decide whether the lender takes the client. The others decide how much, and at what cost. */
-export const CONDITION_TERMS = ["salary", "sector", "nationality", "age", "service", "transfer", "late", "settled"] as const satisfies readonly Term[];
+export const CONDITION_TERMS = ["salary", "sector", "nationality", "age", "service", "transfer", "late", "settled", "special"] as const satisfies readonly Term[];
 
 /** The terms that decide how much a product lends and at what cost. */
 export const AMOUNT_TERMS = ["amount", "tenor", "ltv", "rate"] as const satisfies readonly Term[];

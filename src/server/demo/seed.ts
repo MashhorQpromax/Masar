@@ -3,7 +3,7 @@ import { emptyReport, type CreditReport, type ParsedReport } from "@/domain/cred
 import { EMPTY_PROJECT, type ProjectFacts } from "@/domain/project";
 import { defaultDealInput, type DealInput, type Stage } from "@/domain/deal";
 import { INBOX_PAPER, type PaperCode } from "@/domain/documents";
-import type { Sector } from "@/domain/eligibility";
+import type { ContractType, Sector } from "@/domain/eligibility";
 import { LINK_DAYS } from "@/domain/messages";
 import { addCreditReport } from "../credit/service";
 import type { Db } from "../db/client";
@@ -37,6 +37,8 @@ interface DemoDeal {
   salaryBank?: string;
   /** Who the client works for, when it is not the government. */
   sector?: Sector;
+  /** How the client is employed, when it is not a permanent post. */
+  contract?: ContractType;
   input: DealInput;
   /** Stages the deal has entered after the study, with how many days ago each one started. */
   path: [Stage, number][];
@@ -386,6 +388,7 @@ const DEALS: DemoDeal[] = [
     // The one client the two example lenders do not take: what stands between her and a lender is a question nobody asked yet.
     employer: "مدرسة أهلية",
     sector: "private",
+    contract: "fixed_term",
     birthYear: 1979,
     basicSalary: 8900,
     totalSalary: 11800,
@@ -668,6 +671,7 @@ export async function seedDemo(db: Db, now: Date): Promise<void> {
         serviceMonths: demo.serviceMonths,
         salaryBank: demo.salaryBank ?? null,
         sector: demo.sector ?? "gov",
+        contractType: demo.contract ?? "permanent",
         createdAt: ago(demo.startedDaysAgo),
         updatedAt: ago(demo.startedDaysAgo),
       })

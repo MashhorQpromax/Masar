@@ -87,3 +87,36 @@ export const termSources = masar.table(
   },
   (t) => [uniqueIndex("term_sources_product_term_idx").on(t.productId, t.term)],
 );
+
+/**
+ * What a lender asks beyond the terms every product has: no less than an amount, no more than so
+ * many credit inquiries, a contract of a certain kind, an employer on its list, a guarantor. A row
+ * is never rewritten: a condition that turned out wrong is taken off (`active` false) and written
+ * again, so an answer always speaks of the words it was given for. Every change to the list puts
+ * the term `special` back to unconfirmed.
+ */
+export const productConditions = masar.table(
+  "product_conditions",
+  {
+    id: id(),
+    productId: integer()
+      .notNull()
+      .references(() => products.id, { onDelete: "cascade" }),
+    kind: text().notNull(),
+    /** For a condition a person answers: the lender's words, when there is more to say than its kind. */
+    text: text(),
+    /** The least the lender finances. */
+    amount: money(),
+    /** The most credit inquiries the lender accepts, within `months`. */
+    count: integer(),
+    months: integer(),
+    /** The kinds of contract the lender takes. */
+    contracts: jsonb().$type<string[]>(),
+    /** For a condition a person answers: whether a client who does not meet it is refused, or has something to do. */
+    unmet: text().notNull().default("block"),
+    active: boolean().notNull().default(true),
+    userId: integer().references(() => users.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+  },
+  (t) => [index("product_conditions_product_idx").on(t.productId)],
+);

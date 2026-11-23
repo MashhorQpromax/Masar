@@ -2,7 +2,10 @@ import "server-only";
 import { and, asc, eq, inArray } from "drizzle-orm";
 import type { ZodType } from "zod";
 import {
+  ASKED_KINDS,
   bankCodeIn,
+  conditionProblem,
+  CONTRACT_TYPES,
   dayOf,
   FINANCE_TYPES,
   openTerms,
@@ -13,23 +16,26 @@ import {
   termsOf,
   termStanding,
   termsTouched,
+  type AskedKind,
+  type ContractType,
   type FinanceType,
   type Nationality,
   type Product,
   type Sector,
   type SourceKind,
+  type SpecialCondition,
   type Term,
   type TermSource,
   type TermStanding,
 } from "@/domain/eligibility";
 import { foldText } from "@/domain/shared/text";
 import type { Db, Tx } from "../db/client";
-import { lenderRules, lenders, products, termSources } from "../db/schema";
+import { lenderRules, lenders, productConditions, products, termSources } from "../db/schema";
 import type { Actor } from "../shared/actor";
 import { audit } from "../shared/audit";
 import { DomainError } from "../shared/errors";
 import { BASE_LENDERS, BASE_PRODUCTS, BASE_RULES } from "./base";
-import { newLenderSchema, newProductSchema, productScopeSchema, productTermsSchema, termSourceSchema, type ProductScope, type ProductTerms } from "./input";
+import { conditionSchema, newLenderSchema, newProductSchema, productScopeSchema, productTermsSchema, termSourceSchema, type ProductScope, type ProductTerms } from "./input";
 
 const known = <T extends string>(values: readonly T[], list: readonly string[]): T[] => list.filter((v): v is T => (values as readonly string[]).includes(v));
 
@@ -50,7 +56,32 @@ async function sourcesByProduct(db: Tx): Promise<Map<number, Partial<Record<Term
   return byProduct;
 }
 
-function productOf(product: ProductRow, lender: LenderRow, sources: Partial<Record<Term, TermSource>> | undefined, today: string): Product {
+type ConditionRow = typeof productConditions.$inferSelect;
+
+/**
+ * A stored condition as the engines read it. A row this code cannot measure is not dropped: a
+ * condition that went unread would count as one the lender never made. It is asked of a person
+ * instead, in whatever words it has, and it refuses until somebody answers.
+ */
+export function conditionOf(row: ConditionRow): SpecialCondition {
+  const id = String(row.id);
+  if (row.kind === "min_amount" && row.amount != null) return { id, kind: "min_amount", amount: row.amount };
+  if (row.kind === "inquiries" && row.count != null && (row.months === 6 || row.months === 12)) return { id, kind: "inquiries", count: row.count, months: row.months };
+  const contracts = known<ContractType>(CONTRACT_TYPES, row.contracts ?? []);
+  if (row.kind === "contract" && contracts.length) return { id, kind: "contract", contracts };
+  const kind = (ASKED_KINDS as readonly string[]).includes(row.kind) ? (row.kind as AskedKind) : "other";
+  return { id, kind, text: row.text, unmet: row.unmet === "action" ? "action" : "block" };
+}
+
+/** The special conditions that stand, by product, in the order they were written. */
+async function conditionsByProduct(db: Tx): Promise<Map<number, SpecialCondition[]>> {
+  const rows: ConditionRow[] = await db.select().from(productConditions).where(eq(productConditions.active, true)).orderBy(asc(productConditions.id));
+  const byProduct = new Map<number, SpecialCondition[]>();
+  for (const row of rows) byProduct.set(row.productId, [...(byProduct.get(row.productId) ?? []), conditionOf(row)]);
+  return byProduct;
+}
+
+function productOf(product: ProductRow, lender: LenderRow, sources: Partial<Record<Term, TermSource>> | undefined, special: SpecialCondition[] | undefined, today: string): Product {
   const financeType = product.financeType as FinanceType;
   const terms: Partial<Record<Term, TermStanding>> = {};
   for (const term of termsOf(financeType)) terms[term] = termStanding(sources?.[term], today);
@@ -79,6 +110,7 @@ function productOf(product: ProductRow, lender: LenderRow, sources: Partial<Reco
     settledDefaultWaitMonths: product.settledDefaultWaitMonths,
     verified: openTerms(financeType, terms).length === 0,
     terms,
+    special: special ?? [],
   };
 }
 
@@ -91,13 +123,14 @@ const knownKind = ({ product }: { product: ProductRow }) => (FINANCE_TYPES as re
 export async function listProducts(db: Tx, args: { now?: Date } = {}): Promise<Product[]> {
   const today = dayOf(args.now ?? new Date());
   const sources = await sourcesByProduct(db);
+  const special = await conditionsByProduct(db);
   const rows = await db
     .select({ product: products, lender: lenders })
     .from(products)
     .innerJoin(lenders, eq(lenders.id, products.lenderId))
     .where(and(eq(products.active, true), eq(lenders.active, true)))
     .orderBy(lenders.id, products.id);
-  return rows.filter(knownKind).map(({ product, lender }) => productOf(product, lender, sources.get(product.id), today));
+  return rows.filter(knownKind).map(({ product, lender }) => productOf(product, lender, sources.get(product.id), special.get(product.id), today));
 }
 
 /** A product as the catalogue page lists it. One that was stopped is kept, and no client is sent to it. */
@@ -121,6 +154,7 @@ export interface CatalogueLender {
 export async function listCatalogue(db: Tx, args: { stopped?: boolean; now?: Date } = {}): Promise<CatalogueLender[]> {
   const today = dayOf(args.now ?? new Date());
   const sources = await sourcesByProduct(db);
+  const special = await conditionsByProduct(db);
   const rows = await db
     .select({ product: products, lender: lenders })
     .from(lenders)
@@ -132,7 +166,7 @@ export async function listCatalogue(db: Tx, args: { stopped?: boolean; now?: Dat
     const entry = byLender.get(lender.id) ?? { id: lender.id, name: lender.name, type: lender.type, products: [] };
     byLender.set(lender.id, entry);
     if (!product || !knownKind({ product }) || (!product.active && !args.stopped)) continue;
-    entry.products.push({ ...productOf(product, lender, sources.get(product.id), today), active: product.active });
+    entry.products.push({ ...productOf(product, lender, sources.get(product.id), special.get(product.id), today), active: product.active });
   }
   const all = [...byLender.values()];
   return args.stopped ? all : all.filter((lender) => lender.products.length > 0);
@@ -221,6 +255,15 @@ export async function updateProductTerms(db: Db, args: { productId: number; term
     const values = { ...terms };
     // Only a mortgage has a share of the property's value.
     if (before.financeType !== "mortgage") values.maxLtv = before.maxLtv;
+    // The most a product lends never falls under a least amount written among its special conditions: nothing would be left to lend.
+    if (values.maxAmount < before.maxAmount) {
+      const least = await tx
+        .select({ amount: productConditions.amount })
+        .from(productConditions)
+        .where(and(eq(productConditions.productId, before.id), eq(productConditions.active, true), eq(productConditions.kind, "min_amount")));
+      const above = least.flatMap((row) => (row.amount != null && row.amount > values.maxAmount ? [row.amount] : []));
+      if (above.length) throw new DomainError("AMOUNT_BELOW_LEAST", `product ${before.id}`, { least: String(Math.max(...above)) });
+    }
     const changed: string[] = (Object.keys(values) as (keyof typeof values)[]).filter((key) => before[key] !== values[key]);
     if (scope) {
       if (before.name !== scope.name) changed.push("name");
@@ -298,6 +341,73 @@ export async function withdrawTerms(db: Db, args: { productId: number; terms: re
     const terms = TERMS.filter((term) => dropped.some((row) => row.term === term));
     if (terms.length) await audit(tx, args.actor, "lender.terms_withdraw", "product", found.product.id, { lender: found.lender.name, product: found.product.name, terms });
     return { terms };
+  });
+}
+
+/**
+ * The list of a product's special conditions changed, so whatever confirmed the list confirmed
+ * another one. Returns whether a confirmation fell with the change.
+ */
+async function listChanged(tx: Tx, productId: number): Promise<boolean> {
+  const dropped = await tx
+    .delete(termSources)
+    .where(and(eq(termSources.productId, productId), eq(termSources.term, "special")))
+    .returning({ id: termSources.id });
+  return dropped.length > 0;
+}
+
+/**
+ * Writes down a condition a lender makes beyond the terms every product has. From then on every
+ * client is held against it. The list is a term of its own: adding to it puts that term back to
+ * unconfirmed until whoever may confirm reads the new list in a source.
+ */
+export async function addCondition(db: Db, args: { productId: number; input: unknown; actor: Actor }): Promise<{ conditionId: number; unconfirmed: boolean }> {
+  const input = checked(conditionSchema, args.input);
+  return db.transaction(async (tx) => {
+    const [found] = await tx.select({ product: products, lender: lenders }).from(products).innerJoin(lenders, eq(lenders.id, products.lenderId)).where(eq(products.id, args.productId));
+    if (!found || !knownKind(found)) throw new DomainError("NOT_FOUND", `product ${args.productId}`);
+    const standing: ConditionRow[] = await tx.select().from(productConditions).where(and(eq(productConditions.productId, found.product.id), eq(productConditions.active, true)));
+    const problem = conditionProblem(standing.map(conditionOf), input, { maxAmount: found.product.maxAmount });
+    if (problem) throw new DomainError("CONDITION_REFUSED", problem, { problem });
+    const [created] = await tx
+      .insert(productConditions)
+      .values({
+        productId: found.product.id,
+        kind: input.kind,
+        text: "text" in input ? input.text : null,
+        amount: input.kind === "min_amount" ? input.amount : null,
+        count: input.kind === "inquiries" ? input.count : null,
+        months: input.kind === "inquiries" ? input.months : null,
+        contracts: input.kind === "contract" ? input.contracts : null,
+        unmet: "unmet" in input ? input.unmet : "block",
+        userId: args.actor.userId,
+      })
+      .returning({ id: productConditions.id });
+    const unconfirmed = await listChanged(tx, found.product.id);
+    await audit(tx, args.actor, "lender.condition_add", "product", found.product.id, { lender: found.lender.name, product: found.product.name, condition: { id: created!.id, ...input }, unconfirmed });
+    return { conditionId: created!.id, unconfirmed };
+  });
+}
+
+/**
+ * Takes a condition off a product's list. The row stays, so the answers given for it still say what
+ * they were given for; no client is held against it any more. The list changed, so its confirmation falls.
+ */
+export async function removeCondition(db: Db, args: { conditionId: number; actor: Actor }): Promise<{ unconfirmed: boolean }> {
+  return db.transaction(async (tx) => {
+    const [found] = await tx
+      .select({ condition: productConditions, product: products, lender: lenders })
+      .from(productConditions)
+      .innerJoin(products, eq(products.id, productConditions.productId))
+      .innerJoin(lenders, eq(lenders.id, products.lenderId))
+      .where(eq(productConditions.id, args.conditionId));
+    if (!found) throw new DomainError("NOT_FOUND", `condition ${args.conditionId}`);
+    if (!found.condition.active) return { unconfirmed: false };
+    await tx.update(productConditions).set({ active: false }).where(eq(productConditions.id, found.condition.id));
+    const unconfirmed = await listChanged(tx, found.product.id);
+    const { id: _id, ...condition } = conditionOf(found.condition);
+    await audit(tx, args.actor, "lender.condition_remove", "product", found.product.id, { lender: found.lender.name, product: found.product.name, condition: { id: found.condition.id, ...condition }, unconfirmed });
+    return { unconfirmed };
   });
 }
 

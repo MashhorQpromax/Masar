@@ -17,21 +17,27 @@ import {
   eligibilityRank,
   findingOf,
   leansBlocked,
+  listCheck,
   matchProduct,
   SECTORS,
+  specialChecks,
   tell,
   UNCONFIRMED,
   weakestStrength,
   type Check,
+  type Answer,
   type CheckStatus,
+  type ContractType,
   type Eligibility,
   type Finding,
+  type Inquiries,
   type Nationality,
   type Product,
   type Profile,
   type Rule,
   type Sector,
   type SourceStrength,
+  type SpecialCheck,
   type TermStanding,
 } from "../eligibility";
 import { CREDIT_RULES, type CreditAnalysis, type CreditReport } from "../credit";
@@ -49,6 +55,8 @@ export interface RecordAfter {
   settledMonthsAgo: number | null;
   /** Payments were late recently. Paying the debt off does not remove them. */
   delays: boolean;
+  /** The credit inquiries the record shows. A settlement does not remove them. Null when no report was read. */
+  inquiries?: Inquiries | null;
 }
 
 /** What the credit record says today, as far as a route needs it. */
@@ -58,6 +66,7 @@ export interface KnownRecord {
   /** Months since the newest default was paid in full, while it still marks the record. Null when none does. */
   settledMonthsAgo: number | null;
   delays: boolean;
+  inquiries?: Inquiries | null;
 }
 
 /** The facts of a graded credit record that decide whether a lender takes the client. */
@@ -71,6 +80,7 @@ export function knownRecord(report: CreditReport, analysis: CreditAnalysis): Kno
     unpaid: analysis.standing === "default",
     settledMonthsAgo: ages.length ? Math.min(...ages) : null,
     delays: analysis.stats.recentDelays > 0,
+    inquiries: { m6: report.inquiries6m ?? null, m12: report.inquiries12m ?? null },
   };
 }
 
@@ -86,6 +96,7 @@ export function recordAfterSettlement(input: Pick<DealInput, "items" | "structur
     open: kept.some((i) => isOrder(i.kind)) || (!!known?.unpaid && !settlesOne),
     settledMonthsAgo: settlesOne ? 0 : (known?.settledMonthsAgo ?? null),
     delays: !!known?.delays,
+    inquiries: known?.inquiries ?? null,
   };
 }
 
@@ -95,6 +106,10 @@ export interface Applicant {
   /** The code of the bank the salary is paid into. */
   salaryBank: string | null;
   record: RecordAfter;
+  /** How the client is employed, when someone wrote it down. */
+  contractType?: ContractType | null;
+  /** What a person answered for this client about lenders' special conditions, by the condition's id. */
+  answers?: Readonly<Record<string, Answer>>;
 }
 
 type PersonCheck = Extract<Check, { key: "salary" | "sector" | "nationality" | "age" | "service" | "transfer" }>;
@@ -106,6 +121,7 @@ type RecordCheck = { [C in RecordCode]: { key: "simah"; status: CheckStatus; cod
 export type RouteCheck =
   | PersonCheck
   | RecordCheck
+  | SpecialCheck
   | { key: "simah"; status: "fail"; code: "SETTLED_WAIT"; params: { months: number } }
   | { key: "transfer"; status: "fail"; code: "TWO_SALARY_TRANSFERS"; params: Record<string, never> };
 
@@ -274,6 +290,13 @@ interface Args {
 
 const leg = (product: Product, checks: RouteCheck[]) => ({ checks, findings: strictly(product, checks) });
 
+/** The lender's special conditions, held against what this part of the deal would lend. Whether the list is complete is asked with them. */
+function special(product: Product, borrower: Borrower, who: Applicant, amount: number): SpecialCheck[] {
+  const sector = sectorOf(borrower.sector);
+  const facts = { amount, most: amount, contract: who.contractType, noContract: sector === "retired" || sector === "self", inquiries: who.record.inquiries, answers: who.answers };
+  return [listCheck(product.special), ...specialChecks(product.special, facts)];
+}
+
 function route(args: Args, mortgageProduct: Product | null, personalProduct: Product | null): FundingRoute {
   const { input, borrower, who } = args;
   const terms: RouteTerms = {};
@@ -312,7 +335,7 @@ function route(args: Args, mortgageProduct: Product | null, personalProduct: Pro
         installment: Math.round(Math.min(f.mortgagePre, installmentFor(f.mortgage, f.mortgageMonths, terms.mortgageApr ?? 0, "reducing"))),
         months: f.mortgageMonths,
         atCeiling: f.mortgageCeiling != null,
-        ...leg(mortgageProduct, [...personChecks(mortgageProduct, borrower, who, mortgageProduct.maxTenor), ...recordChecks(mortgageProduct, who.record)]),
+        ...leg(mortgageProduct, [...personChecks(mortgageProduct, borrower, who, mortgageProduct.maxTenor), ...recordChecks(mortgageProduct, who.record), ...special(mortgageProduct, borrower, who, f.mortgage)]),
       }
     : null;
   const personal: RouteLeg | null = personalProduct
@@ -322,7 +345,7 @@ function route(args: Args, mortgageProduct: Product | null, personalProduct: Pro
         installment: Math.round(installmentFor(f.personal, f.personalMonths, terms.personalFlat ?? 0, "flat")),
         months: f.personalMonths,
         atCeiling: f.personalCeiling != null,
-        ...leg(personalProduct, [...personChecks(personalProduct, borrower, who, personalMonths), ...recordChecks(personalProduct, who.record)]),
+        ...leg(personalProduct, [...personChecks(personalProduct, borrower, who, personalMonths), ...recordChecks(personalProduct, who.record), ...special(personalProduct, borrower, who, f.personal)]),
       }
     : null;
 
@@ -334,7 +357,9 @@ function route(args: Args, mortgageProduct: Product | null, personalProduct: Pro
     for (const check of leg.checks) {
       // One lender asks a thing once, whichever of its two products raised it.
       // What the record itself lacks is said once: it is the same for every lender.
-      const id = check.code === "RECORD_UNKNOWN" || check.code === "RECORD_OPEN" ? check.code : `${leg.product.lenderId}:${check.code}`;
+      // So is a fact the file lacks. Two special conditions of one lender are two things to say.
+      const same = check.code === "RECORD_UNKNOWN" || check.code === "RECORD_OPEN" || check.code === "INQUIRIES_UNKNOWN" || check.code === "CONTRACT_MISSING";
+      const id = same ? check.code : `${leg.product.lenderId}:${check.code}:${"ref" in check ? check.ref : ""}`;
       // A term cut short by the age limit is already in the leg's months and amount: nothing the client has to meet.
       if (check.status === "pass" || check.code === "TENOR_SHORTENED" || seen.has(id)) continue;
       seen.add(id);

@@ -94,6 +94,18 @@ const catalogue: Product[] = [
   home("4", "a"),
   home("5", "b", { ...unconfirmed, settledDefaultWaitMonths: 6, minServiceMonths: 240 }),
 ];
+/** A lender that asks beyond its terms: three conditions the system measures, and two only a person can answer. */
+const asking: Product[] = [
+  product("6", "d", {
+    special: [
+      { id: "1", kind: "contract", contracts: ["permanent"] },
+      { id: "2", kind: "inquiries", count: 2, months: 6 },
+      { id: "3", kind: "min_amount", amount: 30000 },
+      { id: "4", kind: "guarantor", text: "موظف حكومي", unmet: "action" },
+      { id: "5", kind: "other", text: "فحص طبي", unmet: "block" },
+    ],
+  }),
+];
 const loan = (parts: Partial<Facility>): Facility => ({ lender: "بنك", creditorType: "bank", product: "قرض شخصي", status: "current", ...parts });
 
 /** Clients of every kind the file can describe, so the engine says everything it can say. */
@@ -116,6 +128,11 @@ const everything: ClientAnalysis[] = reports.flatMap((report) => [
   analyzeClient({ file: files[0]!, record: record(report), products: catalogue.map((p) => ({ ...p, ...unconfirmed })) }),
   // A salary paid elsewhere is something for the client to do at a lender that is confirmed to want it.
   analyzeClient({ file: file({ salaryBank: "x" }), record: record(report), products: [catalogue[0]!] }),
+  // A lender with conditions of its own: nothing known of the client, nobody asked yet, not met, and met.
+  analyzeClient({ file: file({ contractType: null }), record: record(report), products: asking }),
+  analyzeClient({ file: file({ contractType: "permanent", answers: {} }), record: record(report), products: asking }),
+  analyzeClient({ file: file({ contractType: "fixed_term", answers: { "4": "unmet", "5": "unmet" } }), record: record(report), products: asking }),
+  analyzeClient({ file: file({ contractType: "permanent", answers: { "4": "met", "5": "met" } }), record: record(report), products: asking }),
 ]);
 
 /** A sentence a person reads: whole, in Arabic, and ended. */
@@ -192,9 +209,9 @@ describe("analysis wording", () => {
       if (how) sentence(how, "income");
     }
     // Every gap and every step the engine has, each met at least once.
-    const gaps: Gap["code"][] = ["INCOME", "TOTAL_SALARY", "INCOME_PROOF", "AGE", "SERVICE", "SALARY_BANK", "INSTALLMENT", "CARD_SHARE", "REPORT_AGE", "READING", "SUSPENSION", "TERMS", "CONSENT"];
+    const gaps: Gap["code"][] = ["INCOME", "TOTAL_SALARY", "INCOME_PROOF", "AGE", "SERVICE", "SALARY_BANK", "CONTRACT", "INSTALLMENT", "CARD_SHARE", "REPORT_AGE", "READING", "SUSPENSION", "TERMS", "CONSENT"];
     for (const code of gaps) expect(seen, code).toContain(`gap.${code}`);
-    const steps: Step["code"][] = ["RECORD_CONSENT", "COMPLETE_FILE", "REVIEW_READING", "CONFIRM_SUSPENSION", "CREDIT", "REFRESH_REPORT", "FREE_ROOM", "VERIFY_INCOME", "CONFIRM_TERMS", "APPLY"];
+    const steps: Step["code"][] = ["RECORD_CONSENT", "COMPLETE_FILE", "REVIEW_READING", "CONFIRM_SUSPENSION", "CREDIT", "REFRESH_REPORT", "FREE_ROOM", "VERIFY_INCOME", "CONFIRM_TERMS", "ASK_CLIENT", "APPLY"];
     for (const code of steps) expect(seen, code).toContain(`step.${code}`);
     const met = [
       "verdict.eligible.null",
@@ -211,6 +228,14 @@ describe("analysis wording", () => {
       "check.RECORD_OPEN",
       "check.SETTLED_UNCONFIRMED",
       "check.SETTLED_WAIT",
+      // What a lender asks beyond its terms, measured or answered, and what nobody knows of it.
+      "check.AMOUNT_MIN",
+      "check.INQUIRIES",
+      "check.INQUIRIES_UNKNOWN",
+      "check.CONTRACT",
+      "check.CONTRACT_MISSING",
+      "check.ASKED",
+      "check.ASKED_OPEN",
     ];
     for (const key of met) expect(seen, key).toContain(key);
   });
@@ -310,6 +335,13 @@ describe("analysis wording", () => {
     expect(strip(stepText({ code: "COMPLETE_FILE", missing: ["INCOME", "AGE", "SERVICE", "SALARY_BANK"] }))).toBe(
       "ينقصه: الراتب، سنة الميلاد، مدة الخدمة، بنك الراتب. ما ينقص يبقى شرطاً عند كل جهة ولا يُحسب قبولاً.",
     );
+    // What only the client can answer is asked of the client, and an unanswered question is never a pass.
+    const asked = { code: "ASK_CLIENT", lender: "جهة أ", questions: [{ kind: "guarantor", text: "موظف حكومي" }, { kind: "other", text: "فحص طبي" }, { kind: "collateral", text: null }], beforePaying: false } satisfies Step;
+    expect(stepTitle(asked)).toBe("اسأل العميل عن شروط جهة أ");
+    expect(stepText(asked)).toBe("تشترط: كفيل (موظف حكومي)، فحص طبي، ضمان أو رهن. سجّل جواب العميل عن كل شرط: ما لم يُجب عنه لا يُحسب مستوفى.");
+    expect(stepTitle({ ...asked, beforePaying: true })).toBe("قبل أي سداد: اسأل العميل عن شروط جهة أ");
+    expect(strip(stepText({ code: "COMPLETE_FILE", missing: ["CONTRACT"] }))).toBe("ينقصه: نوع العقد. ما ينقص يبقى شرطاً عند كل جهة ولا يُحسب قبولاً.");
+    expect(gapText({ kind: "missing", code: "CONTRACT" })).toBe("نوع عقد العميل غير مدخل، وفي الجهات من تشترط نوعاً منه.");
     expect(strip(stepText({ code: "FREE_ROOM", lender: "بنك", kind: "personal", monthly: 1900 }))).toBe("لا قسط متاح اليوم. سداد بنك يحرر 1,900 في الشهر، وهو أصغر التزام رصيداً.");
   });
 
@@ -326,13 +358,13 @@ describe("analysis wording", () => {
     expect(fitLines(fitsOf([product("1", "a")], { salaryBank: "x" })[0]!)).toEqual(["تشترط تحويل الراتب إليها."]);
     // The same demand on a term nobody confirmed is what the record leans to, never the lender's word.
     const open = fitsOf([product("1", "a", unconfirmed)], { salaryBank: "x" })[0]!;
-    expect(fitLines(open).map(strip)).toEqual(["6 شروط لم تؤكَّد.", "إن صحّ المسجل عندنا: تشترط تحويل الراتب إليها."]);
-    expect(fitDoubtLines(open)).toEqual(["لم يؤكَّد: أدنى راتب، لمن يُعطى، الجنسية، حدود العمر، مدة الخدمة، تحويل الراتب."]);
+    expect(fitLines(open).map(strip)).toEqual(["7 شروط لم تؤكَّد.", "إن صحّ المسجل عندنا: تشترط تحويل الراتب إليها."]);
+    expect(fitDoubtLines(open)).toEqual(["لم يؤكَّد: أدنى راتب، لمن يُعطى، الجنسية، حدود العمر، مدة الخدمة، تحويل الراتب، الشروط الخاصة."]);
     // An employee's word is said to be one, and an unconfirmed margin makes the figures an estimate.
     const word = product("1", "a", { terms: Object.fromEntries(Object.entries(confirmed(["rate"])!).map(([term, standing]) => [term, { ...standing, strength: "verbal" }])) });
     expect(fitLines(fitsOf([word])[0]!)).toEqual(["على إفادة موظف في الجهة، لا على مستند منها.", "المبلغ والهامش استرشاديان."]);
     // A confirmation that ran out is named as that.
-    const stale = fitsOf([product("1", "a", { terms: { ...confirmed(["salary"]), ...confirmed(["sector", "nationality", "age", "service", "transfer", "late", "settled", "amount", "tenor", "rate"], "2026-07-01") } })])[0]!;
+    const stale = fitsOf([product("1", "a", { terms: { ...confirmed(["salary"]), ...confirmed(["sector", "nationality", "age", "service", "transfer", "late", "settled", "special", "amount", "tenor", "rate"], "2026-07-01") } })])[0]!;
     expect(fitDoubtLines(stale)).toEqual(["انتهى تأكيده: أدنى راتب."]);
     // A fact the file lacks is said in its own words and is nobody's term.
     expect(fitLines(fitsOf([product("1", "a")], { age: null })[0]!)).toEqual(["سنة الميلاد غير مدخلة."]);

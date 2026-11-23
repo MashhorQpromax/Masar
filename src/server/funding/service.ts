@@ -2,10 +2,11 @@ import "server-only";
 import { eq } from "drizzle-orm";
 import type { Standing } from "@/domain/credit";
 import type { DealInput, DealStudy, Stage } from "@/domain/deal";
-import type { Nationality } from "@/domain/eligibility";
+import { contractOf, type Nationality } from "@/domain/eligibility";
 import { fundingRoutes, knownRecord, recordAfterSettlement, type FundingRoute, type RecordAfter } from "@/domain/funding";
 import type { Db, Tx } from "../db/client";
 import { clients, lenders } from "../db/schema";
+import { answersOf } from "../clients/conditions";
 import { amendDeal, getDeal } from "../deals/service";
 import { borrowerOf, type ClientRow, type DealRow } from "../deals/mapping";
 import { listProducts } from "../lenders/service";
@@ -51,7 +52,13 @@ export async function fundingIn(db: Tx, args: { dealId: number; now: Date }): Pr
   const routes = fundingRoutes({
     input,
     borrower: borrowerOf(client, args.now),
-    who: { nationality: (client.nationality === "non_saudi" ? "non_saudi" : "saudi") satisfies Nationality, salaryBank: client.salaryBank, record },
+    who: {
+      nationality: (client.nationality === "non_saudi" ? "non_saudi" : "saudi") satisfies Nationality,
+      salaryBank: client.salaryBank,
+      record,
+      contractType: contractOf(client.contractType),
+      answers: await answersOf(db, client.id),
+    },
     products: await listProducts(db, { now: args.now }),
     credit: view.creditFlags,
   });

@@ -1,7 +1,7 @@
 /** The wording of the lender catalogue: who the lenders are and what each one's terms say. */
-import { TERM_VALIDITY_MONTHS, type LenderType, type Nationality, type ProductKind, type SourceKind, type SourceProblem, type Term, type TermStanding } from "@/domain/eligibility";
+import { TERM_VALIDITY_MONTHS, type ConditionProblem, type LenderType, type Nationality, type ProductKind, type SourceKind, type SourceProblem, type Term, type TermStanding } from "@/domain/eligibility";
 import type { RateType } from "@/domain/finance";
-import { dayOfIso, ltr, months } from "./format";
+import { dayOfIso, ltr, money, months } from "./format";
 
 export const LENDER_TYPE: Record<LenderType, string> = {
   bank: "بنك",
@@ -46,6 +46,7 @@ export const TERM_NAME: Record<Term, string> = {
   transfer: "تحويل الراتب",
   late: "تأخر السداد",
   settled: "بعد سداد التعثر",
+  special: "الشروط الخاصة",
   amount: "أقصى مبلغ",
   tenor: "أقصى مدة",
   ltv: "نسبة التمويل من العقار",
@@ -89,6 +90,15 @@ const SOURCE_PROBLEM: Record<SourceProblem, string> = {
   DAY_OLD: `مضى على هذا التأكد أكثر من ${months(TERM_VALIDITY_MONTHS)}. اسأل الجهة من جديد.`,
 };
 
+const CONDITION_PROBLEM: Record<ConditionProblem, string> = {
+  TWICE: "هذا الشرط مسجل للمنتج من قبل. إن تغيّر فاحذف القديم ثم اكتبه من جديد.",
+  ABOVE_MOST: "أدنى تمويل لا يزيد على أقصى مبلغ للمنتج.",
+  EVERY_CONTRACT: "جهة تقبل كل أنواع العقود لا تشترط شيئاً. اختر ما تقبله فقط.",
+  NOTHING_SAID: "اكتب الشرط بكلمات الجهة.",
+};
+
+export const CONDITION_PROBLEMS = Object.keys(CONDITION_PROBLEM) as ConditionProblem[];
+
 const SAVE_ERROR: Record<string, (params: Record<string, string>) => string> = {
   INVALID_INPUT: () => "في المكتوب قيمة خارج الحدود المقبولة. راجعها ثم احفظ.",
   NOT_FOUND: () => "لم يعد هذا في القائمة.",
@@ -96,6 +106,8 @@ const SAVE_ERROR: Record<string, (params: Record<string, string>) => string> = {
   FORBIDDEN: () => "لا تملك صلاحية تعديل قائمة الجهات.",
   SOURCE_REFUSED: (p) => SOURCE_PROBLEM[p.problem as SourceProblem] ?? "هذا المصدر لا يكفي لتأكيد الشرط.",
   TERM_VALUE_MISSING: () => "اكتب أولاً ما تفعله الجهة بمن سدّد تعثره واحفظه، ثم أكّده.",
+  CONDITION_REFUSED: (p) => CONDITION_PROBLEM[p.problem as ConditionProblem] ?? "تعذر حفظ هذا الشرط.",
+  AMOUNT_BELOW_LEAST: (p) => (Number(p.least) > 0 ? `أقصى مبلغ لا ينقص عن أدنى تمويل مسجل في الشروط الخاصة، وهو ${money(Number(p.least))}. احذف ذلك الشرط أولاً أو ارفع المبلغ.` : "أقصى مبلغ لا ينقص عن أدنى تمويل مسجل في الشروط الخاصة."),
 };
 
 export const SOURCE_PROBLEMS = Object.keys(SOURCE_PROBLEM) as SourceProblem[];

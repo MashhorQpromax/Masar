@@ -1,6 +1,7 @@
 import { adminFee, aprOf, earlySettlement, installmentFor, pensionEstimate, principalFrom } from "../finance/amortization";
 import { SAMA } from "../finance/sama";
 import { round0, round1 } from "../shared/num";
+import { specialChecks } from "./special";
 import type { Capacity, Check, CheckStatus, Limit, Match, Product, Profile } from "./types";
 
 /** Share of the total salary taken as the basic salary when the basic one is not known. */
@@ -132,6 +133,18 @@ export function matchProduct(p: Profile, cap: Capacity, product: Product): Match
 
   const requested = p.requestedAmount || 0;
   const offerPrincipal = Math.floor(Math.max(0, requested > 0 ? Math.min(requested, maxPrincipal) : maxPrincipal) / 1000) * 1000;
+
+  // What this lender asks beyond the terms every product has.
+  checks.push(
+    ...specialChecks(product.special, {
+      amount: offerPrincipal,
+      most: Math.floor(Math.max(0, maxPrincipal) / 1000) * 1000,
+      contract: p.contractType,
+      noContract: p.sector === "retired" || p.sector === "self",
+      inquiries: p.inquiries,
+      answers: p.answers,
+    }),
+  );
   let installment = installmentFor(offerPrincipal, months, product.rate, product.rateType);
   if (retirement && offerPrincipal > 0 && installment > cap.available) installment = cap.available;
   const apr = product.rateType === "reducing" ? product.rate : aprOf(offerPrincipal, installment, months);

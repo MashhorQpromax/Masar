@@ -4,12 +4,14 @@ import { notFound } from "next/navigation";
 import { fileStateText, NATIONALITY, NOTE_KIND, phoneText, phoneTyped, ID_LABEL } from "@/copy/clients";
 import { STAGE, STATION, STRUCTURE, VERDICT } from "@/copy/deal";
 import { SECTOR } from "@/copy/editor";
+import { CONTRACT_TYPE } from "@/copy/eligibility";
 import { amountParts, dayFull, dayOf, ltr, percent, plainMoney } from "@/copy/format";
 import { agoText } from "@/copy/messages";
 import { PROJECT_VERDICT, projectLine, verdictSay } from "@/copy/project";
 import { can } from "@/domain/auth";
 import { fileState, type ClientNationality } from "@/domain/clients";
 import { SECTORS, stationsFor, type Sector } from "@/domain/deal";
+import { contractOf } from "@/domain/eligibility";
 import { requireActor } from "@/server/auth/actor";
 import { getClientCard } from "@/server/clients/directory";
 import { getDb } from "@/server/db/client";
@@ -57,6 +59,7 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
     sector && { label: "القطاع", value: sector },
     age != null && { label: "العمر", value: `${ltr(age)} سنة` },
     service != null && { label: "الخدمة", value: `${ltr(service)} سنة` },
+    contractOf(client.contractType) && client.sector !== "retired" && client.sector !== "self" && { label: "نوع العقد", value: CONTRACT_TYPE[contractOf(client.contractType)!] },
     client.basicSalary != null && { label: "الراتب الأساسي", value: ltr(plainMoney(client.basicSalary)) },
     client.totalSalary != null && { label: "الراتب الإجمالي", value: ltr(plainMoney(client.totalSalary)) },
   ].filter((fact): fact is { label: string; value: string } => !!fact);
@@ -164,6 +167,7 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
                   {maySee && <Link href={`/clients/${client.id}/credit`}>سمة</Link>}
                   {maySee && <Link href={`/clients/${client.id}/analysis`}>التحليل الائتماني</Link>}
                   <Link href={`/deals/${deal.id}/lenders`}>جهات التمويل</Link>
+                  {maySee && <Link href={`/clients/${client.id}/conditions`}>شروط الجهات</Link>}
                 </>
               ) : (
                 maySee && (

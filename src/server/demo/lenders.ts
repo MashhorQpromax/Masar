@@ -2,8 +2,9 @@ import "server-only";
 import { and, eq } from "drizzle-orm";
 import { addMonths, dayOf, termsOf, type FinanceType, type SourceKind } from "@/domain/eligibility";
 import type { Db } from "../db/client";
-import { lenders, termSources, users } from "../db/schema";
-import { addLender, addProduct, confirmTerms } from "../lenders/service";
+import { answerCondition } from "../clients/conditions";
+import { clients, lenders, termSources, users } from "../db/schema";
+import { addCondition, addLender, addProduct, confirmTerms } from "../lenders/service";
 import type { Actor } from "../shared/actor";
 
 /**
@@ -15,9 +16,16 @@ import type { Actor } from "../shared/actor";
  * reading can be seen on invented deals: a confirmed answer in writing, one that rests on a word, a
  * confirmed refusal, and a confirmation that ran out. Neither takes a client of the private sector, so
  * one invented client is left with the real lenders alone, where every answer is still a question.
+ *
+ * Each of their products also shows one kind of special condition: a least amount, a limit of credit
+ * inquiries, a kind of contract, and a guarantor, which only a person can answer for a client. One
+ * invented client has that answer on file; for the others it is still a question to ask.
  */
 export const DEMO_BANK = "بنك المثال";
 export const DEMO_COMPANY = "المثال للتمويل";
+
+/** The invented client whose answer about the guarantor is on file. */
+export const DEMO_ANSWERED = "C-017";
 
 /** What names a made-up source, so nobody reads it as something a lender said. */
 export const DEMO_PAPER = "مستند تجريبي للعرض فقط";
@@ -31,6 +39,8 @@ interface DemoProduct {
   terms: Record<string, unknown>;
   sectors: string[];
   source: { kind: SourceKind; reference: string };
+  /** What the lender asks beyond its terms. Written before the terms are confirmed, so the source speaks for the list too. */
+  special?: Record<string, unknown>[];
 }
 
 const PRODUCTS: Record<string, DemoProduct[]> = {
@@ -42,6 +52,7 @@ const PRODUCTS: Record<string, DemoProduct[]> = {
       sectors: SALARIED,
       terms: { rate: 3.3, rateType: "flat", maxAmount: 1_500_000, maxTenor: 60, maxAgeAtMaturity: 65, minSalary: 4000, minServiceMonths: 3, maxLtv: null, requiresSalaryTransfer: true, acceptsLateSimah: false, settledDefaultWaitMonths: 0 },
       source: { kind: "lender_document", reference: DEMO_PAPER },
+      special: [{ kind: "min_amount", amount: 20_000 }],
     },
     {
       financeType: "mortgage",
@@ -49,6 +60,7 @@ const PRODUCTS: Record<string, DemoProduct[]> = {
       sectors: SALARIED,
       terms: { rate: 4.8, rateType: "reducing", maxAmount: 5_000_000, maxTenor: 300, maxAgeAtMaturity: 70, minSalary: 5000, minServiceMonths: 3, maxLtv: 90, requiresSalaryTransfer: true, acceptsLateSimah: false, settledDefaultWaitMonths: 0 },
       source: { kind: "lender_document", reference: DEMO_PAPER },
+      special: [{ kind: "inquiries", count: 4, months: 6 }],
     },
   ],
   [DEMO_COMPANY]: [
@@ -59,6 +71,7 @@ const PRODUCTS: Record<string, DemoProduct[]> = {
       sectors: SALARIED,
       terms: { rate: 6.9, rateType: "flat", maxAmount: 300_000, maxTenor: 60, maxAgeAtMaturity: 65, minSalary: 3000, minServiceMonths: 3, maxLtv: null, requiresSalaryTransfer: false, acceptsLateSimah: true, settledDefaultWaitMonths: 0 },
       source: { kind: "lender_staff", reference: DEMO_WORD },
+      special: [{ kind: "guarantor", text: "موظف حكومي على رأس العمل", unmet: "action" }],
     },
     // Waits a year after a default is paid, in writing: a confirmed refusal for a deal that pays one now.
     {
@@ -67,6 +80,7 @@ const PRODUCTS: Record<string, DemoProduct[]> = {
       sectors: SALARIED,
       terms: { rate: 6.2, rateType: "reducing", maxAmount: 3_000_000, maxTenor: 300, maxAgeAtMaturity: 70, minSalary: 5000, minServiceMonths: 6, maxLtv: 85, requiresSalaryTransfer: false, acceptsLateSimah: false, settledDefaultWaitMonths: 12 },
       source: { kind: "lender_document", reference: DEMO_PAPER },
+      special: [{ kind: "contract", contracts: ["permanent"] }],
     },
   ],
 };
@@ -78,6 +92,8 @@ export async function seedDemoLenders(db: Db, now: Date): Promise<void> {
   const [admin] = await db.select({ id: users.id }).from(users).where(eq(users.role, "admin")).orderBy(users.id).limit(1);
   const actor: Actor = { userId: admin?.id ?? null };
   const ids: Record<string, number> = {};
+  /** The conditions a person answers for each client. */
+  const asked: number[] = [];
   for (const [name, type] of [
     [DEMO_BANK, "bank"],
     [DEMO_COMPANY, "finance_company"],
@@ -85,10 +101,17 @@ export async function seedDemoLenders(db: Db, now: Date): Promise<void> {
     const { lenderId } = await addLender(db, { input: { name, type }, actor });
     for (const product of PRODUCTS[name]!) {
       const { productId } = await addProduct(db, { lenderId, input: { financeType: product.financeType, scope: { name: product.name, sectors: product.sectors, nationalities: ["saudi"], minAge: 21 }, terms: product.terms }, actor });
+      for (const input of product.special ?? []) {
+        const { conditionId } = await addCondition(db, { productId, input, actor });
+        if (input.kind === "guarantor") asked.push(conditionId);
+      }
       await confirmTerms(db, { productId, input: { ...product.source, terms: termsOf(product.financeType) }, actor, now });
       ids[`${name}:${product.financeType}`] = productId;
     }
   }
+  // One invented client was asked and has what the lender wants. Nobody asked the others yet.
+  const [answered] = await db.select({ id: clients.id }).from(clients).where(eq(clients.fileNo, DEMO_ANSWERED));
+  if (answered) for (const conditionId of asked) await answerCondition(db, { clientId: answered.id, conditionId, answer: "met", actor, now });
   // The bank's margin was read four months ago and nobody asked again: its confirmation ran out.
   // The service refuses a source this old, so the row is written as it would stand had time passed.
   await db

@@ -100,7 +100,7 @@ describe("the lenders of a deal", () => {
     expect(view.chosen).toBeNull();
     expect(view.offerRecorded).toBe(false);
     // The record was read after the order was paid: a default settled this month, nothing open.
-    expect(view.record).toEqual({ known: true, open: false, settledMonthsAgo: 0, delays: false });
+    expect(view.record).toEqual({ known: true, open: false, settledMonthsAgo: 0, delays: false, inquiries: { m6: 1, m12: 2 } });
     for (const route of view.routes) {
       expect(route.mortgage!.amount).toBeGreaterThan(0);
       expect(route.personal!.amount).toBeGreaterThan(0);
@@ -167,7 +167,7 @@ describe("the lenders of a deal", () => {
     // Confirmed to take the client at once, the lenders still refuse: one of her loans was paid late last month.
     await c.db.update(products).set({ settledDefaultWaitMonths: 0 });
     const late = await funding("ريم");
-    expect(late.record).toEqual({ known: true, open: false, settledMonthsAgo: 0, delays: true });
+    expect(late.record).toEqual({ known: true, open: false, settledMonthsAgo: 0, delays: true, inquiries: { m6: 5, m12: 7 } });
     expect(late.routes.every((r) => r.refusals.some((n) => n.check.code === "RECORD_LATE"))).toBe(true);
 
     // A lender that accepts late payments takes her, on that condition.
@@ -220,6 +220,8 @@ describe("the lenders of a deal", () => {
       ["service", "TERM_UNCONFIRMED"],
       ["transfer", "TERM_UNCONFIRMED"],
       ["settled", "TERM_NOT_KNOWN"],
+      // Nobody confirmed that the lender asks for nothing more, either.
+      ["special", "TERM_UNCONFIRMED"],
     ]);
 
     // The office asks the bank: it takes a client the day a default is paid, and gives its terms in writing.

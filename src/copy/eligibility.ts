@@ -4,21 +4,28 @@
  */
 import type {
   Advice,
+  Answer,
+  AskedKind,
   CapacityWarning,
   CapRule,
   Check,
+  ContractType,
   DocumentCategory,
   FinanceType,
+  InquiryWindow,
   Limit,
   MissingFact,
   Nationality,
+  NewCondition,
   Obligation,
   Point,
   Sector,
+  SpecialKind,
   StudyVerdict,
+  Unmet,
 } from "@/domain/eligibility";
 import { SECTOR } from "./editor";
-import { ltr, money, months, percent } from "./format";
+import { counted, ltr, money, months, percent, type CountForms } from "./format";
 
 export const STUDY_VERDICT: Record<StudyVerdict, string> = {
   eligible: "مؤهل",
@@ -55,7 +62,91 @@ export const CHECK_TITLE: Record<Check["key"], string> = {
   retire: "التقاعد",
   ltv: "الدفعة الأولى",
   dbr: "القسط المتاح",
+  special: "شروط الجهة الخاصة",
 };
+
+/** How a client is employed. */
+export const CONTRACT_TYPE: Record<ContractType, string> = {
+  permanent: "دائم",
+  fixed_term: "محدد المدة",
+  probation: "تحت التجربة",
+};
+
+/** A special condition a person answers for each client, named as what the lender asks for. */
+export const ASKED_KIND: Record<AskedKind, string> = {
+  employer: "جهة عمل معتمدة عندها",
+  guarantor: "كفيل",
+  collateral: "ضمان أو رهن",
+  other: "شرط آخر",
+};
+
+/** What a special condition asks for, in a few words: its kind, with what the office wrote beside it. */
+export function askedLabel(asked: { kind: AskedKind; text: string | null }): string {
+  if (!asked.text) return ASKED_KIND[asked.kind];
+  return asked.kind === "other" ? asked.text : `${ASKED_KIND[asked.kind]} (${asked.text})`;
+}
+
+const INQUIRIES: CountForms = { one: "استعلام واحد", two: "استعلامان", few: "استعلامات", many: "استعلاماً" };
+/** The same count where it follows «أكثر من», which changes how two of them are written. */
+const INQUIRIES_AFTER_PREPOSITION: CountForms = { ...INQUIRIES, two: "استعلامين" };
+/** What a record holds in a lender's window. A record with none says so in words, not with a zero. */
+const inquiriesFound = (count: number, window: number): string => (count === 0 ? `لا استعلام في السجل في آخر ${months(window)}` : `في السجل ${counted(count, INQUIRIES)} في آخر ${months(window)}`);
+
+/** What each kind of special condition is called where one is picked. */
+export const SPECIAL_KIND: Record<SpecialKind, string> = {
+  min_amount: "أدنى تمويل",
+  inquiries: "حد الاستعلامات",
+  contract: "نوع العقد",
+  employer: "اعتماد جهة العمل",
+  guarantor: "كفيل",
+  collateral: "ضمان أو رهن",
+  other: "شرط آخر",
+};
+
+/** What the lender does with a client who does not meet a condition a person answers. */
+export const UNMET: Record<Unmet, string> = {
+  block: "ترفض من لا يستوفيه",
+  action: "تطلبه ممن لا يستوفيه",
+};
+
+/** The same choice, in the words a choice has room for. */
+export const UNMET_CHOICE: Record<Unmet, string> = {
+  block: "مانع",
+  action: "مطلوب من العميل",
+};
+
+/** The window a lender counts inquiries in. */
+export const INQUIRY_WINDOW: Record<`${InquiryWindow}`, string> = {
+  "6": "آخر 6 أشهر",
+  "12": "آخر 12 شهراً",
+};
+
+/** What a person answered about a client and a condition. */
+export const ANSWER: Record<Answer, string> = {
+  met: "مستوفى",
+  unmet: "غير مستوفى",
+};
+
+const QUESTIONS: CountForms = { one: "شرط واحد", two: "شرطان", few: "شروط", many: "شرطاً" };
+
+/** How many of a client's questions nobody has answered. */
+export const askedOpenText = (open: number): string => (open === 0 ? "أُجيب عنها كلها" : open === 1 ? "شرط واحد لم يُجب عنه" : open === 2 ? "شرطان لم يُجب عنهما" : `${counted(open, QUESTIONS)} لم يُجب عنها`);
+
+export const SPECIAL_CONDITIONS: CountForms = { one: "شرط خاص واحد", two: "شرطان خاصان", few: "شروط خاصة", many: "شرطاً خاصاً" };
+
+/** A special condition as it reads in a lender's list. */
+export function conditionText(c: NewCondition): string {
+  switch (c.kind) {
+    case "min_amount":
+      return `لا تموّل أقل من ${money(c.amount)}`;
+    case "inquiries":
+      return c.count === 0 ? `لا تقبل استعلاماً في آخر ${months(c.months)}` : `لا تقبل أكثر من ${counted(c.count, INQUIRIES_AFTER_PREPOSITION)} في آخر ${months(c.months)}`;
+    case "contract":
+      return `تقبل عقد العمل: ${c.contracts.map((contract) => CONTRACT_TYPE[contract]).join(" أو ")}`;
+    default:
+      return askedLabel(c);
+  }
+}
 
 /** The rule that holds the installment, as it reads after "يحكمه". */
 export function capRuleText(rule: CapRule, share: number, who: { retired: boolean; mortgage: boolean }): string {
@@ -123,6 +214,28 @@ export function checkText(c: Check): string {
       return "لا قسط متاح ضمن حدود ساما.";
     case "ROOM":
       return `القسط المتاح ${money(c.params.available)}، ويحكمه ${capRuleText(c.params.rule, c.params.share, c.params)}.`;
+    case "SPECIAL_LIST":
+      return c.params.count ? "للجهة شروط خاصة مسجلة." : "لا شروط خاصة مسجلة للجهة.";
+    case "AMOUNT_MIN":
+      if (ok) return `المبلغ فوق أدنى تمويل عند الجهة، وهو ${money(c.params.min)}.`;
+      return c.status === "warn" ? `أدنى تمويل عند الجهة ${money(c.params.min)}، والمطلوب أقل منه.` : `أدنى تمويل عند الجهة ${money(c.params.min)}، والمتاح للعميل ${money(c.params.amount)}.`;
+    case "INQUIRIES":
+      // A lender that takes none says so in words: a limit of zero reads as a mistake.
+      if (c.params.max === 0) return ok ? `${inquiriesFound(c.params.count, c.params.months)}، والجهة لا تقبل أي استعلام فيها.` : `${inquiriesFound(c.params.count, c.params.months)}، والجهة لا تقبل أي استعلام.`;
+      return ok
+        ? `${inquiriesFound(c.params.count, c.params.months)}، وحد الجهة ${ltr(c.params.max)}.`
+        : `${inquiriesFound(c.params.count, c.params.months)}، والجهة لا تقبل أكثر من ${ltr(c.params.max)}.`;
+    case "INQUIRIES_UNKNOWN":
+      return "عدد الاستعلامات في سمة غير معروف.";
+    case "CONTRACT":
+      return ok ? `نوع العقد مقبول (${CONTRACT_TYPE[c.params.contract]}).` : `الجهة لا تقبل نوع العقد (${CONTRACT_TYPE[c.params.contract]}).`;
+    case "CONTRACT_MISSING":
+      return "نوع عقد العميل غير مدخل.";
+    case "ASKED":
+      if (ok) return `مستوفى: ${askedLabel(c.params)}.`;
+      return c.status === "warn" ? `تشترط الجهة ولم يستوفه العميل بعد: ${askedLabel(c.params)}.` : `العميل لا يستوفي شرط الجهة: ${askedLabel(c.params)}.`;
+    case "ASKED_OPEN":
+      return `لم يُجب بعد عن شرط الجهة: ${askedLabel(c.params)}.`;
   }
 }
 

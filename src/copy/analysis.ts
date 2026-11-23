@@ -6,7 +6,7 @@
 import type { AnalysisVerdict, ClientAnalysis, Commitment, Fit, FitCheck, Gap, Income, IncomeBasis, KindFit, Mark, Reading, Step } from "@/domain/analysis";
 import type { Capacity } from "@/domain/eligibility";
 import { actionText, actionTitle, blockerText, findingText } from "./credit";
-import { capRuleText, checkText, FINANCE_TYPE, pointText } from "./eligibility";
+import { askedLabel, capRuleText, checkText, FINANCE_TYPE, pointText } from "./eligibility";
 import { counted, ltr, money, months, type CountForms } from "./format";
 import { ELIGIBILITY, routeCheckText, strictDoubtLines, strictLines, strictRefusalLines } from "./funding";
 import { TERM_NAME } from "./lenders";
@@ -172,6 +172,8 @@ export function gapText(gap: Gap): string {
       return "مدة الخدمة غير مدخلة، فلم نقس شرطها عند الجهات.";
     case "SALARY_BANK":
       return "بنك الراتب غير محدد، فكل جهة تشترط تحويله تبقى شرطاً.";
+    case "CONTRACT":
+      return "نوع عقد العميل غير مدخل، وفي الجهات من تشترط نوعاً منه.";
     case "INSTALLMENT":
       return `${gap.lender}، ${gap.product}: القسط غير مذكور في التقرير${gap.balance ? `، والرصيد ${money(gap.balance)}` : ""}. لم يدخل في النسبة.`;
     case "CARD_SHARE":
@@ -195,6 +197,7 @@ const FILE_FACT: Record<Extract<Step, { code: "COMPLETE_FILE" }>["missing"][numb
   AGE: "سنة الميلاد",
   SERVICE: "مدة الخدمة",
   SALARY_BANK: "بنك الراتب",
+  CONTRACT: "نوع العقد",
 };
 
 /** A step of the plan in a few words. */
@@ -218,6 +221,8 @@ export function stepTitle(step: Step): string {
       return "وثّق الدخل";
     case "CONFIRM_TERMS":
       return step.beforePaying ? `قبل أي سداد: أكّد شروط ${step.lender}` : `أكّد شروط ${step.lender}`;
+    case "ASK_CLIENT":
+      return step.beforePaying ? `قبل أي سداد: اسأل العميل عن شروط ${step.lender}` : `اسأل العميل عن شروط ${step.lender}`;
     case "APPLY":
       if (step.afterClearing) return `بعد السداد: ${step.lender}`;
       return step.eligibility === "needs_verification" ? `بعد التأكيد: ${step.lender}` : `قدّم إلى ${step.lender}`;
@@ -247,6 +252,8 @@ export function stepText(step: Step): string {
       const what = `${step.kinds.map((kind) => kindTitle({ kind })).join(" و")}. لم يؤكَّد: ${step.terms.map((term) => TERM_NAME[term]).join("، ")}.`;
       return step.beforePaying ? `${what} اسأل الجهة واحفظ مصدر جوابها قبل أن يُسدَّد عن العميل شيء: السداد لا يضمن القبول.` : `${what} اسأل الجهة واحفظ مصدر جوابها قبل وعد العميل أو التقديم.`;
     }
+    case "ASK_CLIENT":
+      return `تشترط: ${step.questions.map(askedLabel).join("، ")}. سجّل جواب العميل عن كل شرط: ما لم يُجب عنه لا يُحسب مستوفى.`;
     case "APPLY": {
       const offer = `${kindTitle(step)} حتى ${money(step.amount)} بقسط ${money(step.installment)} لمدة ${months(step.months)}.`;
       const notes = [

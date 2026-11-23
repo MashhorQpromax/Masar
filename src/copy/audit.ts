@@ -6,7 +6,7 @@ import { ROLE } from "./auth";
 import { STAGE } from "./deal";
 import { PAPER_STATUS, paperLabel } from "./documents";
 import { counted, dayFull, dayLong, dayOfIso, days, ltr, type CountForms } from "./format";
-import { FINANCE_TYPE } from "./eligibility";
+import { FINANCE_TYPE, SPECIAL_KIND } from "./eligibility";
 import { DECISION, PART, RULE_KIND } from "./knowledge";
 import { LENDER_TYPE, SOURCE_KIND } from "./lenders";
 import { MESSAGE_KIND } from "./messages";
@@ -43,6 +43,7 @@ const AUDIT_ACTION: Record<AuditAction, string> = {
   "client.contact": "تعديل بيانات التواصل",
   "client.note": "ملاحظة على الملف",
   "client.consent": "موافقة العميل على معالجة بياناته",
+  "client.condition_answer": "جواب العميل عن شرط جهة",
   "client.reject": "رفض الملف",
   "client.reopen": "إعادة الملف إلى الدراسة",
   "credit.report_add": "قراءة تقرير سمة",
@@ -68,6 +69,8 @@ const AUDIT_ACTION: Record<AuditAction, string> = {
   "lender.product_switch": "إيقاف منتج أو إعادته",
   "lender.terms_confirm": "تأكيد شروط منتج",
   "lender.terms_withdraw": "سحب تأكيد شرط",
+  "lender.condition_add": "إضافة شرط خاص",
+  "lender.condition_remove": "حذف شرط خاص",
   "lender.rule_add": "ملاحظة عن جهة",
   "lender.rule_archive": "حذف ملاحظة عن جهة",
   "lender.decision": "تسجيل قرار جهة",
@@ -117,6 +120,7 @@ const FIELD: Record<string, string> = {
   basicSalary: "الراتب الأساسي",
   totalSalary: "الراتب الإجمالي",
   serviceMonths: "مدة الخدمة",
+  contractType: "نوع العقد",
   salaryBank: "بنك الراتب",
   role: "الدور",
   active: "حالة الحساب",
@@ -180,6 +184,10 @@ export function auditDetail(action: string, details: Record<string, unknown> | n
       return joined([fields(d.changed), (number(d.adopted) ?? 0) > 0 && `انضمت ${counted(number(d.adopted)!, MESSAGES)}`, d.via === "inbox" && "من الوارد"]);
     case "client.consent":
       return joined([d.given === false ? "سُحبت" : "سُجلت", d.with === "report" && "مع رفع تقرير سمة"]);
+    case "client.condition_answer": {
+      const kind = text(d.kind);
+      return joined([text(d.lender), kind && kind in SPECIAL_KIND ? SPECIAL_KIND[kind as keyof typeof SPECIAL_KIND] : null, d.answer === "met" ? "مستوفى" : d.answer === "unmet" ? "غير مستوفى" : d.answer === null && "سُحب الجواب"]);
+    }
     case "client.reject":
       return text(d.reason) ?? "";
     case "credit.report_review":
@@ -233,6 +241,11 @@ export function auditDetail(action: string, details: Record<string, unknown> | n
     }
     case "lender.terms_withdraw":
       return joined([text(d.lender), text(d.product), strings(d.terms).length > 0 && counted(strings(d.terms).length, TERMS)]);
+    case "lender.condition_add":
+    case "lender.condition_remove": {
+      const kind = text(record(d.condition).kind);
+      return joined([text(d.lender), text(d.product), kind && kind in SPECIAL_KIND ? SPECIAL_KIND[kind as keyof typeof SPECIAL_KIND] : null, d.unconfirmed === true && "سقط تأكيد قائمة الشروط"]);
+    }
     case "lender.rule_add":
       return joined([isRuleKind(d.kind) && RULE_KIND[d.kind], text(d.lender) ?? "كل الجهات", text(d.title)]);
     case "lender.rule_archive":

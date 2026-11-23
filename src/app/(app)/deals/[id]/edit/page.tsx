@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { can } from "@/domain/auth";
 import { SECTORS, type Sector } from "@/domain/deal";
+import { contractOf } from "@/domain/eligibility";
 import { requireActor } from "@/server/auth/actor";
 import { getDb } from "@/server/db/client";
 import { getDeal } from "@/server/deals/service";
@@ -46,6 +47,7 @@ export default async function EditDealPage({ params }: { params: Promise<{ id: s
           basicSalary: client.basicSalary,
           totalSalary: client.totalSalary,
           serviceMonths: client.serviceMonths,
+          contractType: contractOf(client.contractType),
         }}
         input={input}
         credit={view.creditFlags}

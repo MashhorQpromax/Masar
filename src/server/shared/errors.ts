@@ -11,6 +11,8 @@ export class DomainError extends Error {
       | "LENDER_KNOWN"
       | "SOURCE_REFUSED"
       | "TERM_VALUE_MISSING"
+      | "CONDITION_REFUSED"
+  | "AMOUNT_BELOW_LEAST"
       | "OFFER_RECORDED"
       | "ROUTE_GONE"
       | "ROUTE_REFUSED"

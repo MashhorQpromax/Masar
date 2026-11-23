@@ -10,6 +10,7 @@
  */
 import type { RateType } from "../finance/amortization";
 import type { Sector } from "../shared/sector";
+import type { Answer, ContractType, Inquiries, SpecialCheck, SpecialCondition } from "./special";
 import type { Term, TermStanding } from "./terms";
 
 export { SECTORS, type Sector } from "../shared/sector";
@@ -59,6 +60,12 @@ export interface Profile {
   propertyValue?: number | null;
   /** Income of a co-borrower (a spouse). Counted for a mortgage only. */
   coIncome?: number | null;
+  /** How the client is employed. Null or absent: nobody wrote it down. */
+  contractType?: ContractType | null;
+  /** The credit inquiries the record shows. Null or absent: no record was read. */
+  inquiries?: Inquiries | null;
+  /** What a person answered for this client about lenders' special conditions, by the condition's id. */
+  answers?: Readonly<Record<string, Answer>>;
 }
 
 /** One lender's terms for one kind of finance. */
@@ -95,6 +102,8 @@ export interface Product {
   verified?: boolean;
   /** How far each term can be relied on today. A term left out is unconfirmed. */
   terms?: Partial<Record<Term, TermStanding>>;
+  /** What this lender asks beyond the terms every product has. The list as a whole is the term `special`. */
+  special?: SpecialCondition[];
 }
 
 /** The rule that limits the monthly installment. */
@@ -137,7 +146,10 @@ export interface Capacity {
 export type CheckStatus = "pass" | "warn" | "fail";
 
 /** One condition of a product, held against the client. */
-export type Check = { status: CheckStatus } & (
+export type Check = TermCheck | SpecialCheck;
+
+/** A condition that rests on one of the terms every product has, on SAMA's rules or on a fact about the client. */
+export type TermCheck = { status: CheckStatus } & (
   | { key: "salary"; code: "SALARY_MISSING"; params: Record<string, never> }
   | { key: "salary"; code: "SALARY_MIN"; params: { salary: number; min: number } }
   | { key: "sector"; code: "SECTOR"; params: { sector: Sector } }

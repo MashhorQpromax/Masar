@@ -60,7 +60,10 @@ interface Doubtful<C> {
  * what nobody knows of it at all. `say` words one condition.
  */
 export function doubtLines<C>({ doubts, oneLender }: Doubtful<C>, say: (check: Told<C>["finding"]["check"]) => string): string[] {
-  const lines = doubts.filter((doubt) => doubt.finding.doubt === "FACT_MISSING").map((doubt) => say(doubt.finding.check));
+  // A fact about the client is the same for every lender. A question one lender asks about them is that lender's.
+  const lines = doubts
+    .filter((doubt) => doubt.finding.doubt === "FACT_MISSING")
+    .map((doubt) => (doubt.finding.basis === "lender" && !oneLender ? `${doubt.lender}: ${say(doubt.finding.check)}` : say(doubt.finding.check)));
   for (const lender of [...new Set(doubts.map((doubt) => doubt.lender))]) {
     const of = doubts.filter((doubt) => doubt.lender === lender);
     const add = (text: string) => lines.push(oneLender ? text : `${lender}: ${text}`);

@@ -1,7 +1,7 @@
 import { boolean, date, index, integer, jsonb, text, uniqueIndex } from "drizzle-orm/pg-core";
 import { at, bytea, createdAt, id, masar, money, percent } from "./_shared";
 import { users } from "./identity";
-import { lenders } from "./lenders";
+import { lenders, productConditions } from "./lenders";
 
 export const documentStatus = masar.enum("document_status", ["missing", "received", "verified", "rejected"]);
 export const outcomeDecision = masar.enum("outcome_decision", ["approved", "approved_modified", "rejected"]);
@@ -23,6 +23,8 @@ export const clients = masar.table(
     employer: text(),
     sector: text().notNull().default("gov"),
     jobTitle: text(),
+    /** How the client is employed: permanent, for a fixed term, or on probation. Null: nobody wrote it down. */
+    contractType: text(),
     serviceMonths: integer(),
     basicSalary: money(),
     totalSalary: money(),
@@ -68,6 +70,28 @@ export const obligations = masar.table(
     endDate: date(),
   },
   (t) => [index("obligations_client_idx").on(t.clientId)],
+);
+
+/**
+ * What a person answered about one client and one of a lender's special conditions. One row per
+ * condition and client: answering again replaces it, and the audit log keeps what stood before. No
+ * row means nobody answered, which is never read as the condition being met.
+ */
+export const conditionAnswers = masar.table(
+  "condition_answers",
+  {
+    id: id(),
+    conditionId: integer()
+      .notNull()
+      .references(() => productConditions.id, { onDelete: "cascade" }),
+    clientId: integer()
+      .notNull()
+      .references(() => clients.id, { onDelete: "cascade" }),
+    answer: text().notNull(),
+    userId: integer().references(() => users.id, { onDelete: "set null" }),
+    answeredAt: createdAt(),
+  },
+  (t) => [uniqueIndex("condition_answers_condition_client_idx").on(t.conditionId, t.clientId), index("condition_answers_client_idx").on(t.clientId)],
 );
 
 /**

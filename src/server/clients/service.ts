@@ -68,7 +68,8 @@ export async function updateBorrower(
 ): Promise<ClientRow> {
   const [before] = await tx.select().from(clients).where(eq(clients.id, args.clientId));
   if (!before) throw new DomainError("NOT_FOUND", `client ${args.clientId}`);
-  const changed = (Object.keys(args.input) as (keyof BorrowerInput)[]).filter((key) => before[key] !== args.input[key]);
+  // A fact the form did not send stays as it is.
+  const changed = (Object.keys(args.input) as (keyof BorrowerInput)[]).filter((key) => args.input[key] !== undefined && before[key] !== args.input[key]);
   if (!changed.length) return before;
   const [client] = await tx
     .update(clients)

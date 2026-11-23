@@ -14,6 +14,7 @@
  *
  * Everything in this module is pure: no database, no clock, no text in any language.
  */
+import { listCheck } from "./special";
 import type { SourceStrength, Term, TermStanding } from "./terms";
 import { amountsOpen, UNCONFIRMED } from "./terms";
 import type { Check, CheckStatus, Match } from "./types";
@@ -41,7 +42,8 @@ export interface Rule {
   warn?: "met";
 }
 
-type BareCheck = { status: CheckStatus; code: string };
+/** `ref` tells two conditions of one code apart: two special conditions of one lender are two things to say. */
+type BareCheck = { status: CheckStatus; code: string; ref?: string };
 
 /** One condition, with how far its answer can be relied on. */
 export interface Finding<C extends BareCheck = BareCheck> {
@@ -86,6 +88,16 @@ export const CHECK_RULES = {
   NO_ROOM: { basis: "regulation" },
   // Less than was asked for is still finance the client can take.
   ROOM: { basis: "regulation", warn: "met" },
+  // The lender's special conditions rest on one term: the list of them, as the lender confirmed it.
+  SPECIAL_LIST: { basis: "lender", term: "special" },
+  AMOUNT_MIN: { basis: "lender", term: "special" },
+  INQUIRIES: { basis: "lender", term: "special" },
+  INQUIRIES_UNKNOWN: { basis: "client", missing: true },
+  CONTRACT: { basis: "lender", term: "special" },
+  CONTRACT_MISSING: { basis: "client", missing: true },
+  ASKED: { basis: "lender", term: "special" },
+  // Nobody asked the client yet. It is this lender's question, and the answer is a fact about the client.
+  ASKED_OPEN: { basis: "lender", term: "special", missing: true },
 } as const satisfies Record<Check["code"], Rule>;
 
 /** Reads one answer strictly. `terms` are the standings of the product that gave it. */
@@ -162,13 +174,14 @@ export function tell<T>(items: readonly T[], read: (item: T) => Finding, owner: 
       return true;
     });
   };
-  const byCode = (finding: Finding, who: string) => (finding.basis === "lender" ? `${who}:${finding.check.code}` : finding.check.code);
+  const named = (finding: Finding) => (finding.check.ref ? `${finding.check.code}:${finding.check.ref}` : finding.check.code);
+  const byCode = (finding: Finding, who: string) => (finding.basis === "lender" ? `${who}:${named(finding)}` : named(finding));
   // A term cut short by the age limit is already in the months and the amount: nothing to say of it.
   const said = (finding: Finding) => finding.check.status !== "pass" && finding.check.code !== "TENOR_SHORTENED";
   return {
     doubts: once(
       (finding) => finding.outcome === "unknown",
-      (finding, who) => (finding.doubt === "FACT_MISSING" ? finding.check.code : `${who}:${finding.term}`),
+      (finding, who) => (finding.doubt === "FACT_MISSING" ? byCode(finding, who) : `${who}:${finding.term}`),
     ),
     blockers: once((finding) => finding.outcome === "blocked", byCode),
     leans: once((finding) => finding.outcome === "unknown" && finding.leans != null && said(finding), byCode),
@@ -190,7 +203,9 @@ export interface StrictMatch extends Telling<Finding<Check>> {
 
 export function strictMatch(match: Pick<Match, "checks" | "product">): StrictMatch {
   const { product } = match;
-  const findings = match.checks.map((check) => findingOf(check, CHECK_RULES[check.code], product.terms));
+  // The engine answers the conditions that are written down. Whether the list of them is complete is asked here.
+  const checks: Check[] = [...match.checks, listCheck(product.special)];
+  const findings = checks.map((check) => findingOf(check, CHECK_RULES[check.code], product.terms));
   return {
     ...tell(
       findings,

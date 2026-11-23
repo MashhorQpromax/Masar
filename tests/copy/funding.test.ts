@@ -166,8 +166,8 @@ describe("funding wording", () => {
     expect(routeDoubtCount(open)).toEqual(["شرطان لم يؤكَّدا."]);
 
     const two = one([product("1", "a", { terms: undefined, requiresSalaryTransfer: false }), home("2", "b", { terms: terms([], ["sector"]) })], clean, gov, "b");
-    expect(routeDoubtLines(two)).toEqual(["جهة b: انتهى تأكيده: لمن يُعطى.", "جهة a: لم يؤكَّد: أدنى راتب، لمن يُعطى، الجنسية، حدود العمر، مدة الخدمة."]);
-    expect(strip(routeDoubtCount(two)[0]!)).toBe("6 شروط لم تؤكَّد.");
+    expect(routeDoubtLines(two)).toEqual(["جهة b: انتهى تأكيده: لمن يُعطى.", "جهة a: لم يؤكَّد: أدنى راتب، لمن يُعطى، الجنسية، حدود العمر، مدة الخدمة، الشروط الخاصة."]);
+    expect(strip(routeDoubtCount(two)[0]!)).toBe("7 شروط لم تؤكَّد.");
 
     const paid = one([product("1", "a", { terms: terms() }), home("2", "a", { terms: terms(), settledDefaultWaitMonths: null })], { ...clean, settledMonthsAgo: 0 });
     expect(routeDoubtLines(paid)).toEqual(["لم نؤكد معها متى تقبل عميلاً سدّد تعثره."]);
@@ -214,6 +214,62 @@ describe("funding wording", () => {
         const text = routeFindingText(found, route);
         expect(strip(text), found.finding.check.code).not.toMatch(broken);
         expect(text.endsWith("."), found.finding.check.code).toBe(true);
+      }
+    }
+  });
+
+  it("says a lender's special conditions on a route, and names the lender whose question is open", () => {
+    const record = { ...records[0]!, inquiries: { m6: 1, m12: 2 } };
+    const asks: Product["special"] = [
+      { id: "9", kind: "guarantor", text: null, unmet: "action" },
+      { id: "10", kind: "employer", text: null, unmet: "block" },
+    ];
+    const one = (products: Product[], who: { answers?: Record<string, "met" | "unmet">; contractType?: "permanent" | null; record?: RecordAfter } = {}) =>
+      fundingRoutes({ input: deal, borrower: people[0]!, who: { nationality: "saudi", salaryBank: "a", record, contractType: "permanent", answers: {}, ...who }, products })[0]!;
+    const asked = [product("1", "a", { terms: terms(), requiresSalaryTransfer: false, special: asks }), home("2", "b", { terms: terms() })];
+
+    // Nobody asked the client: a question of one lender, so the line says whose it is.
+    const open = one(asked);
+    expect(open.eligibility).toBe("needs_verification");
+    expect(routeDoubtLines(open)).toEqual(["جهة a: لم يُجب بعد عن شرط الجهة: كفيل.", "جهة a: لم يُجب بعد عن شرط الجهة: جهة عمل معتمدة عندها."]);
+    const alone = one([product("1", "a", { terms: terms(), special: asks }), home("2", "a", { terms: terms() })]);
+    expect(routeDoubtLines(alone)).toEqual(["لم يُجب بعد عن شرط الجهة: كفيل.", "لم يُجب بعد عن شرط الجهة: جهة عمل معتمدة عندها."]);
+
+    // The client does not meet them: one the lender asks for, one it refuses for.
+    const unmet = one(asked, { answers: { "9": "unmet", "10": "unmet" } });
+    expect(unmet.eligibility).toBe("not_eligible");
+    expect(unmet.blockers.map((blocker) => routeFindingText(blocker, unmet))).toEqual(["جهة a: العميل لا يستوفي شرط الجهة: جهة عمل معتمدة عندها."]);
+    expect(unmet.actions.map((action) => routeFindingText(action, unmet))).toContain("جهة a: تشترط الجهة ولم يستوفه العميل بعد: كفيل.");
+    expect(one(asked, { answers: { "9": "met", "10": "met" } }).eligibility).toBe("conditional");
+
+    // What the system measures itself, against the record and the file.
+    const measured = [
+      product("1", "a", {
+        terms: terms(),
+        requiresSalaryTransfer: false,
+        special: [
+          { id: "1", kind: "inquiries", count: 0, months: 6 },
+          { id: "2", kind: "contract", contracts: ["fixed_term"] },
+          { id: "3", kind: "min_amount", amount: 5_000_000 },
+        ],
+      }),
+      home("2", "b", { terms: terms() }),
+    ];
+    const refused = one(measured);
+    expect(refused.blockers.map((blocker) => strip(routeFindingText(blocker, refused)).replace(/[0-9,]+\.$/, "X."))).toEqual([
+      "جهة a: في السجل استعلام واحد في آخر 6 أشهر، والجهة لا تقبل أي استعلام.",
+      "جهة a: الجهة لا تقبل نوع العقد (دائم).",
+      "جهة a: أدنى تمويل عند الجهة 5,000,000، والمتاح للعميل X.",
+    ]);
+    // What nobody knows about the client is a fact to find, said of no lender, and never a pass.
+    const blank = one(measured.map((p) => ({ ...p, special: p.special?.slice(0, 2) })), { contractType: null, record: { ...record, inquiries: null } });
+    expect(blank.eligibility).toBe("needs_verification");
+    expect(routeDoubtLines(blank)).toEqual(["عدد الاستعلامات في سمة غير معروف.", "نوع عقد العميل غير مدخل."]);
+
+    for (const route of [open, alone, unmet, refused, blank]) {
+      for (const line of [...routeDoubtLines(route), ...routeDoubtCount(route), ...[...route.blockers, ...route.actions, ...route.remarks].map((found) => routeFindingText(found, route))]) {
+        expect(strip(line)).not.toMatch(broken);
+        expect(line.endsWith(".")).toBe(true);
       }
     }
   });

@@ -2,7 +2,8 @@ import "server-only";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { analyzeClient, reportAgeMonths, type ClientAnalysis, type FileFacts } from "@/domain/analysis";
 import { INCOME_PROOF } from "@/domain/documents";
-import { PRODUCT_KINDS, SECTORS, type ProductKind, type Sector } from "@/domain/eligibility";
+import { contractOf, PRODUCT_KINDS, SECTORS, type Answer, type ProductKind, type Sector } from "@/domain/eligibility";
+import { answersOf } from "../clients/conditions";
 import type { ClientRow } from "../clients/service";
 import { latestCredit, type CreditRecord } from "../credit/service";
 import type { Db } from "../db/client";
@@ -13,7 +14,7 @@ import { riyadhDay } from "../shared/clock";
 const ENDED = ["closed", "lost"];
 
 /** What a client's file says about them, as the analysis reads it in a given year. */
-export function fileFacts(client: ClientRow, args: { incomeVerified: boolean; now: Date }): FileFacts {
+export function fileFacts(client: ClientRow, args: { incomeVerified: boolean; now: Date; answers?: Readonly<Record<string, Answer>> }): FileFacts {
   const kind = (PRODUCT_KINDS as readonly string[]).includes(client.financeType) ? (client.financeType as ProductKind) : null;
   return {
     age: client.birthYear != null ? args.now.getFullYear() - client.birthYear : null,
@@ -30,6 +31,8 @@ export function fileFacts(client: ClientRow, args: { incomeVerified: boolean; no
     request: kind ? { kind, amount: client.requestedAmount, tenor: client.requestedTenor } : null,
     incomeVerified: args.incomeVerified,
     consent: client.consentAt != null,
+    contractType: contractOf(client.contractType),
+    answers: args.answers ?? {},
   };
 }
 
@@ -63,7 +66,7 @@ export async function getAnalysis(db: Db, args: { clientId: number; now?: Date }
     .limit(1);
   const [bank] = client.salaryBank ? await db.select({ name: lenders.name }).from(lenders).where(eq(lenders.bankCode, client.salaryBank)).limit(1) : [];
   const record = await latestCredit(db, client.id);
-  const file = fileFacts(client, { incomeVerified: proof != null, now });
+  const file = fileFacts(client, { incomeVerified: proof != null, now, answers: await answersOf(db, client.id) });
   const analysis = record
     ? analyzeClient({
         file,

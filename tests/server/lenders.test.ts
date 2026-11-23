@@ -165,7 +165,7 @@ describe("adding a product", () => {
     const seen = (id: number) => all.find((p) => p.id === String(id))!;
     expect(seen(claimed.productId)).toMatchObject({ verified: false });
     expect(await productRow(claimed.productId)).toMatchObject({ verifiedAt: null });
-    expect(Object.keys(seen(home.productId).terms!)).toEqual(["salary", "sector", "nationality", "age", "service", "transfer", "late", "settled", "amount", "tenor", "ltv", "rate"]);
+    expect(Object.keys(seen(home.productId).terms!)).toEqual(["salary", "sector", "nationality", "age", "service", "transfer", "late", "settled", "special", "amount", "tenor", "ltv", "rate"]);
     expect(Object.keys(seen(car.productId).terms!)).not.toContain("ltv");
     for (const id of [home.productId, car.productId, claimed.productId]) expect(Object.values(seen(id).terms!).every((standing) => standing.state === "unconfirmed"), String(id)).toBe(true);
     await setProductActive(c.db, { productId: claimed.productId, active: false, actor });
@@ -316,9 +316,9 @@ describe("confirming a product's terms with their source", () => {
     const product = await seen(id);
     expect(product.terms!.rate).toEqual({ state: "confirmed", source: { ...paper, confirmedOn: "2026-11-20" }, strength: "written", validUntil: "2027-02-20" });
     expect(product.terms!.service).toEqual({ state: "unconfirmed" });
-    // Three terms out of eleven: the product as a whole is not confirmed.
+    // Three terms out of twelve: the product as a whole is not confirmed.
     expect(product.verified).toBe(false);
-    expect(openTerms("personal", product.terms)).toEqual(["sector", "nationality", "service", "transfer", "late", "settled", "amount", "tenor"]);
+    expect(openTerms("personal", product.terms)).toEqual(["sector", "nationality", "service", "transfer", "late", "settled", "special", "amount", "tenor"]);
   });
 
   it("takes today in Riyadh when no day is given, and an employee's word as the weaker source", async () => {
@@ -349,6 +349,10 @@ describe("confirming a product's terms with their source", () => {
     expect(await params(() => confirmTerms(c.db, { productId: id, input: { ...paper, terms: ["settled"] }, actor, now }))).toEqual({ term: "settled" });
     expect(await updateProductTerms(c.db, { productId: id, terms: { ...termsOf(await seen(id)), settledDefaultWaitMonths: 12 }, actor })).toEqual({ unconfirmed: [] });
     await confirmTerms(c.db, { productId: id, input: { ...paper, terms: ["sector", "nationality", "transfer", "late", "settled", "amount", "tenor"] }, actor, now });
+    // The list of its special conditions is a term like the others: empty as it is, somebody has to confirm that it is.
+    expect(openTerms("personal", (await seen(id)).terms)).toEqual(["special"]);
+    expect((await seen(id)).verified).toBe(false);
+    await confirmTerms(c.db, { productId: id, input: { ...paper, terms: ["special"] }, actor, now });
     const product = await seen(id);
     expect(openTerms("personal", product.terms)).toEqual([]);
     expect(product.verified).toBe(true);
@@ -368,7 +372,7 @@ describe("confirming a product's terms with their source", () => {
     expect(await updateProductTerms(c.db, { productId: id, terms: changed.terms, scope: { ...changed.scope, minAge: 21 }, actor })).toEqual({ unconfirmed: ["age"] });
     // Saving the same again drops nothing.
     expect(await updateProductTerms(c.db, { productId: id, terms: changed.terms, scope: { ...changed.scope, minAge: 21 }, actor })).toEqual({ unconfirmed: [] });
-    expect((await sourcesOf(id)).map((row) => row.term)).toEqual(["service", "sector", "nationality", "transfer", "late", "settled", "amount", "tenor"].filter((term) => term !== "sector"));
+    expect((await sourcesOf(id)).map((row) => row.term)).toEqual(["service", "sector", "nationality", "transfer", "late", "settled", "amount", "tenor", "special"].filter((term) => term !== "sector"));
   });
 
   it("stops counting on a confirmation the day after it runs out", async () => {
@@ -380,7 +384,7 @@ describe("confirming a product's terms with their source", () => {
     expect((await seen(id, midnight)).terms!.tenor).toEqual({ state: "expired", source: { ...paper, confirmedOn: "2026-11-22" }, validUntil: "2027-02-22" });
     expect((await seen(id, midnight)).terms!.service).toMatchObject({ state: "confirmed", validUntil: "2027-02-23" });
     const kept = (await listCatalogue(c.db, { now: midnight })).flatMap((lender) => lender.products).find((p) => p.id === String(id))!;
-    expect(openTerms("personal", kept.terms)).toEqual(["salary", "sector", "nationality", "age", "transfer", "late", "settled", "amount", "tenor", "rate"]);
+    expect(openTerms("personal", kept.terms)).toEqual(["salary", "sector", "nationality", "age", "transfer", "late", "settled", "special", "amount", "tenor", "rate"]);
   });
 
   it("refuses a source that confirms nothing, and writes nothing", async () => {

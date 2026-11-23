@@ -14,7 +14,7 @@
  * Amounts are Saudi riyals, tenors are months, rates are percent a year.
  */
 import type { Blocker, CreditAction, CreditAnalysis, CreditReport, Finding, ParsedReport } from "../credit";
-import type { Capacity, Check, CheckStatus, Eligibility, Finding as StrictFinding, Limit, Nationality, Obligation, Point, Product, ProductKind, Sector, SourceStrength, Telling, Term } from "../eligibility";
+import type { Answer, AskedKind, Capacity, Check, CheckStatus, ContractType, Eligibility, Finding as StrictFinding, Limit, Nationality, Obligation, Point, Product, ProductKind, Sector, SourceStrength, Telling, Term } from "../eligibility";
 import type { RecordAfter, RouteCheck } from "../funding";
 
 /** What the client's file says about them, as far as the analysis reads it. */
@@ -39,6 +39,10 @@ export interface FileFacts {
   incomeVerified: boolean;
   /** The client's consent to processing their data is on file. */
   consent: boolean;
+  /** How the client is employed. Null or absent: nobody wrote it down. */
+  contractType?: ContractType | null;
+  /** What a person answered for this client about lenders' special conditions, by the condition's id. */
+  answers?: Readonly<Record<string, Answer>>;
 }
 
 /** The client's stored SIMAH record, with how it was read. */
@@ -174,6 +178,8 @@ export type Gap = { kind: "missing" | "unconfirmed" } & (
   | { code: "AGE" }
   | { code: "SERVICE" }
   | { code: "SALARY_BANK" }
+  /** A lender studied asks for a kind of contract, and the file does not say which the client has. */
+  | { code: "CONTRACT" }
   | { code: "INSTALLMENT"; lender: string; product: string; balance: number | null }
   | { code: "CARD_SHARE"; lender: string; limit: number | null; balance: number | null }
   | { code: "REPORT_AGE"; months: number }
@@ -189,7 +195,7 @@ export type GapCode = Gap["code"];
 /** What to do next, in order. */
 export type Step =
   | { code: "RECORD_CONSENT" }
-  | { code: "COMPLETE_FILE"; missing: ("INCOME" | "AGE" | "SERVICE" | "SALARY_BANK")[] }
+  | { code: "COMPLETE_FILE"; missing: ("INCOME" | "AGE" | "SERVICE" | "SALARY_BANK" | "CONTRACT")[] }
   | { code: "REVIEW_READING" }
   | { code: "CONFIRM_SUSPENSION" }
   | { code: "CREDIT"; action: Exclude<CreditAction, { code: "NONE" }> }
@@ -202,6 +208,11 @@ export type Step =
    * `beforePaying`: the office would pay the client's debts first, so it asks before it pays.
    */
   | { code: "CONFIRM_TERMS"; lender: string; kinds: ProductKind[]; terms: Term[]; beforePaying: boolean }
+  /**
+   * The lender to go to has special conditions nobody asked the client about. Until a person answers
+   * them they are not met. One step for a lender, with each question once.
+   */
+  | { code: "ASK_CLIENT"; lender: string; questions: { kind: AskedKind; text: string | null }[]; beforePaying: boolean }
   | {
       code: "APPLY";
       kind: ProductKind;

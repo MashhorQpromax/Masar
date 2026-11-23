@@ -4,6 +4,7 @@ import { notFound, redirect } from "next/navigation";
 import { phoneTyped } from "@/copy/clients";
 import { can } from "@/domain/auth";
 import { creditFlags, defaultDealInput, SECTORS, type Sector } from "@/domain/deal";
+import { contractOf } from "@/domain/eligibility";
 import { normalizePhone } from "@/domain/shared/phone";
 import { requireActor } from "@/server/auth/actor";
 import { getClientCard } from "@/server/clients/directory";
@@ -60,6 +61,7 @@ export default async function NewDealPage({ searchParams }: { searchParams: Prom
             basicSalary: client.basicSalary,
             totalSalary: client.totalSalary,
             serviceMonths: client.serviceMonths,
+            contractType: contractOf(client.contractType),
           }}
           input={{ ...defaultDealInput(), propertyValue: client.propertyValue }}
           credit={record ? creditFlags(record.report, record.analysis) : null}
@@ -87,7 +89,7 @@ export default async function NewDealPage({ searchParams }: { searchParams: Prom
         dealId={null}
         phone={phoneTyped(phone)}
         year={year}
-        borrower={{ fullName: phone ? one(query.name).slice(0, 120) : "", birthYear: null, sector: "gov", basicSalary: null, totalSalary: null, serviceMonths: null }}
+        borrower={{ fullName: phone ? one(query.name).slice(0, 120) : "", birthYear: null, sector: "gov", basicSalary: null, totalSalary: null, serviceMonths: null, contractType: null }}
         input={defaultDealInput()}
       />
     </>

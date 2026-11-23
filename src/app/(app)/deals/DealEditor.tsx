@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { FEE_REASON, riskText, STRUCTURE, VERDICT } from "@/copy/deal";
 import { DRAFT_GAP, FINANCE_BASE, ITEM_KIND, LENDER_KIND, notInDeal, PAID_BY, PAYOFF_ESTIMATED, REPORT_FILLED, reportDay, saveError, SECTOR } from "@/copy/editor";
+import { CONTRACT_TYPE } from "@/copy/eligibility";
 import { ltr, percent, plainMoney } from "@/copy/format";
 import {
   borrowerIn,
@@ -26,6 +27,7 @@ import {
   type ReportDraft,
   type Sector,
 } from "@/domain/deal";
+import type { ContractType } from "@/domain/eligibility";
 import { gregorianBirthYear } from "@/domain/shared/calendar";
 import { Check, NumberField, Segmented, SelectField, TextField } from "@/ui/fields";
 import { ChevronIcon, CloseIcon, PlusIcon } from "@/ui/icons";
@@ -38,7 +40,12 @@ export interface BorrowerDraft {
   basicSalary: number | null;
   totalSalary: number | null;
   serviceMonths: number | null;
+  /** How the client is employed. Null until someone says. */
+  contractType: ContractType | null;
 }
+
+/** The kinds of contract, with the choice of saying none. */
+const CONTRACT_CHOICE: Record<ContractType | "", string> = { "": "غير مدخل", ...CONTRACT_TYPE };
 
 /** A commitment the client's credit report shows, worded and ready to be put in the deal. */
 export type OfferedDraft = ReportDraft & { label: string };
@@ -264,6 +271,9 @@ export function DealEditor({
           <div className="fields fields--who">
             <TextField label="الاسم" value={who.fullName} onChange={(fullName) => setWho({ ...who, fullName })} autoFocus={dealId == null} />
             <SelectField label="جهة العمل" value={who.sector} onChange={(sector) => setWho({ ...who, sector })} options={SECTOR} />
+            {who.sector !== "retired" && who.sector !== "self" && (
+              <SelectField label="نوع العقد" value={who.contractType ?? ""} onChange={(contractType) => setWho({ ...who, contractType: contractType || null })} options={CONTRACT_CHOICE} />
+            )}
             <NumberField
               label="سنة الميلاد"
               value={born}

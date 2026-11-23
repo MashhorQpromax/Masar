@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { FINANCE_TYPE } from "@/copy/eligibility";
+import { conditionText, FINANCE_TYPE, SPECIAL_CONDITIONS, SPECIAL_KIND, UNMET } from "@/copy/eligibility";
 import { counted, dayOfIso, months, percent } from "@/copy/format";
 import { afterDefaultText, confirmedText, LENDER_TYPE, LENDERS, PRODUCTS, RATE_TYPE, SOURCE_KIND, TERM_NAME, VALIDITY_SAY } from "@/copy/lenders";
 import { can } from "@/domain/auth";
@@ -10,7 +10,8 @@ import { listCatalogue } from "@/server/lenders/service";
 import { ChevronIcon, PlusIcon } from "@/ui/icons";
 import { Num } from "@/ui/Num";
 import { SubmitButton } from "@/ui/SubmitButton";
-import { switchProduct, withdrawProductTerms } from "./actions";
+import { dropCondition, switchProduct, withdrawProductTerms } from "./actions";
+import { ConditionForm } from "./ConditionForm";
 import { ConfirmForm } from "./ConfirmForm";
 import { LenderForm } from "./LenderForm";
 import { LendersNav } from "./LendersNav";
@@ -53,6 +54,7 @@ function Summary({ product }: { product: Product }) {
         </span>
         <span>{months(product.maxTenor)}</span>
         <span data-open={product.settledDefaultWaitMonths == null || undefined}>{afterDefaultText(product.settledDefaultWaitMonths)}</span>
+        {!!product.special?.length && <span>{counted(product.special.length, SPECIAL_CONDITIONS)}</span>}
       </span>
       <span className="route-state" data-status={product.verified ? "pass" : "warn"}>
         {confirmedText(terms.length - open.length, terms.length)}
@@ -120,6 +122,48 @@ function Sources({ product, mayConfirm, today }: { product: Product; mayConfirm:
         </p>
       )}
       {mayConfirm ? <ConfirmForm productId={Number(product.id)} terms={terms} open={open} today={today} /> : open.length > 0 && <p className="sources-say">يؤكدها المدير، كل شرط بمصدره.</p>}
+    </section>
+  );
+}
+
+/**
+ * What this lender asks beyond the terms every product has. Whoever keeps the catalogue writes each
+ * condition down as the office learns it, and takes off one that turned out wrong. Writing confirms
+ * nothing: the list as a whole is the term «الشروط الخاصة», confirmed with the others.
+ */
+function Special({ product, mayManage }: { product: Product; mayManage: boolean }) {
+  const list = product.special ?? [];
+  return (
+    <section className="sources">
+      <h3 className="sources-title">الشروط الخاصة</h3>
+      {list.length > 0 ? (
+        <ul className="source-list">
+          {list.map((condition) => (
+            <li key={condition.id} className="source">
+              <div className="source-text">
+                <span className="source-what">
+                  <b>{SPECIAL_KIND[condition.kind]}</b>
+                  {/* A condition a person answers is named by its kind already: beside it go only the lender's own words. */}
+                  {"unmet" in condition ? condition.text && <span className="source-ref">{condition.text}</span> : <span className="source-ref">{conditionText(condition)}</span>}
+                </span>
+                <small>{"unmet" in condition ? `${UNMET[condition.unmet]}. يُجاب عنه لكل عميل، وما لم يُجب عنه لا يُحسب مستوفى.` : "يقيسه النظام من الملف والسجل."}</small>
+              </div>
+              {mayManage && (
+                <details className="know-remove">
+                  <summary aria-label={`احذف الشرط: ${conditionText(condition)}`}>احذف</summary>
+                  <form action={dropCondition}>
+                    <input type="hidden" name="conditionId" value={condition.id} />
+                    <SubmitButton className="btn btn--soft">نعم، احذف الشرط</SubmitButton>
+                  </form>
+                </details>
+              )}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="sources-say">لا شرط خاصاً مسجلاً. خلوّ القائمة لا يعني أن الجهة لا تشترط شيئاً حتى يؤكَّد ذلك بمصدر.</p>
+      )}
+      {mayManage && <ConditionForm productId={Number(product.id)} />}
     </section>
   );
 }
@@ -194,6 +238,7 @@ export default async function LendersPage() {
                       <ChevronIcon />
                     </summary>
                     <ProductForm productId={Number(product.id)} kind={product.financeType} initial={valuesOf(product)} scope={scopeOf(product)} />
+                    <Special product={product} mayManage={mayManage} />
                     <Sources product={product} mayConfirm={mayConfirm} today={today} />
                     <details className="know-remove product-stop">
                       <summary aria-label={`أوقف: ${product.name}`}>أوقف هذا المنتج</summary>
@@ -209,6 +254,7 @@ export default async function LendersPage() {
                     <div className="product-row">
                       <Summary product={product} />
                     </div>
+                    {!!product.special?.length && <Special product={product} mayManage={false} />}
                   </div>
                 ),
               )}

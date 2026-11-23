@@ -2,12 +2,13 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { draftLabel } from "@/copy/credit";
 import { dealTimeline, fundsFlow, pendingDrafts, reportDrafts, stationTimeline } from "@/domain/deal";
 import { getAnalysis } from "@/server/analysis/service";
+import { getAsked } from "@/server/clients/conditions";
 import { getClientCard, listClients } from "@/server/clients/directory";
 import { getCredit } from "@/server/credit/service";
 import type { Connection } from "@/server/db/client";
 import { getDeal } from "@/server/deals/service";
 import { roadView } from "@/server/deals/views";
-import { DEMO_BANK, DEMO_COMPANY, DEMO_PAPER, DEMO_WORD, seedDemoLenders } from "@/server/demo/lenders";
+import { DEMO_ANSWERED, DEMO_BANK, DEMO_COMPANY, DEMO_PAPER, DEMO_WORD, seedDemoLenders } from "@/server/demo/lenders";
 import { seedDemo } from "@/server/demo/seed";
 import { getFunding } from "@/server/funding/service";
 import { listCatalogue } from "@/server/lenders/service";
@@ -193,6 +194,39 @@ describe("the two example lenders of the demonstration", () => {
     expect(real).toHaveLength(10);
     for (const product of real.flatMap((lender) => lender.products)) {
       expect(Object.values(product.terms!).every((standing) => standing.state === "unconfirmed"), `${product.lenderName} ${product.name}`).toBe(true);
+    }
+  });
+
+  it("shows each kind of special condition on an example product, and invents none for a real lender", async () => {
+    const catalogue = await listCatalogue(c.db, { stopped: true, now });
+    const example = catalogue.filter((lender) => lender.name === DEMO_BANK || lender.name === DEMO_COMPANY).flatMap((lender) => lender.products);
+    expect(example.map((product) => [product.lenderName, product.financeType, (product.special ?? []).map((condition) => condition.kind)])).toEqual([
+      [DEMO_BANK, "personal", ["min_amount"]],
+      [DEMO_BANK, "mortgage", ["inquiries"]],
+      [DEMO_COMPANY, "personal", ["guarantor"]],
+      [DEMO_COMPANY, "mortgage", ["contract"]],
+    ]);
+    // The made-up source speaks for the list as well: a condition written down alone confirms nothing.
+    for (const product of example) expect(product.terms!.special, `${product.lenderName} ${product.name}`).toMatchObject({ state: "confirmed", source: { reference: product.lenderName === DEMO_COMPANY && product.financeType === "personal" ? DEMO_WORD : DEMO_PAPER } });
+    // Nobody asked a real lender what it wants beyond its terms: its list is empty, and its being empty is not confirmed.
+    for (const product of catalogue.filter((lender) => lender.name !== DEMO_BANK && lender.name !== DEMO_COMPANY).flatMap((lender) => lender.products)) {
+      expect(product.special ?? [], `${product.lenderName} ${product.name}`).toEqual([]);
+      expect(product.terms!.special, `${product.lenderName} ${product.name}`).toMatchObject({ state: "unconfirmed" });
+    }
+  });
+
+  it("has one invented client's answer about the guarantor on file, and leaves it a question for the others", async () => {
+    const people = (await listClients(c.db, {})).rows;
+    const askedOf = async (name: string) => (await getAsked(c.db, { clientId: people.find((client) => client.name === name)!.id }))!;
+    const noura = await askedOf("نورة");
+    expect(noura.client.fileNo).toBe(DEMO_ANSWERED);
+    expect(noura.open).toBe(0);
+    expect(noura.lenders.map((lender) => [lender.name, lender.products.map((product) => product.conditions.map((condition) => [condition.kind, condition.unmet, condition.answer]))])).toEqual([[DEMO_COMPANY, [[["guarantor", "action", "met"]]]]]);
+    // The same question about anyone else: nobody asked, and no answer is assumed.
+    for (const name of ["سالم", "ريم", "فهد", "هند"]) {
+      const asked = await askedOf(name);
+      expect(asked.open, name).toBe(1);
+      expect(asked.lenders.flatMap((lender) => lender.products).flatMap((product) => product.conditions).map((condition) => condition.answer), name).toEqual([null]);
     }
   });
 

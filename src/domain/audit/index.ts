@@ -18,11 +18,11 @@ export const AUDIT_AREAS = {
     "user.passkey_remove",
     "user.sessions_end",
   ],
-  clients: ["client.create", "client.update", "client.contact", "client.note", "client.consent", "client.reject", "client.reopen", "credit.report_add", "credit.report_review", "project.save"],
+  clients: ["client.create", "client.update", "client.contact", "client.note", "client.consent", "client.condition_answer", "client.reject", "client.reopen", "credit.report_add", "credit.report_review", "project.save"],
   deals: ["deal.save", "deal.stage", "deal.route"],
   papers: ["doc.upload", "doc.remove", "doc.move", "doc.review", "doc.add", "doc.drop", "doc.open"],
   messages: ["wa.send", "wa.handled", "link.open", "link.close"],
-  lenders: ["lender.add", "lender.product_add", "lender.product_update", "lender.product_switch", "lender.terms_confirm", "lender.terms_withdraw", "lender.rule_add", "lender.rule_archive", "lender.decision"],
+  lenders: ["lender.add", "lender.product_add", "lender.product_update", "lender.product_switch", "lender.terms_confirm", "lender.terms_withdraw", "lender.condition_add", "lender.condition_remove", "lender.rule_add", "lender.rule_archive", "lender.decision"],
 } as const;
 
 /**

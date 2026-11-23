@@ -9,6 +9,7 @@ import {
   fitScore,
   incomeOf,
   leansBlocked,
+  listCheck,
   matchProduct,
   openTerms,
   study,
@@ -19,6 +20,7 @@ import {
   type Check,
   type CheckStatus,
   type Eligibility,
+  type Inquiries,
   type Obligation,
   type Point,
   type Product,
@@ -63,7 +65,7 @@ export function commitmentsOf(report: CreditReport): Commitment[] {
 }
 
 /** The client as the eligibility engine studies them for one kind of finance, with what the record says they pay. */
-function profileFor(kind: ProductKind, file: FileFacts, obligations: Obligation[]): Profile {
+function profileFor(kind: ProductKind, file: FileFacts, obligations: Obligation[], inquiries: Inquiries): Profile {
   const asked = file.request?.kind === kind ? file.request : null;
   return {
     age: file.age,
@@ -83,6 +85,9 @@ function profileFor(kind: ProductKind, file: FileFacts, obligations: Obligation[
     obligations,
     propertyValue: kind === "mortgage" ? file.propertyValue : null,
     coIncome: file.coIncome,
+    contractType: file.contractType,
+    inquiries,
+    answers: file.answers,
   };
 }
 
@@ -102,7 +107,8 @@ function fitOf(profile: Profile, room: Capacity, product: Product, record: Recor
   const conditions = checks.filter((check) => check.status === "warn" && check.code !== "TENOR_SHORTENED");
   const refusals = checks.filter((check) => check.status === "fail");
   // The same conditions, each asked whether its answer can be relied on.
-  const findings = checks.map((check) => findingOf(check, ROUTE_RULES[check.code], product.terms));
+  // And whether the lender's list of special conditions is itself complete.
+  const findings = [...checks, listCheck(product.special)].map((check) => findingOf(check, ROUTE_RULES[check.code], product.terms));
   const asked = profile.requestedAmount ?? 0;
   return {
     ...tell(
@@ -192,7 +198,7 @@ const INCOME_POINTS: ReadonlySet<Point["code"]> = new Set(["DEBT_SHARE", "NO_ROO
  */
 const NOTED: ReadonlySet<Finding["code"]> = new Set(["TELECOM_DEFAULTS", "SETTLED_DEFAULT", "OLD_DELAY"]);
 
-const FILE_FACTS = ["INCOME", "AGE", "SERVICE", "SALARY_BANK"] as const;
+const FILE_FACTS = ["INCOME", "AGE", "SERVICE", "SALARY_BANK", "CONTRACT"] as const;
 
 /**
  * Reads a client's file, their SIMAH record and the lenders' terms together.
@@ -210,7 +216,8 @@ export function analyzeClient(args: { file: FileFacts; record: RecordFacts; prod
   const obligations: Obligation[] = commitments.flatMap((c) => (c.monthly != null ? [{ kind: c.kind, lender: c.lender, monthly: c.monthly, remaining: c.balance }] : []));
   const uncounted = commitments.filter((c) => c.monthly == null);
 
-  const consumer = profileFor("personal", file, obligations);
+  const inquiries: Inquiries = { m6: report.inquiries6m ?? null, m12: report.inquiries12m ?? null };
+  const consumer = profileFor("personal", file, obligations, inquiries);
   const counted = incomeOf(consumer);
   const income: Income = {
     basis: counted.salary <= 0 ? "missing" : file.incomeVerified ? "verified" : "stated",
@@ -244,7 +251,7 @@ export function analyzeClient(args: { file: FileFacts; record: RecordFacts; prod
     ? wanted.flatMap((kind) => {
         const offered = args.products.filter((product) => product.financeType === kind);
         if (!offered.length) return [];
-        const profile = profileFor(kind, file, obligations);
+        const profile = profileFor(kind, file, obligations, inquiries);
         const room = kind === "personal" ? consumerRoom : capacity(profile);
         return [{ kind, room, today: reading(profile, room, offered, today), cleared: after ? reading(profile, room, offered, after) : null }];
       })
@@ -281,6 +288,9 @@ export function analyzeClient(args: { file: FileFacts; record: RecordFacts; prod
   if (file.age == null) gaps.push({ kind: "missing", code: "AGE" });
   if (file.serviceMonths == null && file.sector !== "retired") gaps.push({ kind: "missing", code: "SERVICE" });
   if (!file.salaryBank) gaps.push({ kind: "missing", code: "SALARY_BANK" });
+  // The kind of contract is asked for only where a lender studied makes a condition of it.
+  const everyFit = kinds.flatMap((k) => [...k.today.fits, ...(k.cleared?.fits ?? [])]);
+  if (everyFit.some((fit) => fit.doubts.some((doubt) => doubt.check.code === "CONTRACT_MISSING"))) gaps.push({ kind: "missing", code: "CONTRACT" });
   for (const c of uncounted) {
     if (c.kind === "card") gaps.push({ kind: "unconfirmed", code: "CARD_SHARE", lender: c.lender, limit: c.limit, balance: c.balance });
     else gaps.push({ kind: "missing", code: "INSTALLMENT", lender: c.lender, product: c.product, balance: c.balance });
@@ -321,6 +331,16 @@ export function analyzeClient(args: { file: FileFacts; record: RecordFacts; prod
   });
   // A lender whose terms nobody confirmed is asked first, and before the office pays anything on the strength of them.
   const confirms: Extract<Step, { code: "CONFIRM_TERMS" }>[] = [];
+  // What a lender asks about the client and nobody has answered is asked of the client first: it costs nothing either.
+  const asks: Extract<Step, { code: "ASK_CLIENT" }>[] = [];
+  for (const { fit, afterClearing } of picks) {
+    const open = fit.doubts.flatMap((doubt) => (doubt.check.code === "ASKED_OPEN" ? [doubt.check.params] : []));
+    if (!open.length) continue;
+    const lender = fit.product.lenderName;
+    const same = asks.find((step) => step.lender === lender && step.beforePaying === afterClearing);
+    if (!same) asks.push({ code: "ASK_CLIENT", lender, questions: open, beforePaying: afterClearing });
+    else same.questions.push(...open.filter((q) => !same.questions.some((known) => known.kind === q.kind && known.text === q.text)));
+  }
   for (const { kind, fit, afterClearing } of picks) {
     const open = fit.doubts.flatMap((doubt): Term[] => (doubt.doubt !== "FACT_MISSING" && doubt.term ? [doubt.term] : []));
     if (!open.length) continue;
@@ -342,11 +362,11 @@ export function analyzeClient(args: { file: FileFacts; record: RecordFacts; prod
     estimated: fit.eligibility !== "needs_verification" && fit.estimated,
   }));
   // Asking a lender costs nothing and clearing a record does: what must be asked first goes ahead of what the record needs.
-  const early = confirms.filter((step) => step.beforePaying);
+  const early = [...asks, ...confirms].filter((step) => step.beforePaying);
   const clearing = steps.findIndex((step) => step.code === "CREDIT");
   steps.splice(clearing >= 0 ? clearing : steps.length, 0, ...early);
   if (applies.length && income.basis === "stated") steps.push({ code: "VERIFY_INCOME" });
-  steps.push(...confirms.filter((step) => !early.includes(step)), ...applies);
+  steps.push(...[...asks, ...confirms].filter((step) => !step.beforePaying), ...applies);
 
   return { verdict, afterClearing, income, commitments, burden, kinds, strengths, risks, gaps, steps };
 }

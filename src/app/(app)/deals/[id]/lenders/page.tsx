@@ -166,6 +166,8 @@ export default async function LendersPage({ params, searchParams }: { params: Pr
   const { main, also } = routeLenders(best);
   const net = best.study.clientNet;
   const doubtLines = routeDoubtLines(best);
+  // A lender asks something about the client that nobody answered: the answer is one press away.
+  const asksClient = can(me.role, "client.view_pii") && best.doubts.some((doubt) => doubt.finding.check.code === "ASKED_OPEN");
   const leanLines = routeLeanLines(best);
   const isChosen = chosen === best.key;
   const chosenRoute = routes.find((route) => route.key === chosen);
@@ -287,6 +289,13 @@ export default async function LendersPage({ params, searchParams }: { params: Pr
               {line}
             </p>
           ))}
+          {asksClient && (
+            <p className="note-own">
+              <Link className="note-link" href={`/clients/${client.id}/conditions`}>
+                سجّل أجوبة العميل عن شروط الجهات
+              </Link>
+            </p>
+          )}
           {best.actions.map((action, index) => (
             <p key={`a${index}`} className="note" data-level="warn">
               {routeFindingText(action, best)}

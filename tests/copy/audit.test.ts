@@ -159,6 +159,25 @@ describe("the detail beside an event", () => {
     expect(auditDetail("lender.product_switch", {})).toBe("");
   });
 
+  it("says which special condition was written or taken off, and what a client answered", () => {
+    expect(auditAction("lender.condition_add")).toBe("إضافة شرط خاص");
+    expect(auditAction("lender.condition_remove")).toBe("حذف شرط خاص");
+    expect(auditAction("client.condition_answer")).toBe("جواب العميل عن شرط جهة");
+    expect(auditDetail("lender.condition_add", { lender: "بنك الخليج", product: "التمويل الشخصي", condition: { id: "4", kind: "guarantor", text: "موظف حكومي", unmet: "action" }, unconfirmed: false })).toBe("بنك الخليج، التمويل الشخصي، كفيل");
+    // A list that was confirmed is no longer: the event says so.
+    expect(auditDetail("lender.condition_add", { lender: "بنك الخليج", product: "التمويل الشخصي", condition: { id: "5", kind: "min_amount", amount: 20000 }, unconfirmed: true })).toBe("بنك الخليج، التمويل الشخصي، أدنى تمويل، سقط تأكيد قائمة الشروط");
+    expect(auditDetail("lender.condition_remove", { lender: "بنك الخليج", product: "التمويل الشخصي", condition: { id: "5", kind: "inquiries", count: 3, months: 6 }, unconfirmed: true })).toBe("بنك الخليج، التمويل الشخصي، حد الاستعلامات، سقط تأكيد قائمة الشروط");
+    expect(auditDetail("lender.condition_remove", { lender: "بنك الخليج", condition: { kind: "riddle" } })).toBe("بنك الخليج");
+    expect(auditDetail("lender.condition_add", {})).toBe("");
+    expect(auditDetail("client.condition_answer", { lender: "بنك الخليج", product: "التمويل الشخصي", condition: "4", kind: "guarantor", answer: "met", before: null })).toBe("بنك الخليج، كفيل، مستوفى");
+    expect(auditDetail("client.condition_answer", { lender: "بنك الخليج", kind: "collateral", answer: "unmet", before: "met" })).toBe("بنك الخليج، ضمان أو رهن، غير مستوفى");
+    // An answer taken back is said as that. A detail the log lost says nothing it does not know.
+    expect(auditDetail("client.condition_answer", { lender: "بنك الخليج", kind: "other", answer: null, before: "met" })).toBe("بنك الخليج، شرط آخر، سُحب الجواب");
+    expect(auditDetail("client.condition_answer", { lender: "بنك الخليج", kind: "riddle", answer: "perhaps" })).toBe("بنك الخليج");
+    expect(auditDetail("client.condition_answer", {})).toBe("");
+    expect(auditDetail("client.update", { changed: ["contractType"] })).toContain("نوع العقد");
+  });
+
   it("reads whatever the log holds without breaking or showing a code", () => {
     const strange: (Record<string, unknown> | null | undefined)[] = [
       null,

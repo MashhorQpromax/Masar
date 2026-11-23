@@ -56,9 +56,11 @@ describe("the record a lender will read after the settlement", () => {
     ...parts,
   });
   const known = (r: CreditReport) => knownRecord(r, analyzeCredit(r));
+  /** These reports give no count of inquiries, which is not a count of none. */
+  const none = { m6: null, m12: null };
 
   it("shows a default paid just now when the deal settles one and no report was read", () => {
-    expect(recordAfterSettlement(deal, null)).toEqual({ known: false, open: false, settledMonthsAgo: 0, delays: false });
+    expect(recordAfterSettlement(deal, null)).toEqual({ known: false, open: false, settledMonthsAgo: 0, delays: false, inquiries: null });
   });
 
   it("stays open when an order is left outside the deal", () => {
@@ -68,16 +70,16 @@ describe("the record a lender will read after the settlement", () => {
 
   it("stays open when the report shows an unpaid default and the deal pays none", () => {
     const unpaid = known(report([{ status: "default", defaultAmount: 30000, defaultNow: 30000 }]));
-    expect(unpaid).toEqual({ unpaid: true, settledMonthsAgo: null, delays: false });
+    expect(unpaid).toEqual({ unpaid: true, settledMonthsAgo: null, delays: false, inquiries: none });
     const payoffsOnly = { ...deal, items: [items[2]!, items[3]!] };
     expect(recordAfterSettlement(payoffsOnly, unpaid).open).toBe(true);
     // The same record with a deal that pays its orders reads as settled today.
-    expect(recordAfterSettlement(deal, unpaid)).toEqual({ known: true, open: false, settledMonthsAgo: 0, delays: false });
+    expect(recordAfterSettlement(deal, unpaid)).toEqual({ known: true, open: false, settledMonthsAgo: 0, delays: false, inquiries: none });
   });
 
   it("keeps the age of a default that was paid before the deal", () => {
     const paid = known(report([{ status: "settled", defaultAmount: 30000, defaultNow: 0, settledMonthsAgo: 8 }]));
-    expect(paid).toEqual({ unpaid: false, settledMonthsAgo: 8, delays: false });
+    expect(paid).toEqual({ unpaid: false, settledMonthsAgo: 8, delays: false, inquiries: none });
     expect(recordAfterSettlement({ ...deal, items: [items[2]!, items[3]!] }, paid).settledMonthsAgo).toBe(8);
   });
 
@@ -89,7 +91,7 @@ describe("the record a lender will read after the settlement", () => {
   it("carries recent late payments, which paying a debt off does not remove", () => {
     const late = known(report([{ worstDelay: 60, lastDelayMonthsAgo: 2 }]));
     expect(late.delays).toBe(true);
-    expect(recordAfterSettlement(deal, late)).toEqual({ known: true, open: false, settledMonthsAgo: 0, delays: true });
+    expect(recordAfterSettlement(deal, late)).toEqual({ known: true, open: false, settledMonthsAgo: 0, delays: true, inquiries: none });
   });
 });
 

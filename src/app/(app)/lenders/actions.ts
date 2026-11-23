@@ -5,7 +5,7 @@ import { z } from "zod";
 import { TERMS } from "@/domain/eligibility";
 import { requireActor } from "@/server/auth/actor";
 import { getDb } from "@/server/db/client";
-import { addLender, addProduct, confirmTerms, setProductActive, updateProductTerms, withdrawTerms } from "@/server/lenders/service";
+import { addCondition, addLender, addProduct, confirmTerms, removeCondition, setProductActive, updateProductTerms, withdrawTerms } from "@/server/lenders/service";
 import { DomainError } from "@/server/shared/errors";
 
 export interface TermsAnswer {
@@ -86,6 +86,38 @@ export async function confirmProductTerms(productId: number, input: unknown): Pr
   }
   catalogueChanged();
   return { saved: true };
+}
+
+/**
+ * Writes down a condition a lender makes beyond its terms. Whoever keeps the catalogue may: writing a
+ * condition confirms nothing, and the list goes back to unconfirmed with it.
+ */
+export async function saveCondition(productId: number, input: unknown): Promise<TermsAnswer> {
+  const actor = await requireActor("lender.manage");
+  const product = id.safeParse(productId);
+  if (!product.success) return { error: "NOT_FOUND" };
+  try {
+    const { unconfirmed } = await addCondition(await getDb(), { productId: product.data, input, actor });
+    catalogueChanged();
+    return { saved: true, dropped: unconfirmed ? 1 : 0 };
+  } catch (error) {
+    return refusal(error);
+  }
+}
+
+const conditionSchema = z.object({ conditionId: z.coerce.number().int().positive() });
+
+/** Takes a condition off a product's list. */
+export async function dropCondition(formData: FormData): Promise<void> {
+  const actor = await requireActor("lender.manage");
+  const asked = conditionSchema.safeParse({ conditionId: formData.get("conditionId") });
+  if (!asked.success) return;
+  try {
+    await removeCondition(await getDb(), { conditionId: asked.data.conditionId, actor });
+  } catch (error) {
+    if (!(error instanceof DomainError)) throw error;
+  }
+  catalogueChanged();
 }
 
 const withdrawSchema = z.object({ productId: z.coerce.number().int().positive(), terms: z.array(z.enum(TERMS)).min(1).max(TERMS.length) });

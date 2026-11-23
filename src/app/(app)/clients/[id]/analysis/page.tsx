@@ -256,6 +256,8 @@ function stepDoor(step: Step, at: { clientId: number; deal: { id: number; open: 
       return at.deal ? { href: `/deals/${at.deal.id}/documents`, label: "افتح المستندات" } : null;
     case "CONFIRM_TERMS":
       return { href: "/lenders", label: "شروط الجهات" };
+    case "ASK_CLIENT":
+      return { href: `/clients/${at.clientId}/conditions`, label: "سجّل الأجوبة" };
     case "APPLY":
       return at.deal?.open ? { href: `/deals/${at.deal.id}/lenders`, label: "جهات الصفقة" } : fresh;
   }

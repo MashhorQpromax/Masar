@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { PRODUCT_KINDS, REFERENCE_MAX, REFERENCE_MIN, SECTORS, SOURCE_KINDS, TERMS, type Nationality, type Sector } from "@/domain/eligibility";
+import { CONDITION_TEXT_MAX, CONTRACT_TYPES, INQUIRIES_MAX, PRODUCT_KINDS, REFERENCE_MAX, REFERENCE_MIN, SECTORS, SOURCE_KINDS, TERMS, type ContractType, type Nationality, type Sector } from "@/domain/eligibility";
 
 /** The terms of a product that a person may correct, with the limits the deal engine accepts. */
 export const productTermsSchema = z.object({
@@ -73,3 +73,25 @@ export const termSourceSchema = z.object({
 });
 
 export type TermSourceInput = z.infer<typeof termSourceSchema>;
+
+/** A person's words about a condition, on one line. Nothing written reads as nothing said. */
+const words = z
+  .string()
+  .max(CONDITION_TEXT_MAX * 4)
+  .nullish()
+  .transform((value) => value?.replace(/\s+/g, " ").trim() || null)
+  .pipe(z.string().max(CONDITION_TEXT_MAX).nullable());
+
+const unmet = z.enum(["block", "action"]);
+
+/** A special condition as a person adds it to a product. Each kind carries only what it measures or asks. */
+export const conditionSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("min_amount"), amount: z.number().min(1000).max(10_000_000_000) }),
+  z.object({ kind: z.literal("inquiries"), count: z.number().int().min(0).max(INQUIRIES_MAX), months: z.union([z.literal(6), z.literal(12)]) }),
+  z.object({ kind: z.literal("contract"), contracts: z.array(z.enum(CONTRACT_TYPES)).min(1).refine(each).transform(inOrder<ContractType>(CONTRACT_TYPES)) }),
+  z.object({ kind: z.enum(["employer", "guarantor", "collateral"]), text: words, unmet }),
+  // A condition of no known kind is only its words.
+  z.object({ kind: z.literal("other"), text: words.pipe(z.string().min(3)), unmet }),
+]);
+
+export type ConditionInput = z.infer<typeof conditionSchema>;

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { afterDefaultText, confirmedText, LENDER_ERROR_CODES, LENDER_TYPE, lenderError, NATIONALITY_CHOICE, PRODUCT_NAME, RATE_TYPE, SOURCE_KIND, SOURCE_PROBLEMS, SOURCE_REFERENCE, standingText, TERM_NAME, VALIDITY_SAY } from "@/copy/lenders";
-import { PRODUCT_KINDS, SOURCE_KINDS, sourceProblem, TERMS, termStanding, type TermSource } from "@/domain/eligibility";
+import { afterDefaultText, CONDITION_PROBLEMS, confirmedText, LENDER_ERROR_CODES, LENDER_TYPE, lenderError, NATIONALITY_CHOICE, PRODUCT_NAME, RATE_TYPE, SOURCE_KIND, SOURCE_PROBLEMS, SOURCE_REFERENCE, standingText, TERM_NAME, VALIDITY_SAY } from "@/copy/lenders";
+import { conditionProblem, PRODUCT_KINDS, SOURCE_KINDS, sourceProblem, type SpecialCondition, TERMS, termStanding, type TermSource } from "@/domain/eligibility";
 
 const broken = /undefined|NaN|null|\[object|[A-Za-z_]{3,}|—|–/;
 const strip = (text: string) => text.replace(/[⁦⁩]/g, "");
@@ -27,7 +27,7 @@ describe("the wording of the lender catalogue", () => {
   });
 
   it("says in one sentence why a change to the catalogue was not kept", () => {
-    expect(LENDER_ERROR_CODES).toEqual(["INVALID_INPUT", "NOT_FOUND", "LENDER_KNOWN", "FORBIDDEN", "SOURCE_REFUSED", "TERM_VALUE_MISSING"]);
+    expect(LENDER_ERROR_CODES).toEqual(["INVALID_INPUT", "NOT_FOUND", "LENDER_KNOWN", "FORBIDDEN", "SOURCE_REFUSED", "TERM_VALUE_MISSING", "CONDITION_REFUSED", "AMOUNT_BELOW_LEAST"]);
     const unknown = lenderError("SOMETHING_NEW");
     expect(unknown).toBe("تعذر الحفظ. حاول مرة أخرى.");
     for (const code of LENDER_ERROR_CODES) {
@@ -96,5 +96,29 @@ describe("the wording of the lender catalogue", () => {
     // A reason from a newer build still reads.
     expect(lenderError("SOURCE_REFUSED", { problem: "SOMETHING_NEW" })).toBe("هذا المصدر لا يكفي لتأكيد الشرط.");
     expect(lenderError("SOURCE_REFUSED")).toBe("هذا المصدر لا يكفي لتأكيد الشرط.");
+  });
+
+  it("says why a special condition cannot join a list, one sentence for each reason the engine gives", () => {
+    const most = { maxAmount: 500000 };
+    const least: SpecialCondition = { id: "1", kind: "min_amount", amount: 20000 };
+    // Every reason the engine can give is among the ones that have words.
+    expect([
+      conditionProblem([least], { kind: "min_amount", amount: 30000 }, most),
+      conditionProblem([], { kind: "min_amount", amount: 600000 }, most),
+      conditionProblem([], { kind: "contract", contracts: ["permanent", "fixed_term", "probation"] }, most),
+      conditionProblem([], { kind: "other", text: null, unmet: "block" }, most),
+    ]).toEqual(CONDITION_PROBLEMS);
+    const said = CONDITION_PROBLEMS.map((problem) => lenderError("CONDITION_REFUSED", { problem }));
+    for (const [index, sentence] of said.entries()) {
+      expect(sentence, CONDITION_PROBLEMS[index]).toMatch(/^[؀-ۿ]/);
+      expect(sentence.endsWith("."), CONDITION_PROBLEMS[index]).toBe(true);
+      expect(strip(sentence), CONDITION_PROBLEMS[index]).not.toMatch(broken);
+    }
+    expect(new Set(said).size).toBe(said.length);
+    expect(lenderError("CONDITION_REFUSED", { problem: "SOMETHING_NEW" })).toBe("تعذر حفظ هذا الشرط.");
+    expect(lenderError("CONDITION_REFUSED")).toBe("تعذر حفظ هذا الشرط.");
+    // Lowering the most a product lends under a least amount written for it is refused with that amount.
+    expect(strip(lenderError("AMOUNT_BELOW_LEAST", { least: "20000" }))).toBe("أقصى مبلغ لا ينقص عن أدنى تمويل مسجل في الشروط الخاصة، وهو 20,000. احذف ذلك الشرط أولاً أو ارفع المبلغ.");
+    expect(lenderError("AMOUNT_BELOW_LEAST", { least: "many" })).toBe("أقصى مبلغ لا ينقص عن أدنى تمويل مسجل في الشروط الخاصة.");
   });
 });
