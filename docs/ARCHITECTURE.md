@@ -346,7 +346,7 @@ Choices the owner has not reviewed: the manager alone approves, the length of a 
 
 ## Fees and the client's net
 
-Phase two of the owner's roadmap. Its five parts are built, apart from the tax on the fee, which waits on the owner's answer (whether VAT applies, and whether it is added to the fee or inside it). On 2026-11-23 the owner decided the client sees the fee in detail in their final offer (the percent, what it is counted on, every item), and never the office's profit or capital.
+Phase two of the owner's roadmap. Its five parts are built. On 2026-11-24 the owner decided that no VAT is counted on the fee for now: fees and offers stay as they are, and nothing in the engine, the plan or the client's offer knows a tax on the fee. There is no tax setting yet. When the office comes to charge VAT, it is to be built in one of the two ways he was shown: fifteen percent added as its own line after the fee and taken from what the client keeps, or a fee that includes it with the offer saying how much of the fee is tax. Which deals it then reaches (new ones only, or those still open) is a question for that day. On 2026-11-23 the owner decided the client sees the fee in detail in their final offer (the percent, what it is counted on, every item), and never the office's profit or capital.
 
 ### The fee policy
 
