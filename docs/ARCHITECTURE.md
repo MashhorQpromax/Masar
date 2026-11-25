@@ -32,6 +32,8 @@ src/
     messages/  What may be said to a client and what a client may be told.
     audit/     The kinds of event the audit log holds, the part of the office each belongs to,
                and which of them deserve a second look.
+    report/    The office's month: deals opened, closed and lost, the closed deals' fees as counted,
+               and what the lenders answered.
   copy/        Arabic wording for every code the domain returns, the choices a form offers,
                and number, date and count formatting.
   server/      Everything that touches the outside world (database, auth, WhatsApp). Server only.
@@ -52,6 +54,7 @@ src/
     documents/ A client's papers and their files.
     messages/  The conversation with a client, the client's link, the line to WhatsApp, the inbox.
     audit/     The reader of the audit log. Writing an event stays with the service that did the work.
+    reports/   The office's month, read from the deals, their stages, lenders' answers and requests.
     demo/      A fictional office for a build that has no database: its deals, its people and its log.
     port/      The move from the old system's tables to this one's, its rehearsal, and what a deployment
                does around the build. Deleted with `legacy/` once the old tables are gone.
@@ -559,6 +562,18 @@ Worth a decision before the switch: files live in Postgres, so the database grow
 - **What deserves a look.** A failed sign-in, a private file that was opened, and every change to who may enter (`WATCHED_ACTIONS`). The screen marks those lines and offers them as one choice beside the seven parts and the choice of a person. A failed sign-in shows the address it came from.
 - **Words, not values.** `src/copy/audit.ts` turns an event and its details into a sentence. A detail names what changed (the role, the mobile) and never holds a private value: no phone, no identity number, nothing typed at the door. The choices of the screen live in the address, and anything else typed there reads as no choice.
 - **The demo office** has five fictional people (one of them stopped) and a log of its own work, laid over office hours in the order the work happened. A build without a database refuses every change to an account (`DEMO`).
+
+## The office's month
+
+`/reports` is one page for the manager (`audit.view`, as the audit log, since it names clients and their fees), reached from the account page beside the accounts, the log and the fee policy. It came from an outside review of the demo (2026-11-25) that asked for management reports; it adds nothing to enter and changes nothing that exists.
+
+- **What it counts** (`monthReport` in `src/domain/report`, `monthView` in `src/server/reports/service.ts`). For one month in Riyadh: the deals opened (the day a deal's first stage was recorded, as its page counts it), closed and lost (the day it entered that stage), the closed deals' fees and the average days from opening to closing, each lender's answers (approvals, refusals, how many in writing), and the requests sent and answered, with those waiting now said only of the current month.
+- **A fee as counted, never as collected.** A closed deal's fee is its fee as the deal was last counted. What the office actually collected is not recorded; the page says so, and recording it waits on the owner (asked of him on 2026-11-25).
+- **The months** run from the month of the first deal to the current one, so the page never offers an empty past or a future month. An address with another month falls back to the current one.
+
+`tests/domain/report.test.ts` holds the counting, `tests/copy/report.test.ts` the wording, and `tests/server/demo.test.ts` the demonstration's closed deal in September and lost one in October.
+
+Choices the owner has not reviewed: the manager alone sees it; a deal counts in the month its study began and the month it ended; an answer recorded with a paper counts as written even if the paper is later sent back; the average and not the middle value.
 
 ## The database underneath
 

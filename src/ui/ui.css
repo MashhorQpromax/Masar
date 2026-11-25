@@ -9630,6 +9630,149 @@
       grid-template-columns: repeat(6, minmax(0, 1fr));
     }
   }
+
+  /* ---------- The office's month ---------- */
+  .month-nav {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: var(--color-tile);
+    border-radius: 999px;
+    padding: 6px;
+  }
+  .month-name {
+    min-width: 128px;
+    text-align: center;
+    font-size: 16px;
+    font-weight: 600;
+  }
+  .month-step {
+    display: grid;
+    place-items: center;
+    width: 40px;
+    height: 40px;
+    border-radius: 999px;
+    color: var(--color-navy);
+    transition: background 0.2s;
+  }
+  .month-step[data-next] svg {
+    transform: scaleX(-1);
+  }
+  a.month-step:hover {
+    background: var(--color-ground);
+  }
+  .month-step[data-off] {
+    visibility: hidden;
+  }
+  .month {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 16px;
+  }
+  .month-figure {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .month-figure[data-tone="good"] {
+    background: var(--color-navy);
+    color: #fff;
+  }
+  .month-figure[data-tone="good"] .label {
+    color: #ffd46b;
+  }
+  .month-figure[data-tone="good"] .month-small {
+    color: var(--color-navy-mist);
+  }
+  .month-big {
+    font-size: clamp(40px, 4.4vw, 56px);
+    font-weight: 700;
+    line-height: 1.1;
+    align-self: flex-start;
+  }
+  .month-small {
+    font-size: 13.5px;
+    line-height: 1.6;
+    color: var(--color-body);
+  }
+  .month-list {
+    grid-column: span 2;
+  }
+  .month-list .board-line a {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) auto;
+  }
+  .month-list .board-line[data-lost] b {
+    color: var(--color-body);
+  }
+  .month-when {
+    text-align: start;
+  }
+  .month-fee {
+    font-size: 15px;
+    font-weight: 600;
+  }
+  .month-lenders {
+    display: grid;
+    margin-top: 8px;
+  }
+  .month-lenders li {
+    display: grid;
+    gap: 2px;
+    padding: 12px 0;
+    border-top: 1px solid var(--color-line);
+  }
+  .month-lenders li:first-child {
+    border-top-color: transparent;
+  }
+  .month-lenders b {
+    font-size: 15px;
+    font-weight: 600;
+  }
+  .month-lenders span {
+    font-size: 13.5px;
+    color: var(--color-body);
+  }
+  .month-requests {
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px solid var(--color-line);
+    font-size: 14px;
+    line-height: 1.7;
+    color: var(--color-body);
+  }
+  .month-link {
+    color: var(--color-navy);
+    font-weight: 600;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+  .month-note {
+    grid-column: 1 / -1;
+    font-size: 13px;
+    line-height: 1.7;
+    color: var(--color-muted);
+    max-width: 72ch;
+  }
+  @media (max-width: 900px) {
+    .month {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+  @media (max-width: 560px) {
+    .month-list {
+      grid-column: 1 / -1;
+    }
+    .month-list .board-line a {
+      grid-template-columns: minmax(0, 1fr) auto;
+    }
+    .month-when {
+      grid-column: 1 / -1;
+      grid-row: 2;
+    }
+    .month-big {
+      font-size: 40px;
+    }
+  }
 }
 
 @keyframes rise {

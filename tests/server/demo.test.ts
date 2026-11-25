@@ -19,6 +19,7 @@ import { relyOnPaper } from "@/server/documents/facts";
 import { getPapers } from "@/server/documents/service";
 import { getFunding } from "@/server/funding/service";
 import { approvalNotes } from "@/server/knowledge/service";
+import { monthView } from "@/server/reports/service";
 import { listCatalogue } from "@/server/lenders/service";
 import { SYSTEM } from "@/server/shared/actor";
 import { riyadhDay } from "@/server/shared/clock";
@@ -409,5 +410,20 @@ describe("the demonstration's requests to lenders", () => {
     } finally {
       await fresh.close();
     }
+  });
+});
+
+describe("the office's month in the demonstration", () => {
+  it("finds the closed deal and the lost one in their months, each counted from the day its study began", async () => {
+    const september = await monthView(c.db, { month: "2026-09", now });
+    expect(september.closed.map((deal) => [deal.fileNo, deal.on, deal.days])).toEqual([["C-008", "2026-09-20", 55]]);
+    expect(september.closedFees).toBe(september.closed[0]!.fee);
+    expect(september.closedDays).toBe(55);
+    const october = await monthView(c.db, { month: "2026-10", now });
+    expect(october.lost.map((deal) => [deal.fileNo, deal.on])).toEqual([["C-011", "2026-10-31"]]);
+    expect(october.closed).toEqual([]);
+    // The months run from the first deal's to the one that holds today.
+    expect(october).toMatchObject({ first: "2026-07", thisMonth: "2026-11" });
+    expect((await monthView(c.db, { month: "2026-11", now })).lenders.length).toBeGreaterThan(0);
   });
 });

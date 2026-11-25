@@ -21,7 +21,7 @@ export default async function AccountPage() {
   const session = me.demo ? null : await currentSession();
   const { userAgent } = await requestOrigin();
   const now = new Date();
-  const office = { users: can(me.role, "user.manage"), audit: can(me.role, "audit.view"), fees: can(me.role, "settings.manage") };
+  const office = { users: can(me.role, "user.manage"), audit: can(me.role, "audit.view"), fees: can(me.role, "settings.manage"), month: can(me.role, "audit.view") };
 
   let view: AccountView;
   if (!session) {
