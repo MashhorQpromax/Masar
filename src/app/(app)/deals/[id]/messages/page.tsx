@@ -4,11 +4,13 @@ import { notFound } from "next/navigation";
 import { STAGE } from "@/copy/deal";
 import { owedBrief, paperLabel } from "@/copy/documents";
 import { counted, dayShort } from "@/copy/format";
+import { approvalApartText } from "@/copy/opportunity";
 import { agoText, CLIENT_STEP, excerpt, firstName, GATE_REASON, internalText, MESSAGE_KIND, MESSAGE_TYPE, OFFER_WAITS, offerText, papersText, progressText, studyText, type MessageExtras } from "@/copy/messages";
 import { can } from "@/domain/auth";
 import { clientReachable, isClientMessage, isMessageKind, type MessageKind } from "@/domain/messages";
 import { requireActor } from "@/server/auth/actor";
 import { getDb } from "@/server/db/client";
+import { approvalNotes } from "@/server/knowledge/service";
 import { linkPath, linkSecret, siteOrigin, whatsapp } from "@/server/messages/request";
 import { getMessages } from "@/server/messages/service";
 import { BackIcon } from "@/ui/icons";
@@ -28,13 +30,16 @@ export default async function MessagesPage({ params, searchParams }: { params: P
   const dealId = Number((await params).id);
   if (!Number.isInteger(dealId) || dealId <= 0) notFound();
   const now = new Date();
-  const view = await getMessages(await getDb(), { dealId, secret: linkSecret(), now });
+  const db = await getDb();
+  const view = await getMessages(db, { dealId, secret: linkSecret(), now });
   if (!view) notFound();
 
   const { deal, client, who, gate, facts, offer, steps, owed, link, thread } = view;
   const first = firstName(client.fullName);
   const maySend = can(me.role, "client.edit");
   const toClient = clientReachable(gate);
+  // A lender's written approval at another amount than the deal's: said beside what the client is about to be told.
+  const apart = toClient && !gate.reason && deal.stage !== "closed" ? await approvalNotes(db, view, now) : [];
   const origin = await siteOrigin();
   const url = link && origin ? `${origin}${linkPath(link.token)}` : null;
 
@@ -95,6 +100,11 @@ export default async function MessagesPage({ params, searchParams }: { params: P
             <h2 className="compose-title">{toClient ? `رسالة إلى ${first}` : "ملخص داخلي"}</h2>
             {toClient && gate.reason && <p className="composer-say">{GATE_REASON[gate.reason]}</p>}
             {toClient && !gate.reason && !offer && <p className="composer-say">{OFFER_WAITS}</p>}
+            {apart.map((one) => (
+              <p className="composer-say" key={one.part}>
+                {approvalApartText(one)}
+              </p>
+            ))}
           </div>
           <Composer key={start} dealId={deal.id} choices={choices} start={start} phone={view.phone} maySend={maySend} api={whatsapp() !== null} windowOpen={view.windowOpen} demo={me.demo} />
         </section>

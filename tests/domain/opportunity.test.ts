@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { dealStudy, defaultDealInput, type Borrower, type DealInput, type DealItem } from "@/domain/deal";
 import { termStanding, TERMS, type Product, type SourceKind, type Term } from "@/domain/eligibility";
 import { fundingRoutes, type Applicant, type RecordAfter } from "@/domain/funding";
-import { lendersPrint, opportunities, opportunityOf, speakable, type LenderReply, type OpportunityArgs } from "@/domain/opportunity";
+import { approvalsApart, lendersPrint, opportunities, opportunityOf, speakable, type LenderReply, type OpportunityArgs } from "@/domain/opportunity";
 
 /** Each way to fund a deal read as a card: its class, how far it can be relied on, and where each figure comes from. */
 const TODAY = "2026-11-23";
@@ -197,5 +197,45 @@ describe("the opportunities of a deal", () => {
     expect(print(product("p1", "a", { rate: 3.5 }))).not.toBe(print(product("p1", "a")));
     expect(print(product("p1", "a", { terms: terms("lender_staff") }))).not.toBe(print(product("p1", "a")));
     expect(lendersPrint(null)).toBeNull();
+  });
+});
+
+describe("a written approval the deal is not counted on", () => {
+  const study = dealStudy(deal, borrower);
+  const counted = study.financing.personal;
+  const other = counted - 3000;
+
+  it("is said with both amounts when a lender's written yes names another amount than the deal's", () => {
+    expect(counted).toBeGreaterThan(3000);
+    expect(approvalsApart(study, [], TODAY)).toEqual([]);
+    expect(approvalsApart(study, [reply({ amount: other })], TODAY)).toEqual([{ part: "personal", lenderId: "a", approved: other, counted, on: "2026-11-20" }]);
+    // More than the deal counts is as much a difference as less.
+    expect(approvalsApart(study, [reply({ amount: counted + 5000, decision: "approved_modified" })], TODAY)).toMatchObject([{ approved: counted + 5000 }]);
+  });
+
+  it("is silent once the deal is counted on the approved amount", () => {
+    expect(approvalsApart(study, [reply({ amount: counted })], TODAY)).toEqual([]);
+    // Two lenders said yes in writing: the deal on either one's amount is counted on a written word.
+    expect(approvalsApart(study, [reply({ lenderId: "b", amount: other }), reply({ amount: counted })], TODAY)).toEqual([]);
+  });
+
+  it("reads only an answer that is written, an approval, recent, and the lender's latest", () => {
+    expect(approvalsApart(study, [reply({ amount: other, written: false })], TODAY)).toEqual([]);
+    expect(approvalsApart(study, [reply({ amount: null, decision: "rejected" })], TODAY)).toEqual([]);
+    expect(approvalsApart(study, [reply({ amount: other, on: "2026-08-01" })], TODAY)).toEqual([]);
+    // The lender took its yes back: its latest answer is the one that stands.
+    expect(approvalsApart(study, [reply({ amount: null, decision: "rejected", on: "2026-11-22" }), reply({ amount: other })], TODAY)).toEqual([]);
+    // Two written approvals and the deal on neither: the newest is the one said.
+    expect(approvalsApart(study, [reply({ lenderId: "b", amount: other - 1000, on: "2026-11-22" }), reply({ amount: other })], TODAY)).toMatchObject([{ lenderId: "b", approved: other - 1000 }]);
+  });
+
+  it("looks at each part the deal has, and at no other", () => {
+    // The deal has no mortgage: an answer about one says nothing of it.
+    expect(approvalsApart(study, [reply({ part: "mortgage", amount: 500000 })], TODAY)).toEqual([]);
+    const both = { financing: { ...study.financing, mortgage: 600000 } };
+    expect(approvalsApart(both, [reply({ part: "mortgage", amount: 550000 }), reply({ amount: other })], TODAY).map((one) => [one.part, one.approved, one.counted])).toEqual([
+      ["mortgage", 550000, 600000],
+      ["personal", other, counted],
+    ]);
   });
 });

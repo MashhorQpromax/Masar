@@ -1,6 +1,6 @@
 /** The words of a deal's opportunities: their classes, how far each can be relied on, and where each figure comes from. */
-import type { Assumption, ClassReason, Confidence, Footing, OpportunityClass, SettledWait, Settlement } from "@/domain/opportunity";
-import { counted, dayOfIso, ltr, months, plainMoney } from "./format";
+import type { ApprovalApart, Assumption, ClassReason, Confidence, Footing, OpportunityClass, SettledWait, Settlement } from "@/domain/opportunity";
+import { counted, dayOfIso, ltr, money, months, plainMoney } from "./format";
 import { PART } from "./knowledge";
 import { SOURCE_KIND, TERM_NAME } from "./lenders";
 import { NET_PART } from "./net";
@@ -166,3 +166,11 @@ export const PLAN_STATE: Record<"stands" | "fell" | "none", string> = {
   fell: "سقط اعتماد الأتعاب",
   none: "الأتعاب غير معتمدة",
 };
+
+/**
+ * A lender's written approval the deal is not counted on, as a note on the deal and beside the client's
+ * offer. It says the two amounts and what to do, and stops nothing.
+ */
+export function approvalApartText(apart: Pick<ApprovalApart, "part" | "approved" | "counted"> & { lender: string }): string {
+  return `موافقة ${apart.lender} المكتوبة على التمويل ${PART[apart.part]} ${money(apart.approved)}، والصفقة محسوبة على ${money(apart.counted)}. احسب الصفقة على مبلغ الموافقة قبل أي عرض للعميل.`;
+}

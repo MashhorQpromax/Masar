@@ -6,7 +6,7 @@ import { INBOX_PAPER } from "@/domain/documents";
 import { dayOf, FINANCE_TYPES, type FinanceType } from "@/domain/eligibility";
 import type { FundingRoute } from "@/domain/funding";
 import { DECISIONS, RULE_KINDS, type Decision, type DecisionFact, type Rule, type RuleKind } from "@/domain/knowledge";
-import type { LenderReply } from "@/domain/opportunity";
+import { approvalsApart, type ApprovalApart, type LenderReply } from "@/domain/opportunity";
 import { answered, partsOf } from "@/domain/request";
 import type { Db, Tx } from "../db/client";
 import { documentFiles, documents, lenderRequests, lenderRules, lenders, outcomes, users } from "../db/schema";
@@ -214,6 +214,27 @@ export async function lenderReplies(db: Tx, clientId: number): Promise<LenderRep
       ? [{ lenderId: String(row.lenderId), part: row.part, decision: row.decision, amount: row.amount, on: row.on ?? dayOf(row.at), written: row.paper != null && papers.has(row.paper) }]
       : [],
   );
+}
+
+/** A lender's written approval a deal is not counted on, with the lender's name. */
+export type ApprovalNote = ApprovalApart & { lender: string };
+
+/**
+ * The written approvals a deal is not counted on, for the deal's page and beside the client's offer.
+ * It reads and says, and changes nothing.
+ */
+export async function approvalNotes(db: Tx, view: { client: { id: number }; study: Pick<DealStudy, "financing"> }, now: Date): Promise<ApprovalNote[]> {
+  const apart = approvalsApart(view.study, await lenderReplies(db, view.client.id), dayOf(now));
+  if (apart.length === 0) return [];
+  const rows = await db
+    .select({ id: lenders.id, name: lenders.name })
+    .from(lenders)
+    .where(inArray(lenders.id, apart.map((one) => Number(one.lenderId))));
+  const names = new Map(rows.map((row) => [String(row.id), row.name]));
+  return apart.flatMap((one) => {
+    const lender = names.get(one.lenderId);
+    return lender ? [{ ...one, lender }] : [];
+  });
 }
 
 /** A recorded decision as a person reads it. It names no client. */

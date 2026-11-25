@@ -451,3 +451,38 @@ export function reportRefusal(args: { consented: boolean; opportunities: number 
   if (!args.consented) return "NO_CONSENT";
   return args.opportunities === 0 ? "NO_OPPORTUNITIES" : null;
 }
+
+/** A lender's written approval that stands for one part of a deal while the deal is counted on another amount. */
+export interface ApprovalApart {
+  part: Part;
+  lenderId: string;
+  /** The amount the lender approved in writing. */
+  approved: number;
+  /** The amount the deal is counted on for that part. */
+  counted: number;
+  /** The day the answer was recorded. */
+  on: string;
+}
+
+/**
+ * The written approvals a deal is not counted on. A lender that said yes in writing named an amount, and
+ * the fee plan and the client's offer rest on the deal's own figure: when that figure is none of the
+ * written amounts that still stand for a part, a person should see it before the client is told a
+ * number. One line a part, the newest answer. It is a note for the reader and changes no figure.
+ */
+export function approvalsApart(study: Pick<DealStudy, "financing">, replies: readonly LenderReply[], today: string): ApprovalApart[] {
+  return PARTS.flatMap((part) => {
+    const counted = study.financing[part];
+    if (!(counted > 0)) return [];
+    const lenders = new Set<string>();
+    const standing = replies.filter((reply) => {
+      if (reply.part !== part || lenders.has(reply.lenderId)) return false;
+      // A lender's latest answer is the one that counts, whatever it said before.
+      lenders.add(reply.lenderId);
+      return reply.written && reply.decision !== "rejected" && reply.amount != null && today <= validUntil(reply.on, REPLY_VALIDITY_MONTHS);
+    });
+    const newest = standing[0];
+    if (!newest || newest.amount == null || standing.some((reply) => reply.amount === counted)) return [];
+    return [{ part, lenderId: newest.lenderId, approved: newest.amount, counted, on: newest.on }];
+  });
+}

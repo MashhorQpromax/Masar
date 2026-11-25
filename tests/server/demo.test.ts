@@ -18,6 +18,7 @@ import { seedDemo } from "@/server/demo/seed";
 import { relyOnPaper } from "@/server/documents/facts";
 import { getPapers } from "@/server/documents/service";
 import { getFunding } from "@/server/funding/service";
+import { approvalNotes } from "@/server/knowledge/service";
 import { listCatalogue } from "@/server/lenders/service";
 import { SYSTEM } from "@/server/shared/actor";
 import { riyadhDay } from "@/server/shared/clock";
@@ -392,6 +393,13 @@ describe("the demonstration's requests to lenders", () => {
       expect(request!.message).toContain(DEMO_APPROVED);
       expect(request!.message).not.toContain(client.name);
       expect(request!.message).not.toContain(client.phone!);
+
+      // The bank's written yes names its own amount, and the file is still counted on the office's estimate: the deal says so.
+      const replied = (await getDeal(fresh.db, { dealId: client.deal!.id, now }))!;
+      const [apart, ...more] = await approvalNotes(fresh.db, replied, now);
+      expect(more).toEqual([]);
+      expect(apart).toMatchObject({ part: "personal", lender: DEMO_BANK, counted: replied.study.financing.personal });
+      expect(apart!.approved).not.toBe(apart!.counted);
 
       // Seeding again adds nothing.
       await seedDemoContacts(fresh.db, now);

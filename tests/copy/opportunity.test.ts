@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  approvalApartText,
   assumptionLabel,
   assumptionSource,
   CLASS_SAY,
@@ -71,6 +72,13 @@ describe("the wording of an opportunity", () => {
     expect(plain(waitText({ ...w, months: 6, left: 0, confirmed: false }))).toBe("بنك المثال: تنتظر 6 أشهر بعد السداد، وقد مضت (غير مؤكد)");
     // One lender of both parts is said once.
     expect(waitLines({ pays: true, waits: [{ ...w, months: 0, left: 0 }, { ...w, part: "mortgage", months: 0, left: 0 }] })).toHaveLength(1);
+  });
+
+  it("says a lender's written approval the deal is not counted on, with both amounts and what to do", () => {
+    const text = approvalApartText({ lender: "بنك المثال", part: "personal", approved: 230009, counted: 233009 });
+    expect(plain(text)).toBe("موافقة بنك المثال المكتوبة على التمويل الشخصي 230,009، والصفقة محسوبة على 233,009. احسب الصفقة على مبلغ الموافقة قبل أي عرض للعميل.");
+    expect(plain(approvalApartText({ lender: "بنك المثال", part: "mortgage", approved: 900000, counted: 950000 }))).toContain("على التمويل العقاري 900,000");
+    expect(plain(text)).not.toMatch(wordy);
   });
 
   it("tells the difference in financing against the deal as it stands", () => {

@@ -6,10 +6,10 @@ import { setConsent } from "@/server/clients/service";
 import type { Connection } from "@/server/db/client";
 import { auditLog, clients, users } from "@/server/db/schema";
 import { approveFeePlan } from "@/server/deals/plan";
-import { saveDeal } from "@/server/deals/service";
+import { getDeal, saveDeal } from "@/server/deals/service";
 import { addPaper, keepFile, reviewPaper } from "@/server/documents/service";
 import { applyRoute, getFunding } from "@/server/funding/service";
-import { lenderReplies, recentDecisions, recordDecision, replyPapers } from "@/server/knowledge/service";
+import { approvalNotes, lenderReplies, recentDecisions, recordDecision, replyPapers } from "@/server/knowledge/service";
 import { addLender, addProduct, confirmTerms, updateProductTerms } from "@/server/lenders/service";
 import { getOpportunities, makeReport, reportById, reportsOf } from "@/server/opportunities/service";
 import type { Actor } from "@/server/shared/actor";
@@ -118,6 +118,28 @@ describe("a lender's written answer", () => {
     // The paper is sent back: the answer is no longer in writing, and the class falls with it.
     await reviewPaper(c.db, { clientId: client.id, paperId, review: { verdict: "rejected", note: "ليست من الجهة" }, actor, now });
     expect((await ours()).class).toBe("theoretical");
+  });
+
+  it("is said beside the deal while the deal is counted on another amount, and goes quiet once the deal takes it", async () => {
+    const { dealId, paperId } = await setUp();
+    const notes = async () => approvalNotes(c.db, (await getDeal(c.db, { dealId, now }))!, now);
+    const counted = (await getDeal(c.db, { dealId, now }))!.study.financing.personal;
+    const approved = counted - 3000;
+    expect(await notes()).toEqual([]);
+
+    // What the employee was told is no written word: nothing is said.
+    await recordDecision(c.db, { dealId, decision: yes(null, approved), actor, now });
+    expect(await notes()).toEqual([]);
+
+    // The written yes names another amount: it is said with the lender's name and both amounts, and the deal stays as it was.
+    await recordDecision(c.db, { dealId, decision: yes(paperId, approved), actor, now });
+    expect(await notes()).toEqual([{ part: "personal", lenderId: String(lenderId), lender: LENDER, approved, counted, on: "2026-11-23" }]);
+    expect((await getDeal(c.db, { dealId, now }))!.study.financing.personal).toBe(counted);
+
+    // The deal is counted on the approved amount: nothing is left to say.
+    await recordDecision(c.db, { dealId, decision: { ...yes(paperId, approved), onDeal: true }, actor, now });
+    expect((await getDeal(c.db, { dealId, now }))!.study.financing.personal).toBe(approved);
+    expect(await notes()).toEqual([]);
   });
 
   it("turns the opportunity down when the lender refuses, and no approval of the plan passes over it", async () => {

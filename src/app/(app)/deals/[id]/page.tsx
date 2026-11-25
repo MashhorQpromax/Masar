@@ -19,6 +19,7 @@ import { missingText } from "@/copy/documents";
 import { differenceText } from "@/copy/editor";
 import { feeText, planLine, planState, termsText } from "@/copy/fees";
 import { deductionText, lineSource, NET_DEFICIT, NET_PART, NET_TOTAL, netWhy } from "@/copy/net";
+import { approvalApartText } from "@/copy/opportunity";
 import { counted, days, dayShort, dueIn, ltr, money, percent, plainMoney } from "@/copy/format";
 import {
   clientNet,
@@ -44,6 +45,7 @@ import { getDeal } from "@/server/deals/service";
 import { feePolicy } from "@/server/settings/fees";
 import { fundingOf } from "@/server/funding/service";
 import { papersOf } from "@/server/documents/service";
+import { approvalNotes } from "@/server/knowledge/service";
 import { Certain } from "@/ui/Certain";
 import { BackIcon, ChevronIcon, PenIcon } from "@/ui/icons";
 import { Num } from "@/ui/Num";
@@ -115,8 +117,11 @@ export default async function DealPage({ params }: { params: Promise<{ id: strin
   // A court order or default the deal holds at another amount than the credit report stands beside the risks,
   // for those who may read the report: the capital rests on these amounts.
   const differences = maySeeCredit && credit ? recordDifferences(reportOffer(credit.report).drafts, input.items) : [];
-  // They come right after what blocks, ahead of the other warnings: what the office pays is in question.
+  // A lender's written approval at another amount than the deal is counted on: the plan and the client's offer rest on the deal's figure.
+  const apart = ended ? [] : await approvalNotes(db, view, now);
+  // They come right after what blocks, ahead of the other warnings: what the office pays and what the client is told are in question.
   const notes: { key: string; level: Risk["level"]; text: string }[] = [
+    ...apart.map((one) => ({ key: `approval-${one.part}`, level: "warn" as const, text: approvalApartText(one) })),
     ...differences.map((difference) => ({
       key: `record-${difference.item}`,
       level: "warn" as const,
