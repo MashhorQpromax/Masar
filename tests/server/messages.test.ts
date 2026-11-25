@@ -128,7 +128,8 @@ describe("the client's own page", () => {
       const view = (await portalView(c.db, { token, now }))!;
       const codes = [...view.owed, ...view.arrived].map((paper) => paper.code);
       for (const office of ["valuation", "agreement", "clearance", "payoff_letter", "transfer_deed", INBOX_PAPER]) expect(codes).not.toContain(office);
-      const text = JSON.stringify(view).toLowerCase();
+      // A paper the office adds is named by random hex, which can spell "fee": the codes are checked by name above, and the words are looked for in everything else.
+      const text = JSON.stringify(view, (key, value: unknown) => (key === "code" ? undefined : value)).toLowerCase();
       for (const word of ["fee", "capital", "roi", "ledger", "risk", "phone", "nationalid", "salary\""]) expect(text, word).not.toContain(word);
     }
   });
