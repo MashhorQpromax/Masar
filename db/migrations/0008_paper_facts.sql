@@ -1,0 +1,1 @@
+ALTER TABLE "masar"."documents" ADD COLUMN "stated" jsonb;

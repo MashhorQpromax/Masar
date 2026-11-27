@@ -1,9 +1,7 @@
 node_modules
 .next
-data/*.db*
-data/uploads/*
-!data/uploads/.keep
-seed/
 .env*
-tsconfig.tsbuildinfo
+*.tsbuildinfo
 next-env.d.ts
+coverage
+.pglite

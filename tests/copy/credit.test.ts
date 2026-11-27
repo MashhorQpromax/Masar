@@ -1,0 +1,254 @@
+import { readFileSync } from "node:fs";
+import { describe, expect, it } from "vitest";
+import {
+  ACCESS,
+  actionText,
+  actionTitle,
+  blockerText,
+  CONFIDENCE,
+  creditError,
+  CREDITOR_TYPE,
+  doorText,
+  draftLabel,
+  FACILITY_STATUS,
+  findingText,
+  GRADE,
+  JUDGMENT_KIND,
+  parseWarningText,
+  readText,
+  STANDING,
+  UPLOAD_ERROR_CODES,
+} from "@/copy/credit";
+import { alsoDiffers, CONFIRMED_BY_CREDITOR, differenceText, DIFFERS_DUE, DRAFT_GAP, notInDeal, onRecord, PAYOFF_ESTIMATED, recordDiffers, REPORT_FILLED, reportDay } from "@/copy/editor";
+import { plainMoney } from "@/copy/format";
+import { analyzeCredit, parseSimahPages, type CreditReport } from "@/domain/credit";
+import { itemDrafts, joinLabel, labelParts, pendingDrafts, recordDifferences, reportDrafts, type Owed } from "@/domain/deal";
+
+const golden = JSON.parse(readFileSync(new URL("../golden/credit.json", import.meta.url), "utf8"));
+const cases: { report: CreditReport; obligations: Owed[]; expected: { items: { label: string }[] } }[] = golden.cases;
+const broken = /undefined|NaN|null|\[object/;
+const strip = (text: string) => text.replace(/[⁦⁩]/g, "");
+
+describe("credit wording", () => {
+  it("has a sentence for every blocker, finding, step and door the engine produces", () => {
+    const seen = new Set<string>();
+    for (const c of cases) {
+      const a = analyzeCredit(c.report);
+      const said: [string, string][] = [
+        ...a.blockers.map((b): [string, string] => [`blocker.${b.code}`, blockerText(b)]),
+        ...a.findings.map((f): [string, string] => [`finding.${f.code}`, findingText(f)]),
+        ...a.actions.map((x): [string, string] => [`action.${x.code}`, actionText(x)]),
+        [`banks.${a.banks.reason}`, doorText(a.banks).reason],
+        [`financeCompanies.${a.financeCompanies.reason}`, doorText(a.financeCompanies).reason],
+      ];
+      for (const [code, text] of said) {
+        expect(text.length, code).toBeGreaterThan(8);
+        expect(text, code).not.toMatch(broken);
+        expect(text.endsWith("."), code).toBe(true);
+        seen.add(code);
+      }
+      for (const x of a.actions) {
+        const title = actionTitle(x);
+        expect(title.length, x.code).toBeGreaterThan(8);
+        expect(title, x.code).not.toMatch(broken);
+        // A heading is shorter than the instruction it stands over, and carries no full stop.
+        expect(title.length, x.code).toBeLessThan(actionText(x).length);
+        expect(title.endsWith("."), x.code).toBe(false);
+      }
+      for (const d of [a.banks, a.financeCompanies]) {
+        const { reopen } = doorText(d);
+        expect(reopen === null, d.reason).toBe(!d.reopenInMonths);
+        if (reopen) expect(reopen).not.toMatch(broken);
+      }
+      expect(GRADE[a.grade].title).toBeTruthy();
+      expect(STANDING[a.standing]).toBeTruthy();
+      expect(ACCESS[a.banks.access]).toBeTruthy();
+    }
+    // 5 blockers, 12 findings, 9 steps, 7 reasons for banks and 4 for finance companies.
+    expect(seen.size).toBe(37);
+  });
+
+  it("says what a reading found and why a report was refused", () => {
+    expect(strip(readText({ facilities: 7, judgments: 1 }))).toBe("قرأنا التقرير: 7 منتجات وقرار تنفيذ واحد.");
+    expect(strip(readText({ facilities: 12, judgments: 0 }))).toBe("قرأنا التقرير: 12 منتجاً.");
+    expect(readText({ facilities: 0, judgments: 0 })).toBe("قرأنا التقرير.");
+    // Every answer of the upload has its own sentence, different from the fallback.
+    const fallback = creditError("SOMETHING_ELSE");
+    for (const code of ["DEMO", "NO_FILE", "TOO_LARGE", "NOT_PDF", "UNREADABLE", "NOT_SIMAH", "NOT_FOUND", "INVALID_INPUT"]) {
+      expect(UPLOAD_ERROR_CODES, code).toContain(code);
+      expect(creditError(code), code).not.toBe(fallback);
+      expect(creditError(code).endsWith("."), code).toBe(true);
+    }
+  });
+
+  it("names every kind the record can hold", () => {
+    for (const table of [CREDITOR_TYPE, FACILITY_STATUS, JUDGMENT_KIND, ACCESS, STANDING]) {
+      for (const text of Object.values(table)) expect(text).toBeTruthy();
+    }
+  });
+
+  it("says who a court order is for, and says when that is a guess", () => {
+    const a = analyzeCredit({
+      facilities: [{ lender: "شركة تمويل", creditorType: "finance_company", product: "قرض شخصي", status: "default", defaultAmount: 128000 }],
+      judgments: [
+        { kind: "enforcement", active: true, amount: 128400, date: "2025/03/11", state: "عدم تنفيذ" },
+        { kind: "judgment", active: true, amount: 9000.4, creditor: "دائن فرد" },
+      ],
+      serviceSuspension: false,
+    });
+    expect(a.blockers.map((b) => strip(blockerText(b)))).toEqual([
+      "قرار تنفيذ قائم لصالح شركة تمويل على الأرجح، بمبلغ 128,400 ريال، صدر في 2025/03/11، حالته: عدم تنفيذ.",
+      "حكم قائم لصالح دائن فرد، بمبلغ 9,000 ريال.",
+      "تعثر قائم لدى شركة تمويل (شركة تمويل)، المتبقي 128,000 ريال، ومرفوع به قرار تنفيذ.",
+    ]);
+  });
+
+  it("counts in correct Arabic", () => {
+    expect(strip(findingText({ code: "BANK_DEFAULTS", level: "warn", params: { count: 1, waitMonths: 12 } }))).toMatch(/^تعثر واحد لدى بنوك\. .*نحو 12 شهراً/);
+    expect(strip(findingText({ code: "FINANCE_CO_DEFAULTS", level: "warn", params: { count: 2, waitMonths: 24 } }))).toMatch(/^تعثران لدى شركات تمويل/);
+    expect(strip(findingText({ code: "RECENT_DELAYS", level: "warn", params: { count: 3, worstDelay: 90, windowMonths: 12 } }))).toBe(
+      "تأخر 30 يوماً فأكثر على 3 التزامات خلال آخر 12 شهراً. أسوأ تأخر 90 يوماً.",
+    );
+    expect(strip(findingText({ code: "SETTLED_DEFAULT", level: "info", params: { lender: "بنك", creditorType: "bank", monthsAgo: 0, amount: null } }))).toBe(
+      "تعثر مسدد لدى بنك (بنك) منذ أقل من شهر. يبقى ظاهراً في السجل كتاريخ.",
+    );
+    expect(strip(doorText({ access: "closed", reason: "RECENT_SETTLEMENT_BANK", reopenInMonths: 2 }).reopen ?? "")).toBe("يُتوقع أن يفتح بعد شهرين.");
+  });
+});
+
+describe("wording of a report's reading", () => {
+  const texts = JSON.parse(readFileSync(new URL("../golden/simah.json", import.meta.url), "utf8")) as { today: string; cases: { pages: string[] }[] };
+
+  it("has a sentence for every warning the reader raises", () => {
+    const seen = new Set<string>();
+    for (const c of texts.cases) {
+      const reading = parseSimahPages(c.pages, texts.today);
+      expect(CONFIDENCE[reading.confidence]).toBeTruthy();
+      for (const warning of reading.warnings) {
+        const text = parseWarningText(warning);
+        expect(text.length, warning.code).toBeGreaterThan(10);
+        expect(text, warning.code).not.toMatch(broken);
+        seen.add(warning.code);
+      }
+    }
+    expect(seen.size).toBe(5);
+  });
+
+  it("counts unpaid orders in correct Arabic", () => {
+    expect(parseWarningText({ code: "SUSPENSION_ASSUMED", params: { orders: 1 } })).toMatch(/^قرار تنفيذ لم يُنفّذ\. افترضنا/);
+    expect(parseWarningText({ code: "SUSPENSION_ASSUMED", params: { orders: 3 } })).toMatch(/^3 قرارات تنفيذ لم تُنفّذ\. /);
+  });
+});
+
+describe("labels of the items a deal starts with", () => {
+  /** The label the old system wrote, without the dangling separator it left when no lender was known. */
+  const old = (label: string) => label.replace(/\s+/g, " ").replace(/ —\s*$/, "").trim();
+
+  it("match the labels the old system wrote", () => {
+    let compared = 0;
+    for (const c of cases) {
+      if (c.report.judgments.some((j) => j.active && j.kind === "bounced_cheque")) continue;
+      const drafts = itemDrafts(c.report, c.obligations);
+      expect(drafts.length).toBe(c.expected.items.length);
+      drafts.forEach((draft, i) => {
+        // The old system called a court judgment an enforcement order too. The new label says which it is.
+        const label = draftLabel(draft.source).replace(/^حكم/, "قرار تنفيذ");
+        expect(label).toBe(old(c.expected.items[i]!.label));
+        compared++;
+      });
+    }
+    expect(compared).toBeGreaterThan(700);
+  });
+
+  it("name a bounced cheque as a cheque and a judgment as a judgment", () => {
+    expect(draftLabel({ from: "judgment", kind: "bounced_cheque", decisionNo: null, creditor: null, date: null })).toBe("شيك مرتجع — دائن غير محدد");
+    expect(draftLabel({ from: "judgment", kind: "judgment", decisionNo: "4410077123", creditor: "بنك", date: "2025/03/11" })).toBe("حكم 4410077123 — بنك (2025/03/11)");
+    expect(draftLabel({ from: "obligation", kind: "auto", lender: null })).toBe("مخالصة تمويل سيارة");
+  });
+
+  it("name another running finance by what SIMAH calls it and who gave it", () => {
+    expect(draftLabel({ from: "product", lender: "شركة تقسيط", product: "تمويل منتجات/اشتر الآن" })).toBe("تمويل منتجات/اشتر الآن — شركة تقسيط");
+  });
+});
+
+describe("the report's commitments in the deal editor", () => {
+  it("are all placed once each one is added under its own label, for every record of the golden file", () => {
+    let added = 0;
+    for (const c of cases) {
+      // As the editor is given them: each draft with the label it is added under.
+      const drafts = reportDrafts(c.report).map((draft) => ({ ...draft, label: draftLabel(draft.source) }));
+      // As the editor adds a draft: its label is split into a title and a party, and joined again when the deal is read.
+      const items = drafts.map((draft) => {
+        const { title, party } = labelParts(draft.label);
+        return { kind: draft.kind, label: joinLabel(title, party), original: draft.original };
+      });
+      expect(pendingDrafts(drafts, items)).toEqual([]);
+      // And with nothing added, every one of them is still offered.
+      expect(pendingDrafts(drafts, [])).toHaveLength(drafts.length);
+      for (const draft of drafts) {
+        expect(draftLabel(draft.source)).not.toMatch(broken);
+        added++;
+      }
+    }
+    expect(added).toBeGreaterThan(400);
+  });
+
+  it("says where the suggestions come from, how many the deal lacks, and what a person still has to write", () => {
+    expect(reportDay("2026/11/20")).toBe("تقرير سمة، 20 نوفمبر 2026");
+    expect(reportDay(null)).toBe("تقرير سمة");
+    expect(notInDeal(1)).toBe("التزام واحد ليس في الصفقة");
+    expect(notInDeal(2)).toBe("التزامان ليسا في الصفقة");
+    expect(notInDeal(3)).toBe("3 التزامات ليست في الصفقة");
+    expect(notInDeal(11)).toBe("11 التزاماً ليست في الصفقة");
+    for (const said of [DRAFT_GAP.amount, DRAFT_GAP.monthly, PAYOFF_ESTIMATED, REPORT_FILLED]) {
+      expect(said).toMatch(/^[؀-ۿ]/);
+      expect(said.endsWith(".")).toBe(true);
+      expect(said).not.toMatch(/undefined|NaN|null|\[object|[A-Za-z_]{3,}|—|–/);
+    }
+    expect(DRAFT_GAP.amount).not.toBe(DRAFT_GAP.monthly);
+  });
+
+  it("finds every court order and default written at another amount than the record, for every record of the golden file", () => {
+    let differing = 0;
+    for (const c of cases) {
+      const drafts = reportDrafts(c.report).map((draft) => ({ ...draft, label: draftLabel(draft.source) }));
+      const items = drafts.map((draft) => ({ kind: draft.kind, label: draft.label, original: draft.original }));
+      // Written as the record has them, nothing differs.
+      expect(recordDifferences(drafts, items)).toEqual([]);
+      // Each fixed debt written a tenth lower, and not less than 5,000 lower, is said with both amounts.
+      const lower = items.map((item) =>
+        (item.kind === "execution" || item.kind === "default") && item.original > 5000 ? { ...item, original: Math.min(item.original - 5000, Math.round(item.original * 0.9)) } : item,
+      );
+      const found = recordDifferences(drafts, lower);
+      for (const difference of found) {
+        const text = differenceText({ label: lower[difference.item]!.label, deal: difference.deal, record: difference.record });
+        expect(strip(text)).toContain(`في الصفقة ${plainMoney(difference.deal)}، وفي تقرير سمة ${plainMoney(difference.record)}.`);
+        expect(text).not.toMatch(broken);
+        // The names come from the record, and may be written in Latin letters. The separator of a label never shows.
+        expect(text).not.toMatch(/—|–/);
+        expect(difference.record).toBeGreaterThan(difference.deal);
+        differing++;
+      }
+      // A debt the creditor confirmed at the deal's amount differs from nothing.
+      expect(recordDifferences(drafts, lower.map((item) => ({ ...item, confirmed: true })))).toEqual([]);
+    }
+    expect(differing).toBeGreaterThan(50);
+  });
+
+  it("says how many amounts differ from the record, and each one with both figures", () => {
+    expect(recordDiffers(1)).toBe("مبلغ واحد يخالف تقرير سمة");
+    expect(recordDiffers(2)).toBe("مبلغان يخالفان تقرير سمة");
+    expect(recordDiffers(3)).toBe("3 مبالغ تخالف تقرير سمة");
+    expect(recordDiffers(11)).toBe("11 مبلغاً تخالف تقرير سمة");
+    expect(alsoDiffers(1)).toBe("وفي الصفقة مبلغ واحد يخالف تقرير سمة.");
+    expect(strip(onRecord(49000))).toBe("في تقرير سمة 49,000");
+    expect(strip(differenceText({ label: "تعثر تمويل سيارة — شركة تمويل", deal: 46000, record: 49000 }))).toBe(
+      "تعثر تمويل سيارة (شركة تمويل): في الصفقة 46,000، وفي تقرير سمة 49,000. صحّح المبلغ أو أكّده من الدائن.",
+    );
+    expect(strip(differenceText({ label: "تعثر", deal: 1000, record: 9000 }))).toBe("تعثر: في الصفقة 1,000، وفي تقرير سمة 9,000. صحّح المبلغ أو أكّده من الدائن.");
+    for (const said of [DIFFERS_DUE, CONFIRMED_BY_CREDITOR]) {
+      expect(said).toMatch(/^[؀-ۿ]/);
+      expect(said).not.toMatch(/undefined|NaN|null|\[object|[A-Za-z_]{3,}|—|–/);
+    }
+  });
+});

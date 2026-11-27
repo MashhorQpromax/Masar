@@ -1,35 +1,57 @@
 {
-  "name": "masar-finance",
-  "version": "0.1.0",
+  "name": "masar",
+  "version": "2.0.0-dev",
   "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "dev": "next dev -p 3000",
-    "build": "node scripts/prebuild.mjs && next build",
+    "build": "next build",
+    "vercel-build": "tsx --conditions=react-server scripts/release.ts before && next build && tsx --conditions=react-server scripts/release.ts after",
     "start": "next start -p 3000",
-    "seed": "node --experimental-strip-types scripts/seed.ts",
-    "test": "node --experimental-strip-types --test tests/*.test.ts"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "check": "npm run typecheck && npm run test",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "tsx --conditions=react-server scripts/migrate.ts",
+    "user:create": "tsx --conditions=react-server scripts/create-user.ts",
+    "data:port": "tsx --conditions=react-server scripts/port-data.ts",
+    "golden:deal": "tsx legacy/tools/gen-deal-golden.ts",
+    "golden:credit": "tsx legacy/tools/gen-credit-golden.ts",
+    "golden:simah": "tsx legacy/tools/gen-simah-golden.ts",
+    "golden:eligibility": "tsx legacy/tools/gen-eligibility-golden.ts",
+    "golden:advisor": "tsx legacy/tools/gen-advisor-golden.ts",
+    "golden:experience": "DATABASE_URL=pglite: tsx --conditions=react-server legacy/tools/gen-experience-golden.ts",
+    "golden:project": "tsx legacy/tools/gen-project-golden.ts"
   },
   "dependencies": {
-    "@simplewebauthn/browser": "^13.2.2",
-    "@simplewebauthn/server": "^13.2.2",
-    "bcryptjs": "3.0.2",
-    "next": "15.5.9",
+    "@electric-sql/pglite": "^0.3.7",
+    "@simplewebauthn/browser": "^14.0.0",
+    "@simplewebauthn/server": "^14.1.0",
+    "bcryptjs": "^3.0.3",
+    "drizzle-orm": "^0.45.4",
+    "next": "16.4.6",
     "postgres": "^3.4.7",
     "qrcode": "^1.5.4",
-    "react": "19.1.1",
-    "react-dom": "19.1.1",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
     "server-only": "^0.0.1",
-    "unpdf": "^1.3.2",
-    "zod": "3.25.76"
+    "unpdf": "1.3.2",
+    "zod": "4.6.7"
   },
   "devDependencies": {
-    "@electric-sql/pglite": "^0.3.7",
     "@tailwindcss/postcss": "4.1.13",
     "@types/node": "22.18.0",
-    "@types/qrcode": "^1.5.5",
-    "@types/react": "19.1.12",
-    "@types/react-dom": "19.1.9",
+    "@types/qrcode": "^1.5.6",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "drizzle-kit": "^0.31.11",
     "tailwindcss": "4.1.13",
-    "typescript": "5.9.2"
+    "tsx": "^4.20.0",
+    "typescript": "5.9.2",
+    "vitest": "^5.1.1"
   }
 }

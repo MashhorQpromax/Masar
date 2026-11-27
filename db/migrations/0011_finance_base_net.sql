@@ -1,0 +1,1 @@
+ALTER TYPE "masar"."finance_base" ADD VALUE 'net';

@@ -1,0 +1,2 @@
+// Stands in for the `server-only` marker package, which refuses to load outside a server bundle.
+export {};
