@@ -4,7 +4,7 @@ import { SHARED_KEYS } from "@/domain/request";
 import { approveAnalysis } from "@/server/analysis/approval";
 import { setConsent } from "@/server/clients/service";
 import type { Connection } from "@/server/db/client";
-import { auditLog, clients, deals, lenderRequests, lenders, users } from "@/server/db/schema";
+import { auditLog, clients, deals, lenderRequests, lenders, products, users } from "@/server/db/schema";
 import { DEMO_BANK, DEMO_COMPANY, seedDemoLenders } from "@/server/demo/lenders";
 import { seedDemo } from "@/server/demo/seed";
 import { addPaper, keepFile } from "@/server/documents/service";
@@ -329,8 +329,23 @@ describe("preparing a request", () => {
   });
 
   it("is refused on an opportunity that cannot be carried out", async () => {
+    const through = (o: { route: { mortgage: { product: { lenderName: string } } | null; personal: { product: { lenderName: string } } | null } }) =>
+      o.route.mortgage?.product.lenderName === DEMO_COMPANY || o.route.personal?.product.lenderName === DEMO_COMPANY;
+    // The company's year after a paid default is time the deal waits, not a refusal: its opportunity can be carried out.
+    expect((await getOpportunities(c.db, { dealId, now }))!.list.filter(through).map((o) => o.class)).toEqual(["ready"]);
+    // Its paper is read here as taking the armed forces alone. The client works for the state: a
+    // confirmed condition he does not meet. The row is written as that paper would have it, and put back after.
+    const [home] = await c.db
+      .select({ id: products.id, sectors: products.sectors })
+      .from(products)
+      .where(and(eq(products.lenderId, company), eq(products.financeType, "mortgage")));
+    await c.db
+      .update(products)
+      .set({ sectors: ["military"] })
+      .where(eq(products.id, home!.id));
     const viewing = (await getOpportunities(c.db, { dealId, now }))!;
-    const refused = viewing.list.find((o) => o.class === "not_viable" && (o.route.mortgage?.product.lenderName === DEMO_COMPANY || o.route.personal?.product.lenderName === DEMO_COMPANY))!;
+    const refused = viewing.list.find((o) => o.class === "not_viable" && through(o))!;
+    expect(refused.reasons).toEqual([{ code: "BLOCKED", count: 1 }]);
     await recordShareConsent(c.db, {
       clientId,
       input: {
@@ -364,6 +379,10 @@ describe("preparing a request", () => {
         }),
       ),
     ).toBe("ROUTE_GONE");
+    await c.db
+      .update(products)
+      .set({ sectors: home!.sectors })
+      .where(eq(products.id, home!.id));
   });
 });
 

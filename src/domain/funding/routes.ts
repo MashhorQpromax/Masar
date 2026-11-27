@@ -128,7 +128,7 @@ export type RouteCheck =
   | RecordCheck
   | SpecialCheck
   | ConflictCheck
-  | { key: "simah"; status: "fail"; code: "SETTLED_WAIT"; params: { months: number } }
+  | { key: "simah"; status: "fail" | "warn"; code: "SETTLED_WAIT"; params: { months: number } }
   | { key: "transfer"; status: "fail"; code: "TWO_SALARY_TRANSFERS"; params: Record<string, never> };
 
 /** How each condition of a route is read strictly. The person's conditions are read as the eligibility engine reads them. */
@@ -257,16 +257,23 @@ function personChecks(product: Product, borrower: Borrower, who: Applicant, mont
   return matchProduct(profile, capacity(profile), product).checks.filter((c): c is PersonCheck => PERSON_KEYS.has(c.key));
 }
 
+/**
+ * How a lender's wait after a paid default is read. Asked who takes the client today, a lender still
+ * waiting refuses. On the road of a deal the wait is time: the owner decided on 2026-11-27 that it
+ * refuses no deal, so the lender stays a way to fund the deal, on the condition that the wait passes.
+ */
+export type WaitReading = "refuses" | "delays";
+
 /** Whether the lender takes the record the client will have after the settlement. */
-export function recordChecks(product: Product, record: RecordAfter): RouteCheck[] {
+export function recordChecks(product: Product, record: RecordAfter, wait: WaitReading = "refuses"): RouteCheck[] {
   const none = {} as Record<string, never>;
   if (record.open) return [{ key: "simah", status: "fail", code: "RECORD_OPEN", params: none }];
   const checks: RouteCheck[] = [];
   if (record.settledMonthsAgo != null) {
-    const wait = product.settledDefaultWaitMonths;
-    const left = wait == null ? 0 : Math.max(0, wait - record.settledMonthsAgo);
-    if (wait == null) checks.push({ key: "simah", status: "warn", code: "SETTLED_UNCONFIRMED", params: none });
-    else if (left > 0) checks.push({ key: "simah", status: "fail", code: "SETTLED_WAIT", params: { months: left } });
+    const months = product.settledDefaultWaitMonths;
+    const left = months == null ? 0 : Math.max(0, months - record.settledMonthsAgo);
+    if (months == null) checks.push({ key: "simah", status: "warn", code: "SETTLED_UNCONFIRMED", params: none });
+    else if (left > 0) checks.push({ key: "simah", status: wait === "delays" ? "warn" : "fail", code: "SETTLED_WAIT", params: { months: left } });
     else checks.push({ key: "simah", status: "pass", code: "SETTLED_ACCEPTED", params: none });
   }
   if (record.delays) checks.push({ key: "simah", status: product.acceptsLateSimah ? "warn" : "fail", code: "RECORD_LATE", params: none });
@@ -341,7 +348,7 @@ function route(args: Args, mortgageProduct: Product | null, personalProduct: Pro
         installment: Math.round(Math.min(f.mortgagePre, installmentFor(f.mortgage, f.mortgageMonths, terms.mortgageApr ?? 0, "reducing"))),
         months: f.mortgageMonths,
         atCeiling: f.mortgageCeiling != null,
-        ...leg(mortgageProduct, [...personChecks(mortgageProduct, borrower, who, mortgageProduct.maxTenor), ...recordChecks(mortgageProduct, who.record), ...special(mortgageProduct, borrower, who, f.mortgage)]),
+        ...leg(mortgageProduct, [...personChecks(mortgageProduct, borrower, who, mortgageProduct.maxTenor), ...recordChecks(mortgageProduct, who.record, "delays"), ...special(mortgageProduct, borrower, who, f.mortgage)]),
       }
     : null;
   const personal: RouteLeg | null = personalProduct
@@ -351,7 +358,7 @@ function route(args: Args, mortgageProduct: Product | null, personalProduct: Pro
         installment: Math.round(installmentFor(f.personal, f.personalMonths, terms.personalFlat ?? 0, "flat")),
         months: f.personalMonths,
         atCeiling: f.personalCeiling != null,
-        ...leg(personalProduct, [...personChecks(personalProduct, borrower, who, personalMonths), ...recordChecks(personalProduct, who.record), ...special(personalProduct, borrower, who, f.personal)]),
+        ...leg(personalProduct, [...personChecks(personalProduct, borrower, who, personalMonths), ...recordChecks(personalProduct, who.record, "delays"), ...special(personalProduct, borrower, who, f.personal)]),
       }
     : null;
 

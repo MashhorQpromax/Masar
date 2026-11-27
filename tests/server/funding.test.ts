@@ -161,22 +161,32 @@ describe("the lenders of a deal", () => {
   it("refuses a route the catalogue no longer has, and a lender that would turn the client down", async () => {
     await expect(applyRoute(c.db, { dealId: ids["ريم"]!, key: "m0-p0", actor: SYSTEM, now })).rejects.toMatchObject({ code: "ROUTE_GONE" });
 
-    // Every lender is now known to wait a year after a default is paid: the deal pays one, so each refuses.
+    // Every lender is now written down as waiting a year after a default is paid, and the deal pays one. The wait
+    // is time on the deal's road, not a refusal: no route is turned down for it.
     await c.db.update(products).set({ settledDefaultWaitMonths: 12 });
     const view = await funding("ريم");
-    expect(view.routes.every((r) => r.status === "fail" && r.refusals.some((n) => n.check.code === "SETTLED_WAIT"))).toBe(true);
+    expect(view.routes.every((r) => r.conditions.some((n) => n.check.code === "SETTLED_WAIT" && n.check.params.months === 12))).toBe(true);
+    expect(view.routes.some((r) => r.refusals.some((n) => n.check.code === "SETTLED_WAIT"))).toBe(false);
+    // Nobody confirmed that year, so it widens the market's six months to a year instead of standing in its place.
+    expect(view.wait).toMatchObject({ months: { from: 6, to: 12 }, basis: "market", lenders: [] });
+
+    // The lenders still refuse her, for another reason: one of her loans was paid late last month.
+    expect(view.record).toEqual({ known: true, open: false, settledMonthsAgo: 0, delays: true, inquiries: { m6: 5, m12: 7 } });
+    expect(view.routes.every((r) => r.status === "fail" && r.refusals.some((n) => n.check.code === "RECORD_LATE"))).toBe(true);
     await expect(applyRoute(c.db, { dealId: ids["ريم"]!, key: view.routes[0]!.key, actor: SYSTEM, now })).rejects.toMatchObject({ code: "ROUTE_REFUSED" });
 
-    // Confirmed to take the client at once, the lenders still refuse: one of her loans was paid late last month.
+    // Written down as taking the client at once, they refuse her all the same.
     await c.db.update(products).set({ settledDefaultWaitMonths: 0 });
     const late = await funding("ريم");
-    expect(late.record).toEqual({ known: true, open: false, settledMonthsAgo: 0, delays: true, inquiries: { m6: 5, m12: 7 } });
     expect(late.routes.every((r) => r.refusals.some((n) => n.check.code === "RECORD_LATE"))).toBe(true);
 
-    // A lender that accepts late payments takes her, on that condition.
+    // A lender that accepts late payments takes her, on that condition. With a year's wait beside it she is still taken.
     await c.db.update(products).set({ acceptsLateSimah: true });
     const open = await funding("ريم");
     expect(open.routes.every((r) => r.status === "warn" && r.conditions.some((n) => n.check.code === "RECORD_LATE"))).toBe(true);
+    await c.db.update(products).set({ settledDefaultWaitMonths: 12 });
+    const waiting = await funding("ريم");
+    expect(waiting.routes.every((r) => r.status === "warn" && r.conditions.some((n) => n.check.code === "SETTLED_WAIT"))).toBe(true);
     await c.db.update(products).set({ acceptsLateSimah: false });
     await c.db.update(products).set({ settledDefaultWaitMonths: null });
   });
@@ -248,15 +258,17 @@ describe("the lenders of a deal", () => {
     expect(stale.eligibility).toBe("needs_verification");
     expect(new Set(stale.doubts.map((d) => d.finding.doubt))).toEqual(new Set(["TERM_EXPIRED"]));
 
-    // The bank now says, in writing, that it waits a year after a paid default. That is a confirmed refusal.
+    // The bank now says, in writing, that it waits a year after a paid default. On the deal's road that is time,
+    // not a refusal: the bank takes the client on the condition that the year passes, and nothing blocks.
     await updateProductTerms(c.db, { productId: Number(both[0]!.id), terms: { ...valuesOf(both[0]!), settledDefaultWaitMonths: 12 }, actor: SYSTEM });
     expect(rajhi(await funding("سالم")).eligibility).toBe("needs_verification");
     await confirmTerms(c.db, { productId: Number(both[0]!.id), input: { ...paper, terms: ["settled"] }, actor: SYSTEM, now });
-    const refused = await funding("سالم");
-    expect(rajhi(refused).eligibility).toBe("not_eligible");
-    expect(rajhi(refused).blockers.map((b) => [b.lender, b.finding.check.code, b.finding.basis])).toEqual([["مصرف الراجحي", "SETTLED_WAIT", "lender"]]);
-    expect(refused.routes.at(-1)!.key).toBe(open.key);
-    await expect(applyRoute(c.db, { dealId: ids["سالم"]!, key: open.key, actor: SYSTEM, now })).rejects.toMatchObject({ code: "ROUTE_REFUSED" });
+    const waits = await funding("سالم");
+    expect(rajhi(waits)).toMatchObject({ eligibility: "conditional", status: "warn", blockers: [] });
+    expect(rajhi(waits).actions.map((a) => [a.lender, a.finding.check.code, a.finding.basis])).toEqual([["مصرف الراجحي", "SETTLED_WAIT", "lender"]]);
+    // It can be put on the deal, and then the deal's wait is the bank's own year, on the bank's word.
+    await applyRoute(c.db, { dealId: ids["سالم"]!, key: open.key, actor: SYSTEM, now });
+    expect((await funding("سالم")).wait).toMatchObject({ months: { from: 12, to: 12 }, basis: "lender", lenders: ["مصرف الراجحي"] });
 
     // Back to a catalogue nobody confirmed.
     for (const product of both) {

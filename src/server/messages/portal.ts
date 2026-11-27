@@ -6,6 +6,7 @@ import { clientFacts, messageGate, type ClientFacts, type ClientOffer } from "@/
 import type { Db, Tx } from "../db/client";
 import { auditLog } from "../db/schema";
 import { getDeal } from "../deals/service";
+import { waitOf } from "../deals/wait";
 import { keepFile, papersOf, whoOf, type PaperWho } from "../documents/service";
 import { DomainError } from "../shared/errors";
 import { countView, dealOfClient, reachable, readLink } from "./links";
@@ -74,7 +75,7 @@ export async function portalView(db: Db, args: { token: string; now?: Date; coun
     expiresAt: link.expiresAt,
     stage: view.deal.stage,
     steps: stationTimeline(view.deal.structure, timeline, view.history).steps.map((step) => ({ key: step.key, state: step.state })),
-    facts: gate.allowed.includes("study") ? clientFacts({ stage: view.deal.stage, input: view.input, study: view.study }) : null,
+    facts: gate.allowed.includes("study") ? clientFacts({ stage: view.deal.stage, input: view.input, study: view.study, wait: await waitOf(db, view, now) }) : null,
     offer: gate.allowed.includes("study") ? await offerOf(db, view, now) : null,
     owed: papers.filter((paper) => paper.required && (paper.status === "missing" || paper.status === "rejected")).map(portalPaper),
     arrived: papers.filter((paper) => paper.status === "received" || paper.status === "verified").map(portalPaper),

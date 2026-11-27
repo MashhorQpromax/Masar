@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { dealStudy, defaultDealInput, STAGES, type DealInput } from "@/domain/deal";
+import { dealStudy, dealWait, defaultDealInput, STAGES, type DealInput } from "@/domain/deal";
 import { clientFacts, clientReachable, isClientMessage, isMessageKind, LINK_DAYS, MESSAGE_KINDS, messageGate, windowOpen } from "@/domain/messages";
 
 const golden = JSON.parse(readFileSync(new URL("../golden/deal.json", import.meta.url), "utf8"));
@@ -80,13 +80,28 @@ describe("what a client may be told", () => {
     expect(facts.weeks.to).toBeGreaterThan(facts.weeks.from);
   });
 
+  it("tells the road in months when the deal waits after a paid default, rounded up and only while the wait is ahead", () => {
+    expect(facts.months).toBeNull();
+    const wait = dealWait(input, study)!;
+    expect(wait.days).toEqual({ from: 230, to: 412 });
+    // 230 days are a little over seven and a half months, 412 a little over thirteen and a half: neither is promised shorter than it is.
+    expect(clientFacts({ stage: "agreement", input, study, wait }).months).toEqual({ from: 8, to: 14 });
+    expect(clientFacts({ stage: "payoff", input, study, wait }).months).toEqual({ from: 8, to: 14 });
+    // A deal that went on to its lender is told its road as it goes.
+    for (const stage of ["transfer", "bank_submit", "approval", "disbursement", "recovered", "closed", "lost"] as const) expect(clientFacts({ stage, input, study, wait }).months, stage).toBeNull();
+    // The weeks stay as they were, and nothing else of the facts moves.
+    expect({ ...clientFacts({ stage: "agreement", input, study, wait }), months: null }).toEqual(facts);
+    // Only the months and the days of the wait are taken: its return and the office's money out are not read.
+    expect(clientFacts({ stage: "agreement", input, study, wait: { months: wait.months, days: wait.days } })).toEqual(clientFacts({ stage: "agreement", input, study, wait }));
+  });
+
   it("has no place for the company's fee, capital or return", () => {
     const keys = JSON.stringify(Object.keys(facts)).toLowerCase();
     for (const word of ["fee", "capital", "roi", "profit", "cover", "annual"]) expect(keys).not.toContain(word);
     for (const c of cases) {
       const s = dealStudy(c.input, c.borrower, c.credit);
       const f = clientFacts({ stage: "study", input: c.input, study: s });
-      expect(Object.keys(f).sort()).toEqual(["financing", "keeps", "keepsCertainty", "offered", "payoff", "payoffAt", "settles", "stage", "structure", "weeks"]);
+      expect(Object.keys(f).sort()).toEqual(["financing", "keeps", "keepsCertainty", "months", "offered", "payoff", "payoffAt", "settles", "stage", "structure", "weeks"]);
       for (const part of f.financing) expect(Object.keys(part).sort()).toEqual(["amount", "certainty", "lender", "lenderKind", "part"]);
       expect(f.keeps).toBeGreaterThanOrEqual(0);
       expect(f.weeks.to).toBeGreaterThan(f.weeks.from);

@@ -118,6 +118,14 @@ describe("whether a lender takes that record", () => {
     expect(outcome(p({ settledDefaultWaitMonths: 12 }), settled(12))).toEqual(["SETTLED_ACCEPTED:pass"]);
   });
 
+  it("reads the same wait as time on a deal's road: a condition with its months, never a refusal", () => {
+    expect(recordChecks(p({ settledDefaultWaitMonths: 12 }), settled(0), "delays")).toEqual([{ key: "simah", status: "warn", code: "SETTLED_WAIT", params: { months: 12 } }]);
+    expect(recordChecks(p({ settledDefaultWaitMonths: 12 }), settled(8), "delays")).toEqual([{ key: "simah", status: "warn", code: "SETTLED_WAIT", params: { months: 4 } }]);
+    // Nothing else is read differently: an open default and late payments refuse as before.
+    expect(recordChecks(p({ settledDefaultWaitMonths: 12 }), { ...clean, open: true }, "delays").map((c) => `${c.code}:${c.status}`)).toEqual(["RECORD_OPEN:fail"]);
+    expect(recordChecks(p({ settledDefaultWaitMonths: 12 }), { ...settled(0), delays: true }, "delays").map((c) => `${c.code}:${c.status}`)).toEqual(["SETTLED_WAIT:warn", "RECORD_LATE:fail"]);
+  });
+
   it("makes it a condition to confirm when nobody has asked the lender", () => {
     expect(outcome(p({ settledDefaultWaitMonths: null }), settled(0))).toEqual(["SETTLED_UNCONFIRMED:warn"]);
   });
@@ -228,13 +236,17 @@ describe("the routes that fund a deal", () => {
   it("holds every lender to the record the settlement leaves", () => {
     const waits = [product("1", "a", { settledDefaultWaitMonths: 12 }), mortgageOf("2", "a", { settledDefaultWaitMonths: 12 }), product("3", "b", { settledDefaultWaitMonths: null }), mortgageOf("4", "b", { settledDefaultWaitMonths: null })];
     const after = fundingRoutes({ input: deal, borrower, who: who({ record: recordAfterSettlement(deal, null) }), products: waits });
-    expect(after.map((r) => [r.key, r.status])).toEqual([
-      ["m4-p3", "warn"],
-      ["m2-p1", "fail"],
+    // A lender that waits a year after the default is paid is not turned down for it: the wait is a condition with its months.
+    expect(after.map((r) => [r.key, r.status, r.refusals.length])).toEqual([
+      ["m2-p1", "warn", 0],
+      ["m4-p3", "warn", 0],
     ]);
     // One lender asks a thing once, even when both of its products raise it.
-    expect(after[0]!.conditions.map((n) => n.check.code)).toEqual(["SALARY_TRANSFER", "SETTLED_UNCONFIRMED", "RECORD_UNKNOWN"]);
-    expect(after[1]!.refusals).toEqual([{ lender: "جهة a", check: { key: "simah", status: "fail", code: "SETTLED_WAIT", params: { months: 12 } } }]);
+    expect(after[0]!.conditions).toEqual([
+      { lender: "جهة a", check: { key: "simah", status: "warn", code: "SETTLED_WAIT", params: { months: 12 } } },
+      { lender: "جهة a", check: expect.objectContaining({ code: "RECORD_UNKNOWN" }) },
+    ]);
+    expect(after[1]!.conditions.map((n) => n.check.code)).toEqual(["SALARY_TRANSFER", "SETTLED_UNCONFIRMED", "RECORD_UNKNOWN"]);
   });
 
   it("follows the deal's structure", () => {

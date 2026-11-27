@@ -1,4 +1,4 @@
-import type { DealInput, DealItem, Stage, Structure } from "./types";
+import type { DealItem, Stage, Structure } from "./types";
 
 /** What each deal structure includes. */
 export const STRUCTURES: Record<Structure, { mortgage: boolean; personal: boolean }> = {
@@ -20,9 +20,9 @@ export function structureOf(x: { structure?: Structure | null }): Structure {
 }
 
 /** Items that are settled inside the structure, and items that stay with their installments. */
-export function splitItems(x: Pick<DealInput, "items" | "structure">): { active: DealItem[]; kept: DealItem[] } {
+export function splitItems<T extends Pick<DealItem, "kind" | "by"> = DealItem>(x: { items: readonly T[]; structure?: Structure | null }): { active: T[]; kept: T[] } {
   const st = STRUCTURES[structureOf(x)];
-  const inDeal = (i: DealItem) =>
+  const inDeal = (i: T) =>
     i.by !== "out" && (st.mortgage || i.kind !== "mortgage_payoff") && (st.personal || i.by !== "bank");
   return { active: x.items.filter(inDeal), kept: x.items.filter((i) => !inDeal(i)) };
 }

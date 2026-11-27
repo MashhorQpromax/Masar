@@ -5,6 +5,7 @@ export * from "./labels";
 export * from "./study";
 export * from "./alternatives";
 export * from "./mortgage-first";
+export * from "./wait";
 export * from "./timeline";
 export * from "./stations";
 export * from "./portfolio";

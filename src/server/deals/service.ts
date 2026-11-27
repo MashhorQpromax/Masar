@@ -1,7 +1,7 @@
 import "server-only";
 import { and, desc, eq, notInArray } from "drizzle-orm";
 import { ZodError } from "zod";
-import { creditFlags, dealStudy, feeChanges, feeRefusal, policyFee, stagesFor, type CreditFlags, type DealInput, type DealStudy, type Stage } from "@/domain/deal";
+import { creditFlags, dealStudy, feeChanges, feeRefusal, paidAtOf, policyFee, stagesFor, type CreditFlags, type DealInput, type DealStudy, type Stage } from "@/domain/deal";
 import type { Db, Tx } from "../db/client";
 import { createClient, parseBorrower, updateBorrower } from "../clients/service";
 import { latestCredit, type CreditRecord } from "../credit/service";
@@ -346,7 +346,11 @@ export interface OpenDeal {
   fee: number | null;
   clientNet: number | null;
   verdict: DealRow["verdict"];
+  targetBank: string | null;
+  personalLender: string | null;
   stageEnteredAt: Date;
+  /** The day the deal first went past the settlement: when its defaults were paid. Null while that is ahead. */
+  paidAt: Date | null;
 }
 
 /** Every deal in progress, for the home map. */
@@ -363,6 +367,8 @@ export async function listOpenDeals(db: Db): Promise<OpenDeal[]> {
       fee: deals.fee,
       clientNet: deals.clientNet,
       verdict: deals.verdict,
+      targetBank: deals.targetBank,
+      personalLender: deals.personalLender,
       updatedAt: deals.updatedAt,
     })
     .from(deals)
@@ -375,6 +381,14 @@ export async function listOpenDeals(db: Db): Promise<OpenDeal[]> {
     .from(dealStageEvents)
     .orderBy(dealStageEvents.id);
   const entered = new Map<string, Date>();
-  for (const e of events) entered.set(`${e.dealId}:${e.stage}`, e.at);
-  return rows.map(({ updatedAt, ...row }) => ({ ...row, stageEnteredAt: entered.get(`${row.dealId}:${row.stage}`) ?? updatedAt }));
+  const history = new Map<number, { stage: Stage; at: Date }[]>();
+  for (const e of events) {
+    entered.set(`${e.dealId}:${e.stage}`, e.at);
+    history.set(e.dealId, [...(history.get(e.dealId) ?? []), { stage: e.stage, at: e.at }]);
+  }
+  return rows.map(({ updatedAt, ...row }) => ({
+    ...row,
+    stageEnteredAt: entered.get(`${row.dealId}:${row.stage}`) ?? updatedAt,
+    paidAt: paidAtOf(history.get(row.dealId) ?? []),
+  }));
 }

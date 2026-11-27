@@ -1,13 +1,14 @@
 import "server-only";
 import { eq } from "drizzle-orm";
 import type { Standing } from "@/domain/credit";
-import type { CreditFlags, DealInput, DealStudy, Stage } from "@/domain/deal";
+import type { CreditFlags, DealInput, DealStudy, DealWait, Stage } from "@/domain/deal";
 import { contractOf, type Nationality } from "@/domain/eligibility";
 import { fundingRoutes, knownRecord, recordAfterSettlement, type FundingRoute, type RecordAfter } from "@/domain/funding";
 import type { Db, Tx } from "../db/client";
 import { clients, lenders } from "../db/schema";
 import { answersOf } from "../clients/conditions";
 import { amendDeal, getDeal, type DealView } from "../deals/service";
+import { waitOf } from "../deals/wait";
 import { fileStanding } from "../documents/facts";
 import { borrowerOf, type ClientRow, type DealRow } from "../deals/mapping";
 import { listProducts } from "../lenders/service";
@@ -32,6 +33,8 @@ export interface FundingView {
   standing: Standing | null;
   /** Every way the catalogue can fund the deal, best first. */
   routes: FundingRoute[];
+  /** The wait after the deal pays a default, as the lenders it holds set it. Null for a deal that pays none. */
+  wait: DealWait | null;
   /** The route whose terms the deal holds now. Null when it holds none of them. */
   chosen: string | null;
   /** A lender's actual offer is recorded: its numbers stand and no route can replace them. */
@@ -57,6 +60,7 @@ export async function fundingOf(db: Tx, view: DealView, now: Date): Promise<Fund
   const args = { now };
   const { deal, client, input } = view;
   const record = recordAfterSettlement(input, view.credit ? knownRecord(view.credit.report, view.credit.analysis) : null);
+  const products = await listProducts(db, { now: args.now });
   const routes = fundingRoutes({
     input,
     borrower: borrowerOf(client, args.now),
@@ -68,7 +72,7 @@ export async function fundingOf(db: Tx, view: DealView, now: Date): Promise<Fund
       answers: await answersOf(db, client.id),
       disputed: (await fileStanding(db, client)).disputed,
     },
-    products: await listProducts(db, { now: args.now }),
+    products,
     credit: view.creditFlags,
   });
   const banks = await db.select({ code: lenders.bankCode, name: lenders.name }).from(lenders).where(eq(lenders.active, true)).orderBy(lenders.id);
@@ -81,6 +85,7 @@ export async function fundingOf(db: Tx, view: DealView, now: Date): Promise<Fund
     record,
     standing: view.credit?.analysis.standing ?? null,
     routes,
+    wait: await waitOf(db, view, args.now, products),
     chosen: routes.find((route) => holds(input, route))?.key ?? null,
     offerRecorded: input.bankMortgage != null || input.bankPersonal != null,
     ended: ENDED.includes(deal.stage),

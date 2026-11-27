@@ -156,7 +156,10 @@ export function routeCheckText(check: RouteCheck): string {
     case "SETTLED_UNCONFIRMED":
       return "لم نؤكد معها متى تقبل عميلاً سدّد تعثره.";
     case "SETTLED_WAIT":
-      return `لا تقبل من سدّد تعثره إلا بعد مدة، والباقي منها ${months(check.params.months)}.`;
+      // Asked who takes the client today, the wait refuses. On a deal's road it is time the deal waits.
+      return check.status === "fail"
+        ? `لا تقبل من سدّد تعثره إلا بعد مدة، والباقي منها ${months(check.params.months)}.`
+        : `تقبل من سدّد تعثره بعد مدة من السداد، والباقي منها ${months(check.params.months)}. تنتظرها الصفقة ولا تُرفض بها.`;
     default:
       return checkText(check);
   }

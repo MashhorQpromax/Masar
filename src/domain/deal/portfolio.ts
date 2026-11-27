@@ -1,6 +1,7 @@
 import { CAPITAL_OUT_STAGES } from "./structure";
 import { dealTimeline } from "./timeline";
 import type { Stage, Structure, Verdict } from "./types";
+import type { Hold } from "./wait";
 
 /** What the portfolio view needs to know about one deal in progress. */
 export interface PortfolioDeal {
@@ -12,6 +13,8 @@ export interface PortfolioDeal {
   verdict: Verdict | null;
   /** When the deal entered its current stage. */
   stageEnteredAt: Date;
+  /** The wait a lender sets after the deal's defaults are paid. Left out or null: the deal waits for nothing. */
+  hold?: Hold | null;
 }
 
 export interface PortfolioEntry {
@@ -22,6 +25,8 @@ export interface PortfolioEntry {
   stageDueInDays: number | null;
   /** True while the company's capital is out on this deal. */
   capitalOut: boolean;
+  /** The deal's current stage stands still until the wait after its paid defaults ends. */
+  held: boolean;
 }
 
 export interface Portfolio {
@@ -45,12 +50,13 @@ const closes = (verdict: Verdict | null) => verdict === "go" || verdict === "tig
 /** Totals and priorities across the deals in progress. */
 export function portfolio(deals: readonly PortfolioDeal[], now: Date, horizonDays = 30): Portfolio {
   const entries = deals.map((d): PortfolioEntry => {
-    const t = dealTimeline(d.structure, d.stage, d.stageEnteredAt, now);
+    const t = dealTimeline(d.structure, d.stage, d.stageEnteredAt, now, d.hold);
     return {
       dealId: d.dealId,
       daysToDisbursement: t.daysToDisbursement,
       stageDueInDays: t.stageDueInDays,
       capitalOut: CAPITAL_OUT_STAGES.includes(d.stage),
+      held: t.held,
     };
   });
   const byId = new Map(deals.map((d) => [d.dealId, d]));

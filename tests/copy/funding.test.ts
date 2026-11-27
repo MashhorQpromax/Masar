@@ -114,6 +114,8 @@ describe("funding wording", () => {
     expect(routeNoteText(note, { oneLender: true })).toBe("لم نؤكد معها متى تقبل عميلاً سدّد تعثره.");
     expect(routeLenders(two)).toEqual({ main: two.mortgage!.product.lenderName, also: `والشخصي من ${two.personal!.product.lenderName}` });
     expect(strip(routeCheckText({ key: "simah", status: "fail", code: "SETTLED_WAIT", params: { months: 12 } }))).toBe("لا تقبل من سدّد تعثره إلا بعد مدة، والباقي منها 12 شهراً.");
+    // On a deal's road the same wait is time, and is said as time: the owner decided on 2026-11-27 that it refuses no deal.
+    expect(strip(routeCheckText({ key: "simah", status: "warn", code: "SETTLED_WAIT", params: { months: 12 } }))).toBe("تقبل من سدّد تعثره بعد مدة من السداد، والباقي منها 12 شهراً. تنتظرها الصفقة ولا تُرفض بها.");
   });
 
   it("words a lender's ceiling in the deal's ledger", () => {

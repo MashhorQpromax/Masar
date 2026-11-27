@@ -77,7 +77,7 @@ const PRODUCTS: Record<string, DemoProduct[]> = {
       source: { kind: "lender_staff", reference: DEMO_WORD },
       special: [{ kind: "guarantor", text: "موظف حكومي على رأس العمل", unmet: "action" }],
     },
-    // Waits a year after a default is paid, in writing: a confirmed refusal for a deal that pays one now.
+    // Waits a year after a default is paid, in writing. A deal that pays one now is not refused for it: the year is on its road.
     {
       financeType: "mortgage",
       name: "تمويل المسكن",
