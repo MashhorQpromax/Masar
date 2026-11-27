@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { auditDetail } from "@/copy/audit";
 import { FEE_REFUSALS, saveError } from "@/copy/editor";
-import { FEE_COLLECTION, FEE_DUE, feeText, movesText, planError, planLine, planState, PLAN_REFUSALS, policyError, policyText, POLICY_PROBLEMS, rangeText, termsText } from "@/copy/fees";
+import { collectedError, COLLECTED_REFUSALS, collectedText, FEE_COLLECTION, FEE_DUE, feeText, movesText, planError, planLine, planState, PLAN_REFUSALS, policyError, policyText, POLICY_PROBLEMS, rangeText, termsText } from "@/copy/fees";
 import { offerTerms } from "@/copy/messages";
 import { DEFAULT_POLICY, FEE_COLLECTIONS, FEE_DUES, policyFee } from "@/domain/deal";
 
@@ -89,5 +89,36 @@ describe("the wording of fees", () => {
     expect(plain(withTerms)).toBe("أتعاب 106,000، يبقى للعميل 222,000، 10% على السداد و10% على كامل التمويل، تُستحق عند توقيع الاتفاق ويسددها العميل بتحويل");
     expect(withTerms).not.toMatch(wordy);
     expect(plain(auditDetail("deal.fee_approve", { fee: policyFee(DEFAULT_POLICY), amount: 106000, clientNet: 222000, terms: { due: "approval", collection: "deducted" } }))).toBe(plain(detail));
+  });
+});
+
+describe("the wording of a collected fee", () => {
+  it("says what was collected beside what was counted, and says plainly when nothing was recorded", () => {
+    expect(collectedText(102000, null)).toBe("لم يُسجَّل بعد ما حُصّل من أتعابها.");
+    expect(plain(collectedText(102000, 102000))).toBe("حُصّل من أتعابها 102,000 ريال، كما حُسبت.");
+    expect(plain(collectedText(102000, 100000))).toBe("حُصّل من أتعابها 100,000 ريال، أقل من المحسوب بـ 2,000.");
+    expect(plain(collectedText(102000, 103500))).toBe("حُصّل من أتعابها 103,500 ريال، أكثر من المحسوب بـ 1,500.");
+    // Nothing collected is said as such, and a deal whose fee was never counted says the amount alone.
+    expect(collectedText(102000, 0)).toBe("لم يُحصَّل شيء من أتعابها.");
+    expect(plain(collectedText(null, 100000))).toBe("حُصّل من أتعابها 100,000 ريال.");
+    for (const said of [collectedText(102000, null), collectedText(102000, 100000), collectedText(null, 5), collectedText(1, 0)]) expect(plain(said)).not.toMatch(wordy);
+  });
+
+  it("tells a person why an amount was not recorded", () => {
+    expect(COLLECTED_REFUSALS).toEqual(["NOT_CLOSED", "AMOUNT"]);
+    expect(collectedError("COLLECTED_REFUSED", { reason: "NOT_CLOSED" })).toBe("تُسجَّل الأتعاب المحصلة بعد إغلاق الصفقة.");
+    expect(collectedError("COLLECTED_REFUSED", { reason: "AMOUNT" })).toBe("اكتب المبلغ المحصل بالريال.");
+    expect(collectedError("FORBIDDEN")).toBe("تسجيل الأتعاب المحصلة لمن يملك تعديل الأتعاب.");
+    expect(collectedError("NOT_FOUND")).toBe("هذه الصفقة لم تعد موجودة.");
+    expect(collectedError("COLLECTED_REFUSED", { reason: "SOMETHING_NEW" })).toBe("تعذر الحفظ. حاول مرة أخرى.");
+    for (const code of ["COLLECTED_REFUSED", "FORBIDDEN", "NOT_FOUND", "OTHER"]) expect(collectedError(code)).not.toMatch(wordy);
+  });
+
+  it("reads in the log as what was collected of what was counted, and what it replaced", () => {
+    expect(plain(auditDetail("deal.fee_collected", { clientId: 1, counted: 102000, before: null, after: 100000 }))).toBe("حُصّل 100,000 من 102,000 محسوبة");
+    expect(plain(auditDetail("deal.fee_collected", { counted: 102000, before: 100000, after: 101000 }))).toBe("حُصّل 101,000 من 102,000 محسوبة، كان المسجل 100,000");
+    expect(plain(auditDetail("deal.fee_collected", { counted: null, before: null, after: 100000 }))).toBe("حُصّل 100,000");
+    expect(plain(auditDetail("deal.fee_collected", { counted: 102000, before: 100000, after: null }))).toBe("أُلغي تسجيل 100,000");
+    expect(auditDetail("deal.fee_collected", { after: "broken" })).toBe("");
   });
 });

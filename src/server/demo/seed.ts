@@ -11,7 +11,8 @@ import { tokenHash } from "../auth/secret";
 import { asc, eq, gt } from "drizzle-orm";
 import type { Role } from "@/domain/auth";
 import { DECOY_HASH } from "../auth/password";
-import { auditLog, clients, lenderRules, lenders, outcomes, passkeys, shareLinks, users, waMessages } from "../db/schema";
+import { auditLog, clients, deals, lenderRules, lenders, outcomes, passkeys, shareLinks, users, waMessages } from "../db/schema";
+import { recordCollectedFee } from "../deals/collected";
 import { getDeal, rejectDeal, saveDeal, setDealStage } from "../deals/service";
 import { addPaper, keepFile, reviewPaper } from "../documents/service";
 import { seedCatalogue } from "../lenders/service";
@@ -50,6 +51,8 @@ interface DemoDeal {
   papers?: DemoPaper[];
   /** The conversation so far, oldest first. A message from the client may carry a made-up file. */
   thread?: { from: "office" | "client"; hoursAgo: number; body: string; file?: string; seen?: boolean }[];
+  /** On a closed deal: how much less than the fee as counted the office collected, as someone recorded it. */
+  collectedLess?: number;
   /** How many times the client opened their link. */
   linkViews?: number;
   /** The file was rejected that many days ago, for this reason. */
@@ -387,6 +390,8 @@ const DEALS: DemoDeal[] = [
       ["recovered", 65],
       ["closed", 63],
     ],
+    // The office let 2,000 go when it collected: the month's report shows a fee as counted and as collected.
+    collectedLess: 2000,
   },
   {
     fileNo: "C-011",
@@ -706,6 +711,12 @@ export async function seedDemo(db: Db, now: Date): Promise<void> {
     for (const [stage, daysAgo] of demo.path) {
       await setDealStage(db, { dealId, stage, actor: SYSTEM, now: ago(daysAgo) });
       await dated(ago(daysAgo));
+    }
+    if (demo.collectedLess != null) {
+      const closedDaysAgo = demo.path.at(-1)![1];
+      const [counted] = await db.select({ fee: deals.fee }).from(deals).where(eq(deals.id, dealId));
+      await recordCollectedFee(db, { dealId, amount: (counted!.fee ?? 0) - demo.collectedLess, actor: SYSTEM });
+      await dated(ago(closedDaysAgo));
     }
     if (demo.credit) {
       const { report, ...rest } = demo.credit.reading((daysAgo) => riyadhDay(ago(daysAgo)));

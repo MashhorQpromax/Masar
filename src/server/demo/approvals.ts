@@ -40,12 +40,18 @@ export async function seedDemoApprovals(db: Db, now: Date): Promise<void> {
   if (fallen) await db.update(analysisApprovals).set({ fingerprint: { ...fallen.fingerprint, file: "before-the-file-changed" } }).where(eq(analysisApprovals.id, fallen.id));
 }
 
-/** The invented client whose deal's fee plan stands, and the one whose plan fell when the numbers moved. */
+/**
+ * The invented clients whose deal's fee plan stands, and the one whose plan fell when the numbers moved.
+ * The first is the client a lender answered in writing at another amount than her deal is counted on,
+ * so her final offer is shut although her plan stands. The second has no such paper: his final offer
+ * is open, and the demonstration shows it.
+ */
 export const DEMO_PLAN_STANDS = "C-017";
+export const DEMO_PLAN_OFFER = "C-019";
 export const DEMO_PLAN_FELL = "C-014";
 
 /**
- * Approves two invented deals' fee plans. One stands. The other is kept as it would stand had the
+ * Approves three invented deals' fee plans. Two stand. The third is kept as it would stand had the
  * deal's numbers moved since: its copy says the client was left 4,000 riyals more, and its print is
  * another, so it shows as fallen with what moved. Does nothing when they are already there.
  */
@@ -54,7 +60,7 @@ export async function seedDemoPlans(db: Db, now: Date): Promise<void> {
   if (known) return;
   const [admin] = await db.select({ id: users.id }).from(users).where(eq(users.role, "admin")).orderBy(users.id).limit(1);
   const actor: Actor = { userId: admin?.id ?? null };
-  for (const fileNo of [DEMO_PLAN_STANDS, DEMO_PLAN_FELL]) {
+  for (const fileNo of [DEMO_PLAN_STANDS, DEMO_PLAN_OFFER, DEMO_PLAN_FELL]) {
     const [deal] = await db.select({ id: deals.id }).from(deals).innerJoin(clients, eq(clients.id, deals.clientId)).where(eq(clients.fileNo, fileNo)).orderBy(desc(deals.id)).limit(1);
     if (!deal) continue;
     const approved = await approveFeePlan(db, { dealId: deal.id, actor, now });

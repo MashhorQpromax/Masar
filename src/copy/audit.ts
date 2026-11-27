@@ -61,6 +61,7 @@ const AUDIT_ACTION: Record<AuditAction, string> = {
   "deal.save": "حفظ أرقام الصفقة",
   "deal.fee": "تعديل أتعاب الصفقة",
   "deal.fee_approve": "اعتماد خطة الأتعاب",
+  "deal.fee_collected": "تسجيل الأتعاب المحصلة",
   "deal.report": "حفظ تقرير الفرص",
   "settings.fees": "تغيير سياسة الأتعاب",
   "deal.stage": "نقل الصفقة",
@@ -289,6 +290,14 @@ export function auditDetail(action: string, details: Record<string, unknown> | n
       const net = number(d.clientNet);
       const terms = readTerms(d.terms);
       return joined([amount != null && `أتعاب ${money(amount)}`, net != null && `يبقى للعميل ${money(net)}`, fee && feeText(fee), terms && termsText(terms)]);
+    }
+    case "deal.fee_collected": {
+      // What was collected beside what was counted, and the amount it replaced when one was recorded before.
+      const after = number(d.after);
+      const before = number(d.before);
+      const fee = number(d.counted);
+      if (after == null) return before != null ? `أُلغي تسجيل ${money(before)}` : "";
+      return joined([fee != null ? `حُصّل ${money(after)} من ${money(fee)} محسوبة` : `حُصّل ${money(after)}`, before != null && `كان المسجل ${money(before)}`]);
     }
     case "deal.report": {
       const count = number(d.opportunities);

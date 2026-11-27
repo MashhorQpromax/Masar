@@ -168,9 +168,9 @@ export const PLAN_STATE: Record<"stands" | "fell" | "none", string> = {
 };
 
 /**
- * A lender's written approval the deal is not counted on, as a note on the deal and beside the client's
- * offer. It says the two amounts and what to do, and stops nothing.
+ * A lender's written approval the deal is not counted on, as a note on the deal and where the client's
+ * final offer would be written. It says the two amounts, that the final offer is shut, and what opens it.
  */
 export function approvalApartText(apart: Pick<ApprovalApart, "part" | "approved" | "counted"> & { lender: string }): string {
-  return `موافقة ${apart.lender} المكتوبة على التمويل ${PART[apart.part]} ${money(apart.approved)}، والصفقة محسوبة على ${money(apart.counted)}. احسب الصفقة على مبلغ الموافقة قبل أي عرض للعميل.`;
+  return `موافقة ${apart.lender} المكتوبة على التمويل ${PART[apart.part]} ${money(apart.approved)}، والصفقة محسوبة على ${money(apart.counted)}. العرض النهائي للعميل مغلق حتى تُحسب الصفقة على مبلغ الموافقة.`;
 }

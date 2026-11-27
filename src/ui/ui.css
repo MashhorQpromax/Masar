@@ -7812,6 +7812,16 @@
     outline: none;
     border-color: var(--color-navy);
   }
+  /* What the office collected of a closed deal's fee: one field with its button beside it, so the tile stays short. */
+  .collected {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: end;
+    justify-items: stretch;
+  }
+  .collected > .field-hint,
+  .collected > .said {
+    grid-column: 1 / -1;
+  }
   /* A client may take their consent back. Recording it is one fold away, never one slip away. */
   .an-consent > summary {
     display: inline-flex;

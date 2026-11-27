@@ -18,7 +18,7 @@ export interface MonthView extends MonthReport {
  */
 export async function monthView(db: Tx, args: { month: Month; now: Date }): Promise<MonthView> {
   const dealRows = await db
-    .select({ dealId: deals.id, clientName: clients.fullName, fileNo: clients.fileNo, createdAt: deals.createdAt, stage: deals.stage, fee: deals.fee })
+    .select({ dealId: deals.id, clientName: clients.fullName, fileNo: clients.fileNo, createdAt: deals.createdAt, stage: deals.stage, fee: deals.fee, collected: deals.feeCollected })
     .from(deals)
     .innerJoin(clients, eq(clients.id, deals.clientId));
   // A deal opens with its first stage, the day its study began, as its page counts it; the row's own time when none was kept.
@@ -43,6 +43,7 @@ export async function monthView(db: Tx, args: { month: Month; now: Date }): Prom
     stage: row.stage,
     stageOn: row.stage === "closed" || row.stage === "lost" ? endedOn(row.dealId, row.stage) : null,
     fee: row.fee,
+    collected: row.collected,
   }));
 
   const answerRows = await db

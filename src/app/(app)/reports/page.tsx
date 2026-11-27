@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { endedLine, lenderLine, MONTH_NOTE, monthTitle, requestsText } from "@/copy/report";
+import { endedLine, feesText, lenderLine, MONTH_NOTE, monthTitle, requestsText } from "@/copy/report";
 import { dayOf } from "@/domain/eligibility";
 import { isMonth, shiftMonth } from "@/domain/report";
 import { requireActor } from "@/server/auth/actor";
@@ -13,8 +13,8 @@ export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "تقرير الشهر · مسار" };
 
 /**
- * The office's month on one page, for the manager: what came in, what closed and what it earned as
- * counted, what fell through, and what the lenders answered. It is read from what the system holds and
+ * The office's month on one page, for the manager: what came in, what closed with its fees as counted
+ * and as collected, what fell through, and what the lenders answered. It is read from what the system holds and
  * changes nothing. The months run from the first deal's to this one.
  */
 export default async function MonthPage({ searchParams }: { searchParams: Promise<{ m?: string | string[] }> }) {
@@ -66,11 +66,7 @@ export default async function MonthPage({ searchParams }: { searchParams: Promis
         <section className="tile month-figure" data-tone={view.closed.length > 0 ? "good" : undefined}>
           <p className="label">أُغلقت</p>
           <p className="month-big num">{view.closed.length}</p>
-          {view.closed.length > 0 && (
-            <p className="month-small">
-              أتعابها <Num value={view.closedFees} /> ريال، محسوبة لا محصلة
-            </p>
-          )}
+          {view.closed.length > 0 && <p className="month-small">{feesText(view)}</p>}
         </section>
         <section className="tile month-figure">
           <p className="label">أُلغيت</p>

@@ -5,12 +5,15 @@ import { termsOf } from "@/domain/eligibility";
 import { setConsent } from "@/server/clients/service";
 import type { Connection } from "@/server/db/client";
 import { auditLog, clients, users } from "@/server/db/schema";
-import { approveFeePlan } from "@/server/deals/plan";
-import { getDeal, saveDeal } from "@/server/deals/service";
+import { approveFeePlan, standingApproval } from "@/server/deals/plan";
+import { getDeal, saveDeal, setDealStage } from "@/server/deals/service";
 import { addPaper, keepFile, reviewPaper } from "@/server/documents/service";
 import { applyRoute, getFunding } from "@/server/funding/service";
 import { approvalNotes, lenderReplies, recentDecisions, recordDecision, replyPapers } from "@/server/knowledge/service";
 import { addLender, addProduct, confirmTerms, updateProductTerms } from "@/server/lenders/service";
+import { DEMO_LINK_SECRET, openLink } from "@/server/messages/links";
+import { portalView } from "@/server/messages/portal";
+import { getMessages, noteSent } from "@/server/messages/service";
 import { getOpportunities, makeReport, reportById, reportsOf } from "@/server/opportunities/service";
 import type { Actor } from "@/server/shared/actor";
 import { DomainError } from "@/server/shared/errors";
@@ -140,6 +143,58 @@ describe("a lender's written answer", () => {
     await recordDecision(c.db, { dealId, decision: { ...yes(paperId, approved), onDeal: true }, actor, now });
     expect((await getDeal(c.db, { dealId, now }))!.study.financing.personal).toBe(approved);
     expect(await notes()).toEqual([]);
+  });
+
+  it("shuts the client's final offer while the deal is counted on another amount, and opens it once the deal takes the amount and the plan is approved anew", async () => {
+    const { dealId, paperId } = await setUp();
+    const secret = DEMO_LINK_SECRET;
+    const read = async () => (await getMessages(c.db, { dealId, secret, now }))!;
+    const page = async () => (await portalView(c.db, { token, now }))!;
+    const { token } = await openLink(c.db, { dealId, secret, actor, now });
+    await approveFeePlan(c.db, { dealId, actor, now });
+    const open = await read();
+    expect(open.offer).not.toBeNull();
+    expect(open).toMatchObject({ offerHold: null, apart: [] });
+    const counted = open.study.financing.personal;
+    const approved = counted - 3000;
+
+    // What the employee was told is no written word: the offer stays open.
+    await recordDecision(c.db, { dealId, decision: yes(null, approved), actor, now });
+    expect((await read()).offer).toEqual(open.offer);
+
+    // The written yes names another amount: no final offer is written, recorded or shown, and the page says which paper holds it.
+    await recordDecision(c.db, { dealId, decision: yes(paperId, approved), actor, now });
+    const shut = await read();
+    expect(shut.offer).toBeNull();
+    expect(shut.offerHold).toBe("APPROVAL_APART");
+    expect(shut.apart).toEqual([{ part: "personal", lenderId: String(lenderId), lender: LENDER, approved, counted, on: "2026-11-23" }]);
+    expect(shut.gate.allowed).toEqual(["study", "papers", "progress", "reply", "internal"]);
+    expect(await reason(() => noteSent(c.db, { dealId, kind: "offer", body: "عرضك النهائي", actor, now }))).toBe("GATE_CLOSED");
+    expect((await page()).offer).toBeNull();
+    expect((await page()).facts).not.toBeNull();
+    // The plan itself still stands approved, and no figure of the deal moved: only the offer is held.
+    const view = (await getDeal(c.db, { dealId, now }))!;
+    expect(await standingApproval(c.db, view, now)).not.toBeNull();
+    expect(view.study.financing.personal).toBe(counted);
+
+    // The deal takes the approved amount: its numbers moved, so the offer now waits for the plan to be approved again.
+    await recordDecision(c.db, { dealId, decision: { ...yes(paperId, approved), onDeal: true }, actor, now });
+    expect(await read()).toMatchObject({ offer: null, offerHold: "PLAN", apart: [] });
+    await approveFeePlan(c.db, { dealId, actor, now });
+    const again = await read();
+    expect(again.offerHold).toBeNull();
+    expect(again.offer!.financing).toEqual([{ part: "personal", amount: approved, certainty: "confirmed" }]);
+    expect((await page()).offer).toEqual(again.offer);
+  });
+
+  it("leaves a closed deal's offer as it was, whatever is recorded for the client afterwards", async () => {
+    const { dealId, paperId } = await setUp();
+    const read = async () => (await getMessages(c.db, { dealId, secret: DEMO_LINK_SECRET, now }))!;
+    await approveFeePlan(c.db, { dealId, actor, now });
+    const open = await read();
+    await setDealStage(c.db, { dealId, stage: "closed", actor, now });
+    await recordDecision(c.db, { dealId, decision: yes(paperId, open.study.financing.personal - 3000), actor, now });
+    expect(await read()).toMatchObject({ offer: open.offer, offerHold: null, apart: [] });
   });
 
   it("turns the opportunity down when the lender refuses, and no approval of the plan passes over it", async () => {

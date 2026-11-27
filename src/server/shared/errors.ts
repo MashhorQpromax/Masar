@@ -28,6 +28,7 @@ export class DomainError extends Error {
       | "POLICY_REFUSED"
       | "FEE_REFUSED"
       | "PLAN_REFUSED"
+      | "COLLECTED_REFUSED"
       | "REPLY_PAPER"
       | "REPORT_REFUSED"
       | "REQUEST_REFUSED"

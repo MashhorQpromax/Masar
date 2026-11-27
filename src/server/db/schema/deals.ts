@@ -79,6 +79,12 @@ export const deals = masar.table(
     verdict: dealVerdict(),
     computedAt: at(),
 
+    /**
+     * What the office actually collected as its fee, as a person recorded it on the closed deal. `fee`
+     * above is the fee as counted from the deal's numbers; the two may differ. Null until recorded.
+     */
+    feeCollected: money(),
+
     ownerId: integer().references(() => users.id, { onDelete: "set null" }),
     createdAt: createdAt(),
     updatedAt: createdAt(),

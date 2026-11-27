@@ -3,13 +3,14 @@ import { and, asc, desc, eq, isNotNull, max } from "drizzle-orm";
 import { z } from "zod";
 import { dealTimeline, stationTimeline, type StationKey, type StationState } from "@/domain/deal";
 import { FILE_MAX_BYTES, INBOX_PAPER, type Paper } from "@/domain/documents";
-import { clientFacts, clientOffer, isClientMessage, isMessageKind, messageGate, windowOpen, type ClientFacts, type ClientOffer, type Gate, type MessageKind } from "@/domain/messages";
+import { clientFacts, clientOffer, isClientMessage, isMessageKind, messageGate, offerHold, windowOpen, type ClientFacts, type ClientOffer, type Gate, type MessageKind, type OfferHold } from "@/domain/messages";
 import { normalizePhone } from "@/domain/shared/phone";
 import type { Db, Tx } from "../db/client";
 import { clients, users, waMessages } from "../db/schema";
 import { standingApproval } from "../deals/plan";
 import { getDeal, type DealView } from "../deals/service";
 import { keepFile, papersOf, whoOf, type PaperWho } from "../documents/service";
+import { approvalNotes, type ApprovalNote } from "../knowledge/service";
 import { SYSTEM, type Actor } from "../shared/actor";
 import { audit } from "../shared/audit";
 import { DomainError } from "../shared/errors";
@@ -79,8 +80,12 @@ export interface MessagesView {
   gate: Gate;
   /** The client's side of the deal. */
   facts: ClientFacts;
-  /** The final offer, with the office's fee in detail. Null until the deal's fee plan stands approved. */
+  /** The final offer, with the office's fee in detail. Null while anything holds it back. */
   offer: ClientOffer | null;
+  /** What holds the offer back, for a deal that closes. */
+  offerHold: OfferHold | null;
+  /** The lenders' written approvals the deal is not counted on. */
+  apart: ApprovalNote[];
   steps: { key: StationKey; state: StationState }[];
   /** The client's own papers still owed. */
   owed: Paper[];
@@ -94,14 +99,33 @@ export interface MessagesView {
   waiting: boolean;
 }
 
+/** A deal's final offer, or what holds it back. */
+export interface OfferStanding {
+  offer: ClientOffer | null;
+  /** Why a deal that closes has no offer. Null with an offer, and for a deal that has none to make. */
+  hold: OfferHold | null;
+  /** The lenders' written approvals the deal is not counted on. While there is one, there is no offer. */
+  apart: ApprovalNote[];
+}
+
 /**
- * The final offer of a deal already read: made only from a fee plan that stands approved as the deal
- * is now. Null for a deal whose plan is not approved, that does not close, or that was cancelled.
+ * The final offer of a deal already read, and what holds it back when there is none. An offer is made
+ * only from a fee plan that stands approved as the deal is now, and only while no lender's written
+ * approval names another amount than the deal is counted on. A deal that does not close, or that was
+ * cancelled, has none and nothing holds it.
  */
+export async function offerStanding(db: Tx, view: DealView, now: Date): Promise<OfferStanding> {
+  if (view.deal.stage === "lost" || (view.study.verdict !== "go" && view.study.verdict !== "tight")) return { offer: null, hold: null, apart: [] };
+  // A closed deal is history: a paper recorded after it does not take back what its client was told.
+  const apart = view.deal.stage === "closed" ? [] : await approvalNotes(db, view, now);
+  const approval = apart.length > 0 ? null : await standingApproval(db, view, now);
+  const offer = approval ? clientOffer({ input: view.input, study: view.study }, approval.plan) : null;
+  return { offer, hold: offerHold({ apart: apart.length, made: offer != null }), apart };
+}
+
+/** The final offer alone. Null while anything holds it back. */
 export async function offerOf(db: Tx, view: DealView, now: Date): Promise<ClientOffer | null> {
-  if (view.deal.stage === "lost" || (view.study.verdict !== "go" && view.study.verdict !== "tight")) return null;
-  const approval = await standingApproval(db, view, now);
-  return approval ? clientOffer({ input: view.input, study: view.study }, approval.plan) : null;
+  return (await offerStanding(db, view, now)).offer;
 }
 
 const owedByClient = (papers: Paper[]): Paper[] =>
@@ -115,7 +139,7 @@ export async function getMessages(db: Db, args: { dealId: number; secret: string
   const timeline = dealTimeline(view.deal.structure, view.deal.stage, view.stageEnteredAt, now);
   const thread = await threadOf(db, view.client.id);
   const last = thread.at(-1);
-  const offer = await offerOf(db, view, now);
+  const { offer, hold, apart } = await offerStanding(db, view, now);
   return {
     deal: view.deal,
     client: view.client,
@@ -125,6 +149,8 @@ export async function getMessages(db: Db, args: { dealId: number; secret: string
     gate: messageGate({ stage: view.deal.stage, verdict: view.study.verdict, approved: offer != null }),
     facts: clientFacts({ stage: view.deal.stage, input: view.input, study: view.study }),
     offer,
+    offerHold: hold,
+    apart,
     steps: stationTimeline(view.deal.structure, timeline, view.history).steps.map((step) => ({ key: step.key, state: step.state })),
     owed: owedByClient(list.papers),
     link: await linkOf(db, { clientId: view.client.id, secret: args.secret, now }),
@@ -144,7 +170,7 @@ async function clientMessage(db: Db, args: { dealId: number; kind: string; body:
   if (!isMessageKind(args.kind) || !isClientMessage(args.kind)) throw new DomainError("INVALID_INPUT", `message ${args.kind}`);
   const view = await getDeal(db, { dealId: args.dealId, now: args.now });
   if (!view) throw new DomainError("NOT_FOUND", `deal ${args.dealId}`);
-  // The final offer carries the office's fee: it is open only while the fee plan stands approved.
+  // The final offer carries the office's fee: it is open only while the fee plan stands approved and no written approval says another amount.
   const approved = args.kind === "offer" && (await offerOf(db, view, args.now)) != null;
   const gate = messageGate({ stage: view.deal.stage, verdict: view.study.verdict, approved });
   if (!gate.allowed.includes(args.kind)) throw new DomainError("GATE_CLOSED", `${args.kind} for deal ${args.dealId}`);

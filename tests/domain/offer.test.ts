@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { dealStudy, defaultDealInput, feePlan, STAGES, type Borrower, type DealInput } from "@/domain/deal";
-import { clientOffer, messageGate, offerTotal, type ClientOffer } from "@/domain/messages";
+import { clientOffer, messageGate, offerHold, offerTotal, type ClientOffer } from "@/domain/messages";
 
 const golden = JSON.parse(readFileSync(new URL("../golden/deal.json", import.meta.url), "utf8"));
 const cases: { input: DealInput; borrower: never; credit: never }[] = golden.cases;
@@ -165,5 +165,20 @@ describe("when the final offer may be written", () => {
       for (const verdict of ["short", "needs_info"] as const) expect(messageGate({ stage, verdict, approved: true }).allowed).not.toContain("offer");
     }
     expect(messageGate({ stage: "lost", verdict: "go", approved: true }).allowed).toEqual(["internal"]);
+  });
+});
+
+describe("what holds a final offer back", () => {
+  it("is nothing once an offer was made of the approved plan and no written approval says another amount", () => {
+    expect(offerHold({ apart: 0, made: true })).toBeNull();
+  });
+
+  it("is the fee plan while none stands approved", () => {
+    expect(offerHold({ apart: 0, made: false })).toBe("PLAN");
+  });
+
+  it("is the written approval first, with or without an approved plan: the number comes before the signature", () => {
+    expect(offerHold({ apart: 1, made: false })).toBe("APPROVAL_APART");
+    expect(offerHold({ apart: 2, made: true })).toBe("APPROVAL_APART");
   });
 });

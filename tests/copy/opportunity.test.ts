@@ -76,7 +76,7 @@ describe("the wording of an opportunity", () => {
 
   it("says a lender's written approval the deal is not counted on, with both amounts and what to do", () => {
     const text = approvalApartText({ lender: "بنك المثال", part: "personal", approved: 230009, counted: 233009 });
-    expect(plain(text)).toBe("موافقة بنك المثال المكتوبة على التمويل الشخصي 230,009، والصفقة محسوبة على 233,009. احسب الصفقة على مبلغ الموافقة قبل أي عرض للعميل.");
+    expect(plain(text)).toBe("موافقة بنك المثال المكتوبة على التمويل الشخصي 230,009، والصفقة محسوبة على 233,009. العرض النهائي للعميل مغلق حتى تُحسب الصفقة على مبلغ الموافقة.");
     expect(plain(approvalApartText({ lender: "بنك المثال", part: "mortgage", approved: 900000, counted: 950000 }))).toContain("على التمويل العقاري 900,000");
     expect(plain(text)).not.toMatch(wordy);
   });
