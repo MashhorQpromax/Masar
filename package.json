@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "next dev -p 3000",
     "build": "next build",
-    "vercel-build": "tsx --conditions=react-server scripts/release.ts before && next build && tsx --conditions=react-server scripts/release.ts after",
+    "vercel-build": "tsx --conditions=react-server scripts/release.ts rehearse",
     "start": "next start -p 3000",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",

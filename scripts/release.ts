@@ -14,11 +14,35 @@ import { planRelease, type ReleasePhase } from "../src/server/port/release";
 import { mayGoLive, portData, reportLines, safeError } from "../src/server/port/run";
 
 const phase = process.argv[2];
-if (phase !== "before" && phase !== "after") throw new Error("say which phase: before or after");
+if (phase !== "before" && phase !== "after" && phase !== "rehearse") throw new Error("say which phase: before or after");
 
 const say = (line: string) => console.log(`[release] ${line}`);
 const opens = (sealed: string) => unseal(sealed) != null;
 const now = new Date();
+
+// The branch `rehearsal` only: this build rehearses the move and then stops on purpose. It never
+// builds the site and always ends with a failure, so no deployment of this commit can go live,
+// whatever environment it is given. The old database is read inside read-only transactions.
+if (phase === "rehearse") {
+  const legacyUrl = process.env.LEGACY_DATABASE_URL || process.env.DATABASE_URL || process.env.POSTGRES_URL || "";
+  if (!legacyUrl) {
+    say("STOPPED: the rehearsal has no database to read in this environment");
+  } else {
+    try {
+      const legacy = await connect(legacyUrl);
+      try {
+        const result = await rehearse({ legacy: legacy.db, now, opens: (process.env.MASAR_SECRET ?? "").length >= 16 ? opens : undefined });
+        for (const line of reportLines(result, { rehearsal: true })) say(line);
+      } finally {
+        await legacy.close();
+      }
+    } catch (error) {
+      say(`REHEARSAL FAILED: ${safeError(error)}`);
+    }
+  }
+  say("REHEARSAL ONLY: this build stops here on purpose and never goes live");
+  process.exit(1);
+}
 
 async function run(which: ReleasePhase): Promise<boolean> {
   const plan = planRelease(which, process.env);
