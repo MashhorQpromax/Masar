@@ -1,6 +1,6 @@
 # Masar: read-only demo copy
 
-A static copy of the rebuild's demo, taken page by page from the `revamp` branch at `46b010c` on 25 نوفمبر 2026.
+A static copy of the rebuild's demo, taken page by page from the `revamp` branch at `3eddf11` on 27 نوفمبر 2026.
 
 - Every name, number and phone in it is invented. It holds no client's data and is not connected to the live site or to any database.
 - Links work. Forms, buttons and the calculator do nothing: there is no server behind it.
