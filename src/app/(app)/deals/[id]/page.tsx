@@ -18,7 +18,7 @@ import {
 import { GRADE } from "@/copy/credit";
 import { missingText } from "@/copy/documents";
 import { differenceText } from "@/copy/editor";
-import { feeText, planLine, planState, termsText } from "@/copy/fees";
+import { collectedText, feeText, planLine, planState, termsText } from "@/copy/fees";
 import { deductionText, lineSource, NET_DEFICIT, NET_PART, NET_TOTAL, netWhy } from "@/copy/net";
 import { approvalApartText } from "@/copy/opportunity";
 import { counted, days, dayShort, dueIn, ltr, money, percent, plainMoney } from "@/copy/format";
@@ -55,6 +55,7 @@ import { SubmitButton } from "@/ui/SubmitButton";
 import { reportOffer } from "../report-offer";
 import { moveDealStage } from "./actions";
 import { ApprovePlan } from "./ApprovePlan";
+import { CollectedFee } from "./CollectedFee";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "ملف الصفقة · مسار" };
@@ -69,6 +70,7 @@ const VISIBLE_NOTES = 3;
 export default async function DealPage({ params }: { params: Promise<{ id: string }> }) {
   const me = await requireActor();
   const mayEdit = can(me.role, "deal.edit");
+  const maySetFee = can(me.role, "fee.set");
   const maySeeCredit = can(me.role, "client.view_pii");
   const dealId = Number((await params).id);
   if (!Number.isInteger(dealId) || dealId <= 0) notFound();
@@ -125,7 +127,7 @@ export default async function DealPage({ params }: { params: Promise<{ id: strin
   // A court order or default the deal holds at another amount than the credit report stands beside the risks,
   // for those who may read the report: the capital rests on these amounts.
   const differences = maySeeCredit && credit ? recordDifferences(reportOffer(credit.report).drafts, input.items) : [];
-  // A lender's written approval at another amount than the deal is counted on: the plan and the client's offer rest on the deal's figure.
+  // A lender's written approval at another amount than the deal is counted on: the client's final offer is shut until the deal takes it.
   const apart = ended ? [] : await approvalNotes(db, view, now);
   // They come right after what blocks, ahead of the other warnings: what the office pays and what the client is told are in question.
   const notes: { key: string; level: Risk["level"]; text: string }[] = [
@@ -239,7 +241,10 @@ export default async function DealPage({ params }: { params: Promise<{ id: strin
             <div>
               <p className="label">الحالة</p>
               <h2>{deal.stage === "closed" ? "اكتملت الصفقة" : "أُغلق الملف بلا صفقة"}</h2>
+              {/* The fee as counted is one figure; what reached the office is another, and a person records it here. */}
+              {deal.stage === "closed" && <p className="due">{collectedText(deal.fee, deal.feeCollected)}</p>}
             </div>
+            {deal.stage === "closed" && maySetFee && <CollectedFee key={deal.feeCollected ?? "none"} dealId={deal.id} before={deal.feeCollected} />}
             <div className="actions">
               <Link className="btn btn--soft" href={`/clients/${client.id}`}>
                 ملف العميل
@@ -462,8 +467,8 @@ export default async function DealPage({ params }: { params: Promise<{ id: strin
             </small>
           </div>
           {mayApprovePlan && !ended && closes && planSaid.state !== "stands" && <ApprovePlan key={current.print} dealId={deal.id} />}
-          {/* An approved plan is what the client's final offer is written from. */}
-          {planSaid.state === "stands" && !ended && closes && maySeeCredit && (
+          {/* An approved plan is what the client's final offer is written from, while no written approval says another amount. */}
+          {planSaid.state === "stands" && !ended && closes && apart.length === 0 && maySeeCredit && (
             <div className="actions">
               <Link className="btn btn--soft" href={`/deals/${deal.id}/messages?kind=offer`}>
                 العرض النهائي للعميل

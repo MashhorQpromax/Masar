@@ -4,7 +4,8 @@
  * nobody enters anything for it, and it changes nothing.
  *
  * A closed deal's fee is the fee as the deal was last counted. What the office actually collected is
- * not recorded yet, so the report never calls it collected.
+ * another figure, recorded by a person on the closed deal: the report says both and never mixes them,
+ * and a deal with nothing recorded is counted as not recorded, never as nothing collected.
  *
  * Pure: no database, no clock, no text in any language. Days are ISO days in Riyadh, worked out by the
  * caller.
@@ -41,6 +42,8 @@ export interface MonthDeal {
   stageOn: string | null;
   /** The fee as the deal was last counted. Null before it was counted. */
   fee: number | null;
+  /** What the office collected of it, as a person recorded it. Null: nothing recorded. */
+  collected: number | null;
 }
 
 /** One answer a lender gave, as the office recorded it. */
@@ -73,6 +76,8 @@ export interface EndedDeal {
   /** Days from opening to that day. */
   days: number;
   fee: number | null;
+  /** What the office collected of the fee, as recorded. Null: nothing recorded. */
+  collected: number | null;
 }
 
 export interface LenderMonth {
@@ -94,6 +99,9 @@ export interface MonthReport {
   lost: EndedDeal[];
   /** The fees of the deals closed in the month, as each was last counted. */
   closedFees: number;
+  /** What the office collected of them, as recorded, and on how many of those deals an amount was recorded. */
+  collectedFees: number;
+  collectedOn: number;
   /** Days from opening to closing, on average, of the deals closed in the month. Null when none closed. */
   closedDays: number | null;
   /** The lenders that answered in the month, the busiest first. */
@@ -111,7 +119,7 @@ export interface MonthReport {
 function ended(deals: readonly MonthDeal[], stage: "closed" | "lost", month: Month): EndedDeal[] {
   return deals
     .filter((deal) => deal.stage === stage && deal.stageOn != null && monthOf(deal.stageOn) === month)
-    .map((deal) => ({ dealId: deal.dealId, clientName: deal.clientName, fileNo: deal.fileNo, on: deal.stageOn!, days: daysBetween(deal.openedOn, deal.stageOn!), fee: deal.fee }))
+    .map((deal) => ({ dealId: deal.dealId, clientName: deal.clientName, fileNo: deal.fileNo, on: deal.stageOn!, days: daysBetween(deal.openedOn, deal.stageOn!), fee: deal.fee, collected: deal.collected }))
     .sort((a, b) => b.on.localeCompare(a.on) || b.dealId - a.dealId);
 }
 
@@ -138,6 +146,8 @@ export function monthReport(args: { month: Month; deals: readonly MonthDeal[]; a
     closed,
     lost,
     closedFees: closed.reduce((sum, deal) => sum + (deal.fee ?? 0), 0),
+    collectedFees: closed.reduce((sum, deal) => sum + (deal.collected ?? 0), 0),
+    collectedOn: closed.filter((deal) => deal.collected != null).length,
     closedDays: closed.length ? Math.round(closed.reduce((sum, deal) => sum + deal.days, 0) / closed.length) : null,
     lenders: [...byLender.values()].sort((a, b) => b.answers - a.answers || a.lender.localeCompare(b.lender, "ar")),
     requests: {

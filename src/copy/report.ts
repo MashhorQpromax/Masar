@@ -1,6 +1,6 @@
 /** The words of the office's month. */
 import type { LenderMonth, Month, MonthReport } from "@/domain/report";
-import { counted, dayOfIso, ltr } from "./format";
+import { counted, dayOfIso, ltr, money } from "./format";
 
 const monthName = new Intl.DateTimeFormat("ar-SA-u-ca-gregory-nu-latn", { month: "long", year: "numeric", timeZone: "UTC" });
 
@@ -24,10 +24,30 @@ export function lenderLine(line: Pick<LenderMonth, "answers" | "approved" | "ref
   return `${counted(line.answers, ANSWERS)}: ${said}. ${written}.`;
 }
 
-/** When a deal closed or fell through, and how long after it was opened. */
-export function endedLine(deal: { on: string; days: number }, closed: boolean): string {
+/**
+ * When a deal closed or fell through, and how long after it was opened. A closed deal also says what
+ * was collected of its fee, or that nothing was recorded: the figure at the end of its line is the fee
+ * as counted.
+ */
+export function endedLine(deal: { on: string; days: number; collected?: number | null }, closed: boolean): string {
   const when = `${closed ? "أُغلقت" : "أُلغيت"} ${dayOfIso(deal.on)}`;
-  return deal.days === 0 ? `${when}، يوم فتحها` : `${when}، بعد ${counted(deal.days, AFTER_DAYS)} من فتحها`;
+  const after = deal.days === 0 ? `${when}، يوم فتحها` : `${when}، بعد ${counted(deal.days, AFTER_DAYS)} من فتحها`;
+  if (!closed) return after;
+  return `${after}. ${deal.collected == null ? "لم يُسجَّل ما حُصّل من أتعابها" : `المحصّل من أتعابها ${money(deal.collected)}`}`;
+}
+
+const DEALS_OF = { one: "صفقة واحدة", two: "صفقتين", few: "صفقات", many: "صفقة" };
+
+/**
+ * The fees of the month's closed deals: as counted, and as collected where a person recorded it. The
+ * two are never added up, and deals with nothing recorded are said, not counted as nothing.
+ */
+export function feesText(report: Pick<MonthReport, "closed" | "closedFees" | "collectedFees" | "collectedOn">): string {
+  const countedFees = `أتعابها المحسوبة ${money(report.closedFees)} ريال`;
+  const left = report.closed.length - report.collectedOn;
+  if (report.collectedOn === 0) return `${countedFees}. لم يُسجَّل ما حُصّل منها بعد.`;
+  if (left === 0) return `${countedFees}، والمحصّل منها ${money(report.collectedFees)}.`;
+  return `${countedFees}. المحصّل ${money(report.collectedFees)} من ${counted(report.collectedOn, DEALS_OF)}، والباقي لم يُسجَّل.`;
 }
 
 /** The month's requests to lenders. Whether one waits now is said only of the month that holds today. */
@@ -39,4 +59,4 @@ export function requestsText(requests: MonthReport["requests"], thisMonth: boole
 }
 
 /** Said once under the month: where its figures come from, and what they are not. */
-export const MONTH_NOTE = "كل رقم هنا من الصفقات وسجلاتها كما هي في النظام. أتعاب الصفقة المغلقة محسوبة من أرقامها، وما حُصّل فعلاً لا يُسجَّل بعد.";
+export const MONTH_NOTE = "كل رقم هنا من الصفقات وسجلاتها كما هي في النظام. أتعاب الصفقة المغلقة محسوبة من أرقامها، وما حُصّل منها فعلاً يُسجَّل في ملف الصفقة بعد إغلاقها.";

@@ -13,13 +13,15 @@ import { roadView } from "@/server/deals/views";
 import { DEMO_ANSWERED, DEMO_BANK, DEMO_COMPANY, DEMO_PAPER, DEMO_REPLY_TEXT, DEMO_WORD, seedDemoLenders, seedDemoReplies } from "@/server/demo/lenders";
 import { DEMO_CONTACT_SOURCE, seedDemoContacts, seedDemoRequests } from "@/server/demo/requests";
 import { contactsOf, requestsBoard } from "@/server/requests/service";
-import { DEMO_APPROVED, DEMO_FALLEN, DEMO_PLAN_FELL, DEMO_PLAN_STANDS, DEMO_REASON, seedDemoApprovals, seedDemoPlans } from "@/server/demo/approvals";
+import { DEMO_APPROVED, DEMO_FALLEN, DEMO_PLAN_FELL, DEMO_PLAN_OFFER, DEMO_PLAN_STANDS, DEMO_REASON, seedDemoApprovals, seedDemoPlans } from "@/server/demo/approvals";
 import { planApprovalsOf, planOf } from "@/server/deals/plan";
 import { seedDemo } from "@/server/demo/seed";
 import { relyOnPaper } from "@/server/documents/facts";
 import { getPapers } from "@/server/documents/service";
 import { getFunding } from "@/server/funding/service";
 import { approvalNotes } from "@/server/knowledge/service";
+import { DEMO_LINK_SECRET } from "@/server/messages/links";
+import { getMessages } from "@/server/messages/service";
 import { monthView } from "@/server/reports/service";
 import { listCatalogue } from "@/server/lenders/service";
 import { SYSTEM } from "@/server/shared/actor";
@@ -418,6 +420,17 @@ describe("the demonstration's requests to lenders", () => {
       expect(apart).toMatchObject({ part: "personal", lender: DEMO_BANK, counted: replied.study.financing.personal });
       expect(apart!.approved).not.toBe(apart!.counted);
 
+      // Her fee plan stands, and that paper shuts her final offer all the same. The client no paper speaks against has his open.
+      await seedDemoPlans(fresh.db, now);
+      const hers = (await getMessages(fresh.db, { dealId: client.deal!.id, secret: DEMO_LINK_SECRET, now }))!;
+      expect(hers).toMatchObject({ offer: null, offerHold: "APPROVAL_APART", apart: [{ lender: DEMO_BANK }] });
+      expect(hers.gate.allowed).not.toContain("offer");
+      const other = (await listClients(fresh.db, { q: DEMO_PLAN_OFFER })).rows.find((row) => row.fileNo === DEMO_PLAN_OFFER)!;
+      const his = (await getMessages(fresh.db, { dealId: other.deal!.id, secret: DEMO_LINK_SECRET, now }))!;
+      expect(his).toMatchObject({ offerHold: null, apart: [] });
+      expect(his.offer!.fee.total).toBeGreaterThan(0);
+      expect(his.gate.allowed).toContain("offer");
+
       // Seeding again adds nothing.
       await seedDemoContacts(fresh.db, now);
       await seedDemoRequests(fresh.db, now);
@@ -434,6 +447,9 @@ describe("the office's month in the demonstration", () => {
     const september = await monthView(c.db, { month: "2026-09", now });
     expect(september.closed.map((deal) => [deal.fileNo, deal.on, deal.days])).toEqual([["C-008", "2026-09-20", 55]]);
     expect(september.closedFees).toBe(september.closed[0]!.fee);
+    // Its fee was collected 2,000 short of what was counted, and the month says both.
+    expect(september).toMatchObject({ collectedFees: september.closedFees - 2000, collectedOn: 1 });
+    expect(september.closed[0]!.collected).toBe(september.closed[0]!.fee! - 2000);
     expect(september.closedDays).toBe(55);
     const october = await monthView(c.db, { month: "2026-10", now });
     expect(october.lost.map((deal) => [deal.fileNo, deal.on])).toEqual([["C-011", "2026-10-31"]]);

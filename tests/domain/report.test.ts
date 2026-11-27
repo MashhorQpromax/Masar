@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { firstMonth, isMonth, monthOf, monthReport, shiftMonth, type MonthAnswer, type MonthDeal, type MonthRequest } from "@/domain/report";
 
 /** The office's month, counted from what the system holds. */
-const deal = (parts: Partial<MonthDeal> = {}): MonthDeal => ({ dealId: 1, clientName: "عميل", fileNo: "C-1", openedOn: "2026-11-02", stage: "study", stageOn: null, fee: 40000, ...parts });
+const deal = (parts: Partial<MonthDeal> = {}): MonthDeal => ({ dealId: 1, clientName: "عميل", fileNo: "C-1", openedOn: "2026-11-02", stage: "study", stageOn: null, fee: 40000, collected: null, ...parts });
 const answer = (parts: Partial<MonthAnswer> = {}): MonthAnswer => ({ lenderId: 1, lender: "بنك المثال", decision: "approved", written: true, on: "2026-11-10", ...parts });
 const request = (parts: Partial<MonthRequest> = {}): MonthRequest => ({ sentOn: "2026-11-05", answeredOn: null, waiting: true, ...parts });
 
@@ -44,6 +44,30 @@ describe("the office's month", () => {
     // A lost deal earns nothing, and a deal closed last month is last month's.
     expect(report.closedFees).toBe(64000);
     expect(report.closedDays).toBe(61);
+  });
+
+  it("adds up what was collected apart from what was counted, and counts the deals with nothing recorded", () => {
+    const report = monthReport({
+      month: "2026-11",
+      deals: [
+        deal({ dealId: 3, stage: "closed", stageOn: "2026-11-20", fee: 43000, collected: 41000 }),
+        deal({ dealId: 4, stage: "closed", stageOn: "2026-11-11", fee: 21000 }),
+        // Nothing collected is an amount, not a deal left unrecorded.
+        deal({ dealId: 7, stage: "closed", stageOn: "2026-11-09", fee: 10000, collected: 0 }),
+        // Collected last month, or on a deal that is not closed: not this month's.
+        deal({ dealId: 5, stage: "closed", stageOn: "2026-10-29", fee: 99000, collected: 99000 }),
+        deal({ dealId: 6, stage: "recovered", stageOn: "2026-11-21", fee: 12000, collected: 12000 }),
+      ],
+      answers: [],
+      requests: [],
+    });
+    expect(report).toMatchObject({ closedFees: 74000, collectedFees: 41000, collectedOn: 2 });
+    expect(report.closed.map((d) => [d.dealId, d.fee, d.collected])).toEqual([
+      [3, 43000, 41000],
+      [4, 21000, null],
+      [7, 10000, 0],
+    ]);
+    expect(monthReport({ month: "2026-11", deals: [], answers: [], requests: [] })).toMatchObject({ collectedFees: 0, collectedOn: 0 });
   });
 
   it("says nothing of an average when nothing closed, and counts a fee never worked out as none", () => {

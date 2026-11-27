@@ -1,5 +1,5 @@
 /** Wording of the office's fee policy and of a deal's fee: what it is, and why a change was refused. */
-import { FEE_REASON_MIN, type Fee, type FeeCollection, type FeeDue, type FeePart, type FeePlan, type FeePolicy, type FeeTerms, type PlanFigure, type PlanRefusal, type PolicyProblem } from "@/domain/deal";
+import { collectedGap, FEE_REASON_MIN, type CollectedRefusal, type Fee, type FeeCollection, type FeeDue, type FeePart, type FeePlan, type FeePolicy, type FeeTerms, type PlanFigure, type PlanRefusal, type PolicyProblem } from "@/domain/deal";
 import { FINANCE_BASE } from "./editor";
 import { dayFull, ltr, money, percent } from "./format";
 
@@ -119,3 +119,32 @@ export function planError(code: string, params: Record<string, string> = {}): st
 }
 
 export const PLAN_REFUSALS = Object.keys(PLAN_REFUSAL) as PlanRefusal[];
+
+/**
+ * What the office collected of a closed deal's fee, beside the fee as counted: one line on the deal.
+ * Nothing recorded yet is said as such, and zero is said as nothing collected.
+ */
+export function collectedText(counted: number | null, collected: number | null): string {
+  if (collected == null) return "لم يُسجَّل بعد ما حُصّل من أتعابها.";
+  if (collected === 0) return "لم يُحصَّل شيء من أتعابها.";
+  const said = `حُصّل من أتعابها ${money(collected)} ريال`;
+  const gap = collectedGap(counted, collected);
+  if (gap == null) return `${said}.`;
+  if (gap === 0) return `${said}، كما حُسبت.`;
+  return gap < 0 ? `${said}، أقل من المحسوب بـ ${money(-gap)}.` : `${said}، أكثر من المحسوب بـ ${money(gap)}.`;
+}
+
+const COLLECTED_REFUSAL: Record<CollectedRefusal, string> = {
+  NOT_CLOSED: "تُسجَّل الأتعاب المحصلة بعد إغلاق الصفقة.",
+  AMOUNT: "اكتب المبلغ المحصل بالريال.",
+};
+
+/** What to tell a person when recording the collected fee failed with this code. */
+export function collectedError(code: string, params: Record<string, string> = {}): string {
+  if (code === "COLLECTED_REFUSED" && params.reason && params.reason in COLLECTED_REFUSAL) return COLLECTED_REFUSAL[params.reason as CollectedRefusal];
+  if (code === "FORBIDDEN") return "تسجيل الأتعاب المحصلة لمن يملك تعديل الأتعاب.";
+  if (code === "NOT_FOUND") return "هذه الصفقة لم تعد موجودة.";
+  return "تعذر الحفظ. حاول مرة أخرى.";
+}
+
+export const COLLECTED_REFUSALS = Object.keys(COLLECTED_REFUSAL) as CollectedRefusal[];

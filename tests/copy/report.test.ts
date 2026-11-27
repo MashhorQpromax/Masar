@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { endedLine, lenderLine, MONTH_NOTE, monthTitle, requestsText } from "@/copy/report";
+import { endedLine, feesText, lenderLine, MONTH_NOTE, monthTitle, requestsText } from "@/copy/report";
 
 const plain = (text: string) => text.replace(/[⁦⁩]/g, "");
 const wordy = /undefined|NaN|null|\[object|[A-Za-z_]{3,}|—|–/;
@@ -18,7 +18,9 @@ describe("the wording of the office's month", () => {
   });
 
   it("says when a deal ended and how long after it was opened", () => {
-    expect(plain(endedLine({ on: "2026-11-20", days: 80 }, true))).toBe("أُغلقت 20 نوفمبر 2026، بعد 80 يوماً من فتحها");
+    expect(plain(endedLine({ on: "2026-11-20", days: 80 }, true))).toBe("أُغلقت 20 نوفمبر 2026، بعد 80 يوماً من فتحها. لم يُسجَّل ما حُصّل من أتعابها");
+    expect(plain(endedLine({ on: "2026-11-20", days: 80, collected: 41000 }, true))).toBe("أُغلقت 20 نوفمبر 2026، بعد 80 يوماً من فتحها. المحصّل من أتعابها 41,000");
+    expect(plain(endedLine({ on: "2026-11-20", days: 80, collected: 0 }, true))).toBe("أُغلقت 20 نوفمبر 2026، بعد 80 يوماً من فتحها. المحصّل من أتعابها 0");
     expect(endedLine({ on: "2026-11-04", days: 1 }, false)).toBe("أُلغيت 4 نوفمبر 2026، بعد يوم من فتحها");
     expect(endedLine({ on: "2026-11-04", days: 0 }, false)).toBe("أُلغيت 4 نوفمبر 2026، يوم فتحها");
   });
@@ -29,8 +31,18 @@ describe("the wording of the office's month", () => {
     expect(requestsText({ sent: 1, answered: 1, waiting: 4 }, false)).toBe("أُرسل طلب واحد إلى الجهات، وسُجّل الرد على طلب واحد.");
   });
 
-  it("never calls a computed fee collected", () => {
-    expect(MONTH_NOTE).toContain("لا يُسجَّل بعد");
+  it("says the month's fees as counted and as collected, and never one for the other", () => {
+    const closed = [{}, {}, {}] as never[];
+    expect(plain(feesText({ closed, closedFees: 74000, collectedFees: 0, collectedOn: 0 }))).toBe("أتعابها المحسوبة 74,000 ريال. لم يُسجَّل ما حُصّل منها بعد.");
+    expect(plain(feesText({ closed, closedFees: 74000, collectedFees: 70500, collectedOn: 3 }))).toBe("أتعابها المحسوبة 74,000 ريال، والمحصّل منها 70,500.");
+    expect(plain(feesText({ closed, closedFees: 74000, collectedFees: 41000, collectedOn: 2 }))).toBe("أتعابها المحسوبة 74,000 ريال. المحصّل 41,000 من صفقتين، والباقي لم يُسجَّل.");
+    expect(plain(feesText({ closed, closedFees: 74000, collectedFees: 41000, collectedOn: 1 }))).toContain("من صفقة واحدة");
+    for (const on of [0, 1, 2, 3]) expect(plain(feesText({ closed, closedFees: 74000, collectedFees: 41000, collectedOn: on }))).not.toMatch(wordy);
+  });
+
+  it("says where a collected fee is recorded, and that the counted one is counted", () => {
+    expect(MONTH_NOTE).toContain("محسوبة من أرقامها");
+    expect(MONTH_NOTE).toContain("يُسجَّل في ملف الصفقة بعد إغلاقها");
     expect(MONTH_NOTE).not.toMatch(wordy);
   });
 });

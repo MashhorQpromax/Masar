@@ -10,7 +10,6 @@ import { can } from "@/domain/auth";
 import { clientReachable, isClientMessage, isMessageKind, type MessageKind } from "@/domain/messages";
 import { requireActor } from "@/server/auth/actor";
 import { getDb } from "@/server/db/client";
-import { approvalNotes } from "@/server/knowledge/service";
 import { linkPath, linkSecret, siteOrigin, whatsapp } from "@/server/messages/request";
 import { getMessages } from "@/server/messages/service";
 import { BackIcon } from "@/ui/icons";
@@ -34,12 +33,10 @@ export default async function MessagesPage({ params, searchParams }: { params: P
   const view = await getMessages(db, { dealId, secret: linkSecret(), now });
   if (!view) notFound();
 
-  const { deal, client, who, gate, facts, offer, steps, owed, link, thread } = view;
+  const { deal, client, who, gate, facts, offer, offerHold, apart, steps, owed, link, thread } = view;
   const first = firstName(client.fullName);
   const maySend = can(me.role, "client.edit");
   const toClient = clientReachable(gate);
-  // A lender's written approval at another amount than the deal's: said beside what the client is about to be told.
-  const apart = toClient && !gate.reason && deal.stage !== "closed" ? await approvalNotes(db, view, now) : [];
   const origin = await siteOrigin();
   const url = link && origin ? `${origin}${linkPath(link.token)}` : null;
 
@@ -49,7 +46,7 @@ export default async function MessagesPage({ params, searchParams }: { params: P
 
   const written: Record<MessageKind, () => Pick<Choice, "text" | "named">> = {
     study: () => ({ text: studyText(facts, extras), named: named ? studyText(facts, { ...extras, nameLender: true }) : undefined }),
-    // The gate opens the final offer only while the fee plan stands approved, so there is one to write.
+    // The gate opens the final offer only while the fee plan stands approved and no written approval says another amount, so there is one to write.
     offer: () => ({ text: offer ? offerText(facts, offer, extras) : "", named: offer && named ? offerText(facts, offer, { ...extras, nameLender: true }) : undefined }),
     papers: () => ({ text: papersText(extras) }),
     progress: () => ({ text: progressText(facts, steps, extras) }),
@@ -99,7 +96,8 @@ export default async function MessagesPage({ params, searchParams }: { params: P
             <p className="label">{toClient ? "واتساب" : "للمكتب فقط"}</p>
             <h2 className="compose-title">{toClient ? `رسالة إلى ${first}` : "ملخص داخلي"}</h2>
             {toClient && gate.reason && <p className="composer-say">{GATE_REASON[gate.reason]}</p>}
-            {toClient && !gate.reason && !offer && <p className="composer-say">{OFFER_WAITS}</p>}
+            {toClient && offerHold === "PLAN" && <p className="composer-say">{OFFER_WAITS}</p>}
+            {/* A lender's written approval at another amount than the deal's: it shuts the final offer, and says so here. */}
             {apart.map((one) => (
               <p className="composer-say" key={one.part}>
                 {approvalApartText(one)}

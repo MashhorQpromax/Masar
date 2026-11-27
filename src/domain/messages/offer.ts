@@ -90,3 +90,21 @@ export function clientOffer(deal: { input: DealInput; study: DealStudy }, approv
 export function offerTotal(offer: ClientOffer): number {
   return offer.totalFinancing - (offer.obligations?.amount ?? 0) - offer.costs.reduce((total, cost) => total + cost.amount, 0) - offer.fee.total;
 }
+
+/**
+ * What holds back the final offer of a deal that closes on its numbers:
+ * - `APPROVAL_APART`: a lender's written approval stands for another amount than the deal is counted
+ *   on. A final offer says figures to the riyal, so it does not go out over a paper that says
+ *   otherwise. The owner left this to the office's recommendation on 2026-11-27.
+ * - `PLAN`: the deal's fee plan does not stand approved as the deal is now.
+ *
+ * The amounts come first: counting the deal on the approved amount drops the plan's approval anyway,
+ * so a person is sent to the number before the signature.
+ */
+export type OfferHold = "APPROVAL_APART" | "PLAN";
+
+/** `apart`: how many written approvals the deal is not counted on. `made`: an offer could be made of the approved plan. */
+export function offerHold(args: { apart: number; made: boolean }): OfferHold | null {
+  if (args.apart > 0) return "APPROVAL_APART";
+  return args.made ? null : "PLAN";
+}

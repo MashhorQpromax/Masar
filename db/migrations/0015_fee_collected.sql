@@ -1,0 +1,1 @@
+ALTER TABLE "masar"."deals" ADD COLUMN "fee_collected" numeric(14, 2);
