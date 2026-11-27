@@ -1,4 +1,4 @@
-import { clientNet, splitItems, splitLabel, structureOf, type Certainty, type DealInput, type DealStudy, type LenderKind, type Stage, type Structure } from "../deal";
+import { clientNet, splitItems, splitLabel, structureOf, waitOnRoad, type Certainty, type DealInput, type DealStudy, type DealWait, type LenderKind, type Stage, type Structure } from "../deal";
 
 /**
  * What a client may be told about their deal, and nothing else. The company's fee, its capital and
@@ -26,13 +26,27 @@ export interface ClientFacts {
   keepsCertainty: Certainty;
   /** How long the whole road takes, as a range of weeks. */
   weeks: { from: number; to: number };
+  /**
+   * The whole road in months, when the wait a lender sets after the defaults are paid is part of it.
+   * Then the months say how long, not the weeks. Null for a deal that waits for nothing.
+   */
+  months: { from: number; to: number } | null;
 }
+
+/** Days of a road as months a client can be told: rounded up, so that the road is never promised shorter than it is. */
+const monthsOf = (days: number): number => Math.max(1, Math.ceil((days * 12) / 365));
 
 const PAYOFF_KINDS: ReadonlySet<string> = new Set(["mortgage_payoff", "personal_payoff", "card"]);
 
-/** The client's side of a deal, taken from its study. */
-export function clientFacts(deal: { stage: Stage; input: DealInput; study: DealStudy }): ClientFacts {
+/**
+ * The client's side of a deal, taken from its study. `wait` is what its lenders set after a paid
+ * default, when the deal pays one: only its months and the road with them are handed in, never the
+ * return or the money the office has out.
+ */
+export function clientFacts(deal: { stage: Stage; input: DealInput; study: DealStudy; wait?: Pick<DealWait, "months" | "days"> | null }): ClientFacts {
   const structure = structureOf(deal.input);
+  // A deal that went on past the stage that waits is told its road as it goes.
+  const wait = waitOnRoad(deal.wait, { structure, stage: deal.stage });
   const { active } = splitItems({ items: deal.input.items, structure });
   const paidOff = active.filter((item) => PAYOFF_KINDS.has(item.kind));
   const settled = active.filter((item) => !PAYOFF_KINDS.has(item.kind));
@@ -54,5 +68,6 @@ export function clientFacts(deal: { stage: Stage; input: DealInput; study: DealS
     keeps: Math.max(0, deal.study.clientNet),
     keepsCertainty: net.certainty,
     weeks: { from: Math.max(4, weeks - 2), to: Math.max(6, weeks + 2) },
+    months: wait && wait.months.to > 0 ? { from: monthsOf(wait.days.from), to: monthsOf(wait.days.to) } : null,
   };
 }

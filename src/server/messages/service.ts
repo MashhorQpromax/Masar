@@ -1,7 +1,7 @@
 import "server-only";
 import { and, asc, desc, eq, isNotNull, max } from "drizzle-orm";
 import { z } from "zod";
-import { dealTimeline, stationTimeline, type StationKey, type StationState } from "@/domain/deal";
+import { dealTimeline, stationTimeline, waitOnRoad, type DealWait, type StationKey, type StationState } from "@/domain/deal";
 import { FILE_MAX_BYTES, INBOX_PAPER, type Paper } from "@/domain/documents";
 import { clientFacts, clientOffer, isClientMessage, isMessageKind, messageGate, offerHold, windowOpen, type ClientFacts, type ClientOffer, type Gate, type MessageKind, type OfferHold } from "@/domain/messages";
 import { normalizePhone } from "@/domain/shared/phone";
@@ -9,6 +9,7 @@ import type { Db, Tx } from "../db/client";
 import { clients, users, waMessages } from "../db/schema";
 import { standingApproval } from "../deals/plan";
 import { getDeal, type DealView } from "../deals/service";
+import { waitOf } from "../deals/wait";
 import { keepFile, papersOf, whoOf, type PaperWho } from "../documents/service";
 import { approvalNotes, type ApprovalNote } from "../knowledge/service";
 import { SYSTEM, type Actor } from "../shared/actor";
@@ -80,6 +81,8 @@ export interface MessagesView {
   gate: Gate;
   /** The client's side of the deal. */
   facts: ClientFacts;
+  /** The wait after the deal pays a default, while its road still counts it. Null for a deal that pays none, and once the deal went past it. */
+  wait: DealWait | null;
   /** The final offer, with the office's fee in detail. Null while anything holds it back. */
   offer: ClientOffer | null;
   /** What holds the offer back, for a deal that closes. */
@@ -140,6 +143,8 @@ export async function getMessages(db: Db, args: { dealId: number; secret: string
   const thread = await threadOf(db, view.client.id);
   const last = thread.at(-1);
   const { offer, hold, apart } = await offerStanding(db, view, now);
+  // The wait a road still counts: none once the deal went on past the stage that waits for it.
+  const wait = waitOnRoad(await waitOf(db, view, now), view.deal);
   return {
     deal: view.deal,
     client: view.client,
@@ -147,7 +152,8 @@ export async function getMessages(db: Db, args: { dealId: number; secret: string
     study: view.study,
     who: whoOf(view.client),
     gate: messageGate({ stage: view.deal.stage, verdict: view.study.verdict, approved: offer != null }),
-    facts: clientFacts({ stage: view.deal.stage, input: view.input, study: view.study }),
+    facts: clientFacts({ stage: view.deal.stage, input: view.input, study: view.study, wait }),
+    wait,
     offer,
     offerHold: hold,
     apart,

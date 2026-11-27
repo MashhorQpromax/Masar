@@ -79,4 +79,25 @@ describe("portfolio", () => {
   it("is empty without deals", () => {
     expect(portfolio([], now)).toMatchObject({ count: 0, capitalOut: 0, expectedFees: 0, nearest: null, next: null });
   });
+
+  it("does not count back within the month the capital of a deal that waits after its paid defaults", () => {
+    // No property: the submission to the lender is the stage that waits. Submission 3, approval 14, disbursement 7.
+    const waiting = { stage: "bank_submit" as const, structure: "settle_personal" as const, capital: 300000, fee: 50000 };
+    const plain = portfolio([deal({ dealId: 1, ...waiting })], now);
+    expect(plain.returningSoon).toBe(300000);
+    expect(plain.nearest?.daysToDisbursement).toBe(24);
+
+    const held = portfolio([deal({ dealId: 1, ...waiting, hold: { days: 183, paidAt: ago(20) } }), deal({ dealId: 2, stage: "approval", capital: 500000, fee: 90000, hold: { days: 183, paidAt: ago(20) } })], now);
+    // The capital is out all the same, and the fee is expected all the same.
+    expect(held.capitalOut).toBe(800000);
+    expect(held.expectedFees).toBe(140000);
+    // Only the deal already with its lender comes back within the month: it went on without waiting.
+    expect(held.returningSoon).toBe(500000);
+    expect(held.entries.map((e) => [e.dealId, e.daysToDisbursement, e.stageDueInDays, e.held])).toEqual([
+      [1, 163 + 24, 163 + 3, true],
+      [2, 21, 14, false],
+    ]);
+    expect(held.nearest?.dealId).toBe(2);
+    expect(held.next?.dealId).toBe(2);
+  });
 });

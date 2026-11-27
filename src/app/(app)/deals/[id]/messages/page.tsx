@@ -51,7 +51,7 @@ export default async function MessagesPage({ params, searchParams }: { params: P
     papers: () => ({ text: papersText(extras) }),
     progress: () => ({ text: progressText(facts, steps, extras) }),
     reply: () => ({ text: "" }),
-    internal: () => ({ text: internalText({ clientName: client.fullName, fileNo: client.fileNo, input: view.input, study: view.study }) }),
+    internal: () => ({ text: internalText({ clientName: client.fullName, fileNo: client.fileNo, input: view.input, study: view.study, wait: view.wait }) }),
   };
   const choices: Choice[] = gate.allowed.map((kind) => ({ kind, ...MESSAGE_KIND[kind], ...written[kind](), forClient: isClientMessage(kind) }));
 

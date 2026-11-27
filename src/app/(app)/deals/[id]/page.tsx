@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { CSSProperties } from "react";
 import {
+  AFTER_WAIT,
   alternativeText,
   FLOW_PART,
   LEDGER_SECTION,
@@ -14,6 +15,9 @@ import {
   STATION,
   STRUCTURE,
   VERDICT,
+  waitText,
+  withinRoad,
+  yearlyText,
 } from "@/copy/deal";
 import { GRADE } from "@/copy/credit";
 import { missingText } from "@/copy/documents";
@@ -27,13 +31,17 @@ import {
   dealAlternatives,
   dealTimeline,
   fundsFlow,
+  holdOf,
   mortgageFirst,
   NET_INCOME,
+  paidAtOf,
   policyTerms,
   readTerms,
   recordDifferences,
   stagesFor,
   stationTimeline,
+  waitAhead,
+  waitEnds,
   type LedgerSection,
   type Risk,
   type Stage,
@@ -83,7 +91,18 @@ export default async function DealPage({ params }: { params: Promise<{ id: strin
   const papers = await papersOf(db, view);
 
   const ended = deal.stage === "closed" || deal.stage === "lost";
-  const timeline = dealTimeline(deal.structure, deal.stage, view.stageEnteredAt, now);
+  const funding = await fundingOf(db, view, now);
+  // A deal that pays a default waits for its lender afterwards. The wait refuses nothing: it is said among the
+  // notes, and the road, the yearly return and the expected days are counted with it.
+  const paidAt = paidAtOf(history);
+  const waitEnd = waitEnds(ended ? null : funding.wait, paidAt);
+  // A deal the office took on past the stage that waits is counted as it goes. The note stays until the longest wait has ended.
+  const ahead = waitAhead(deal.structure, deal.stage);
+  const wait = ended || (!ahead && waitEnd != null && waitEnd.to.getTime() <= now.getTime()) ? null : funding.wait;
+  const waits = wait != null && wait.months.to > 0;
+  const onRoad = wait && waits && ahead ? wait : null;
+  const road = onRoad ? onRoad.days : { from: study.days, to: study.days };
+  const timeline = dealTimeline(deal.structure, deal.stage, view.stageEnteredAt, now, holdOf(onRoad, paidAt));
   const stations = stationTimeline(deal.structure, timeline, history);
   const flow = fundsFlow(study);
   // What the client keeps, line by line, each with whether a written word stands behind it.
@@ -105,7 +124,6 @@ export default async function DealPage({ params }: { params: Promise<{ id: strin
   // The fee plan is held against the deal as it stands: an approval stands only while its numbers print the same.
   const mayApprovePlan = can(me.role, "fee.approve");
   // The print includes the terms of the lenders whose route the deal holds: a change to one of them drops the approval.
-  const funding = await fundingOf(db, view, now);
   const current = planOf(input, study, funding.routes.find((route) => route.key === funding.chosen) ?? null);
   const planLog = await planApprovalsOf(db, { dealId: deal.id, now: current });
   const planSaid = planState({ latest: planLog[0] ?? null, closing: closes, may: mayApprovePlan });
@@ -122,7 +140,8 @@ export default async function DealPage({ params }: { params: Promise<{ id: strin
 
   const startedAt = history[0]?.at ?? deal.createdAt;
   const elapsed = Math.max(1, Math.floor((now.getTime() - startedAt.getTime()) / DAY) + 1);
-  const share = Math.min(100, Math.round((elapsed / Math.max(1, study.days)) * 1000) / 10);
+  const share = Math.min(100, Math.round((elapsed / Math.max(1, road.from)) * 1000) / 10);
+  const roadSpan = road.from === road.to ? ltr(road.to) : `${ltr(road.from)} إلى ${ltr(road.to)}`;
 
   // A court order or default the deal holds at another amount than the credit report stands beside the risks,
   // for those who may read the report: the capital rests on these amounts.
@@ -137,6 +156,7 @@ export default async function DealPage({ params }: { params: Promise<{ id: strin
       level: "warn" as const,
       text: differenceText({ label: input.items[difference.item]!.label, deal: difference.deal, record: difference.record }),
     })),
+    ...(wait ? [{ key: "wait", level: waits ? ("warn" as const) : ("info" as const), text: waitText(wait, study.days, waitEnd, !ahead) }] : []),
     ...study.risks.map((risk) => ({ key: risk.code, level: risk.level, text: riskText(risk) })),
   ].sort((a, b) => LEVEL_ORDER[a.level] - LEVEL_ORDER[b.level]);
   const flowTotal = flow.total + flow.deficit;
@@ -285,7 +305,12 @@ export default async function DealPage({ params }: { params: Promise<{ id: strin
             <div>
               <p className="label">الخطوة التالية</p>
               <h2>{step?.title}</h2>
-              {timeline.stageDueInDays != null && <p className="due">{dueIn(timeline.stageDueInDays)}</p>}
+              {timeline.stageDueInDays != null && (
+                <p className="due">
+                  {dueIn(timeline.stageDueInDays)}
+                  {timeline.held && `، ${AFTER_WAIT}`}
+                </p>
+              )}
             </div>
             <div className="actions">
               {mayEdit && nextStage && (
@@ -313,7 +338,13 @@ export default async function DealPage({ params }: { params: Promise<{ id: strin
           </p>
           {study.roi != null ? (
             <p className="tag">
-              {closes ? "عائد" : "لو أُغلقت: عائد"} {percent(study.roi)} في {days(study.days)}
+              {closes ? "عائد" : "لو أُغلقت: عائد"} {percent(study.roi)} {withinRoad(road)}
+              {onRoad?.annualized && (
+                <>
+                  <br />
+                  {yearlyText(onRoad.annualized)}
+                </>
+              )}
             </p>
           ) : (
             <span />
@@ -322,9 +353,9 @@ export default async function DealPage({ params }: { params: Promise<{ id: strin
 
         <section className="tile tile--days">
           <p className="label">
-            اليوم {ltr(elapsed)} من {ltr(study.days)}
+            اليوم {ltr(elapsed)} <span style={{ whiteSpace: "nowrap" }}>من {roadSpan}</span>
           </p>
-          <div className="dial" role="img" aria-label={`مضى ${days(elapsed)} من ${ltr(study.days)}`}>
+          <div className="dial" role="img" aria-label={`مضى ${days(elapsed)} من ${roadSpan}`}>
             <svg viewBox="0 0 100 100" fill="none">
               <circle cx="50" cy="50" r="42" stroke="#eef0f3" strokeWidth="10" />
               <circle
@@ -333,7 +364,7 @@ export default async function DealPage({ params }: { params: Promise<{ id: strin
                 cy="50"
                 r="42"
                 pathLength={100}
-                stroke={elapsed > study.days ? "#ff5a3c" : "#0f2a43"}
+                stroke={elapsed > road.to ? "#ff5a3c" : "#0f2a43"}
                 strokeWidth="10"
                 strokeLinecap="round"
                 style={{ "--share": share } as CSSProperties}

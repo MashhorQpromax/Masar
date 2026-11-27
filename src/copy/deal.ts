@@ -4,19 +4,21 @@
  */
 import type {
   Alternative,
+  DealWait,
   FeeReason,
   FlowPart,
   LedgerLine,
   LedgerSection,
   MortgageFirst,
   Risk,
+  Span,
   Stage,
   StationKey,
   Structure,
   Verdict,
 } from "@/domain/deal";
 import { splitLabel } from "@/domain/deal";
-import { counted, dueIn, inDays, ltr, money, months, percent } from "./format";
+import { counted, dayFull, days, dueIn, inDays, ltr, money, months, percent } from "./format";
 
 export const STATION: Record<StationKey, string> = {
   study: "دراسة",
@@ -235,6 +237,44 @@ export function mortgageFirstText(way: MortgageFirst): { title: string; detail: 
       };
 }
 
+/** A road in days: one figure, or its shortest and its longest. "62 يوماً", "من 230 إلى 412 يوماً". */
+export function roadText(road: Span): string {
+  return road.from === road.to ? days(road.to) : `من ${ltr(road.from)} إلى ${days(road.to)}`;
+}
+
+/** How long a return takes, after the return itself: "في 62 يوماً", "خلال 230 إلى 412 يوماً". */
+export function withinRoad(road: Span): string {
+  return road.from === road.to ? `في ${days(road.to)}` : `خلال ${ltr(road.from)} إلى ${days(road.to)}`;
+}
+
+/** The yearly return on a road: one figure, or the lowest and the highest. */
+export function yearlyText(yearly: { low: number; high: number }): string {
+  return yearly.low === yearly.high ? `سنوياً ${percent(yearly.high)}` : `سنوياً من ${percent(yearly.low)} إلى ${percent(yearly.high)}`;
+}
+
+const waitSpan = (span: Span): string => (span.from === span.to ? months(span.to) : `من ${ltr(span.from)} إلى ${months(span.to)}`);
+
+/**
+ * The wait after a default is paid, as a deal's page says it among its notes: how long, on whose word,
+ * what it does to the road, and the money that stays out through it. `base` is the road without it, and
+ * `ends` the days the wait ends on its shortest and its longest, once the defaults were paid. `passed`
+ * says the deal went on past the stage that waits: its road is then counted without the wait.
+ */
+export function waitText(wait: DealWait, base: number, ends: { from: Date; to: Date } | null, passed = false): string {
+  const names = wait.lenders.join(" و");
+  if (wait.months.to === 0) return `${names}: القبول بعد سداد التعثر مباشرة، وهذا مؤكد. لا مهلة تُضاف إلى مدة الصفقة.`;
+  const how =
+    wait.basis === "lender"
+      ? `مهلة ${names} بعد سداد التعثر ${waitSpan(wait.months)}، وهي مؤكدة.`
+      : `بعد سداد التعثر تنتظر جهات التمويل ${waitSpan(wait.months)} قبل أي تمويل جديد.`;
+  const out = wait.exposed > 0 ? `، ويبقى ما ندفعه للتعثرات وقرارات التنفيذ (${money(wait.exposed)} ريال) خارجاً طوالها` : "";
+  const road = passed ? "الصفقة مضت في طريقها قبل انتهاء المهلة، فمدتها محسوبة دونها." : `تصير مدة الصفقة ${roadText(wait.days)} بدل ${ltr(base)}${out}.`;
+  const until = !ends ? "" : wait.months.from === wait.months.to ? ` تنتهي المهلة ${dayFull(ends.to)}.` : ` تنتهي المهلة بين ${dayFull(ends.from)} و${dayFull(ends.to)}.`;
+  // Before the defaults are paid there is still time to ask the lender. After, what is left is to know that nobody did.
+  const ask = wait.basis !== "market" ? "" : ends ? " مهلة جهة هذه الصفقة لم تُؤكد." : " مهلة جهة هذه الصفقة لم تُؤكد: اسألها قبل السداد.";
+  return `${how} ${road}${until}${ask}`;
+}
+
 export const LEDGER_SECTION: Record<LedgerSection, string> = {
   personal: "التمويل الشخصي الجديد",
   mortgage: "التمويل العقاري الجديد",
@@ -343,7 +383,12 @@ export interface DealGlance {
   clientNet: number | null;
   daysToDisbursement: number | null;
   stageDueInDays: number | null;
+  /** The step in hand stands still until the wait after the deal's paid defaults ends. */
+  held?: boolean;
 }
+
+/** Said beside a step that waits for the lender's hold after a paid default to end. */
+export const AFTER_WAIT = "بعد انتهاء مهلة ما بعد سداد التعثر";
 
 export type GlanceTone = "hot" | "bad" | "warn" | "plain";
 
@@ -358,7 +403,9 @@ export function glance(deal: DealGlance, nearest: boolean): { tone: GlanceTone; 
   if (deal.verdict === "tight") return { tone: "warn", text: "هامش ضيق" };
   const step = NEXT_STEP[deal.stage];
   if (!step) return { tone: "plain", text: STAGE[deal.stage] };
-  return { tone: "plain", text: deal.stageDueInDays == null ? step.brief : `${step.brief}، ${dueIn(deal.stageDueInDays)}` };
+  if (deal.stageDueInDays == null) return { tone: "plain", text: step.brief };
+  // A step that waits is not late: it is said with what it waits for.
+  return { tone: "plain", text: deal.held ? `${step.brief} بعد المهلة، ${dueIn(deal.stageDueInDays)}` : `${step.brief}، ${dueIn(deal.stageDueInDays)}` };
 }
 
 /** What to do next on a deal, in a few words. A deal that does not close has to be fixed first. */

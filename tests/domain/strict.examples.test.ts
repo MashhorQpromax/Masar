@@ -264,11 +264,13 @@ describe("a route read strictly", () => {
     expect(route!.doubts.map((d) => d.finding.doubt)).toEqual(["TERM_NOT_KNOWN"]);
   });
 
-  it("is not eligible while a confirmed wait after a paid default has not passed", () => {
+  it("is conditional on a confirmed wait after a paid default: on a deal's road the wait is time, and it blocks nothing", () => {
     const paid = who({ record: { ...clean, settledMonthsAgo: 0 } });
     const [route] = routes([mortgage("1", "a", { settledDefaultWaitMonths: 12 }), personal("2", "a")], paid);
-    expect(route!.eligibility).toBe("not_eligible");
-    expect(route!.blockers.map((b) => b.finding.check.code)).toEqual(["SETTLED_WAIT"]);
+    expect(route!.eligibility).toBe("conditional");
+    expect(route!.blockers).toEqual([]);
+    expect(route!.actions.map((a) => [a.finding.check.code, a.finding.check.status])).toEqual([["SETTLED_WAIT", "warn"]]);
+    expect([route!.status, route!.refusals]).toEqual(["warn", []]);
   });
 
   it("refuses two salary transfers for certain only when both lenders' terms are confirmed", () => {
@@ -321,10 +323,11 @@ describe("a route read strictly", () => {
   });
 
   it("names every disputed fact, and leaves a confirmed blocker to decide alone", () => {
-    const paid = who({ record: { ...clean, settledMonthsAgo: 0 }, disputed: ["basicSalary", "totalSalary"] });
-    const [route] = routes([mortgage("1", "a", { settledDefaultWaitMonths: 12 }), personal("2", "a")], paid);
+    // The lender is confirmed not to take recent late payments, and the record has them.
+    const late = who({ record: { ...clean, delays: true }, disputed: ["basicSalary", "totalSalary"] });
+    const [route] = routes([mortgage("1", "a"), personal("2", "a", { acceptsLateSimah: true })], late);
     expect(route!.eligibility).toBe("not_eligible");
-    expect(route!.blockers.map((b) => b.finding.check.code)).toEqual(["SETTLED_WAIT"]);
+    expect(route!.blockers.map((b) => b.finding.check.code)).toEqual(["RECORD_LATE"]);
     expect(route!.doubts.map((d) => ("ref" in d.finding.check ? d.finding.check.ref : null))).toEqual(["totalSalary", "basicSalary"]);
   });
 

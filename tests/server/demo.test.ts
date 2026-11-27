@@ -44,8 +44,12 @@ describe("demo data on the road", () => {
     const view = await roadView(c.db, now);
     const byName = Object.fromEntries(view.deals.map((d) => [d.clientName, d]));
     expect(view.deals).toHaveLength(4);
+    // His defaults were paid 24 days ago and nobody confirmed how long his lender waits after that, so the market's
+    // six months stand: the mortgage is paid off when they end, and that stage has its ten days from then.
+    expect(byName["سالم"]).toMatchObject({ station: "property", stage: "payoff", verdict: "go", stageDueInDays: 183 - 24 + 10, held: true });
+    expect(view.deals.filter((d) => d.held).map((d) => d.clientName)).toEqual(["سالم"]);
+    // A deal already at the bank went on without waiting: its dates are counted as it goes.
     expect(byName["فهد"]).toMatchObject({ station: "bank", stage: "approval", verdict: "go", daysToDisbursement: 12, stageDueInDays: 5 });
-    expect(byName["سالم"]).toMatchObject({ station: "property", stage: "payoff", verdict: "go", stageDueInDays: 1 });
     expect(byName["نورة"]).toMatchObject({ station: "settle", stage: "settlement", verdict: "tight" });
     expect(byName["ريم"]).toMatchObject({ station: "study", stage: "study", verdict: "short" });
     expect(byName["ريم"]!.clientNet).toBeLessThan(0);
@@ -58,9 +62,12 @@ describe("demo data on the road", () => {
     expect(portfolio.capitalOut).toBe(of("فهد").capital! + of("سالم").capital! + of("نورة").capital!);
     // A deal that does not close earns nothing.
     expect(portfolio.expectedFees).toBe(of("فهد").fee! + of("سالم").fee! + of("نورة").fee!);
-    expect(portfolio.returningSoon).toBe(of("فهد").capital! + of("سالم").capital!);
+    // What comes back within a month: the deal at the bank. The one that waits after its paid defaults is months away.
+    expect(portfolio.returningSoon).toBe(of("فهد").capital!);
+    expect(of("سالم").daysToDisbursement).toBeGreaterThan(portfolio.horizonDays);
     expect(portfolio.nearest?.dealId).toBe(of("فهد").dealId);
-    expect(portfolio.next?.dealId).toBe(of("سالم").dealId);
+    // The stage due first is no longer his: it stands still until his wait ends. The study opened today is.
+    expect(portfolio.next?.dealId).toBe(of("ريم").dealId);
   });
 
   it("reads a deal with its history, stations and where the financing goes", async () => {
@@ -87,6 +94,31 @@ describe("demo data on the road", () => {
     expect(flow.deficit).toBe(0);
     expect(flow.parts.reduce((sum, p) => sum + p.amount, 0)).toBe(flow.total);
     expect(flow.parts.find((p) => p.key === "client")!.amount).toBe(view.study.clientNet);
+  });
+
+  it("counts the wait after a paid default on every deal that pays one, and refuses none for it", async () => {
+    const { deals } = await roadView(c.db, now);
+    const of = (name: string) => deals.find((d) => d.clientName === name)!;
+    for (const name of ["فهد", "سالم", "نورة", "ريم"]) {
+      const view = (await getFunding(c.db, { dealId: of(name).dealId, now }))!;
+      // Nobody named a lender whose own wait is confirmed, so the market's six months to a year stand.
+      expect(view.wait, name).toMatchObject({ months: { from: 6, to: 12 }, basis: "market", lenders: [] });
+      // The deal's own figures and verdict are as they were.
+      expect(view.study.verdict, name).toBe(of(name).verdict);
+      expect(view.study.days, name).toBe(view.study.structure === "settle_personal" ? 49 : 62);
+    }
+    const salem = (await getFunding(c.db, { dealId: of("سالم").dealId, now }))!;
+    expect(salem.wait).toMatchObject({ days: { from: 230, to: 412 }, exposed: 31000 });
+    expect(salem.wait!.annualized!.high).toBeLessThan(salem.study.annualized!);
+    const nora = (await getFunding(c.db, { dealId: of("نورة").dealId, now }))!;
+    expect(nora.wait!.days).toEqual({ from: 217, to: 399 });
+
+    // What the client is told: the road in months while the wait is ahead, and the weeks once the deal went on to its lender.
+    const told = async (name: string) => (await getMessages(c.db, { dealId: of(name).dealId, secret: DEMO_LINK_SECRET, now }))!;
+    expect((await told("سالم")).facts.months).toEqual({ from: 8, to: 14 });
+    expect((await told("سالم")).wait).toEqual(salem.wait);
+    expect((await told("فهد")).facts.months).toBeNull();
+    expect((await told("فهد")).wait).toBeNull();
   });
 
   it("shows the shortfall of a deal that does not close", async () => {

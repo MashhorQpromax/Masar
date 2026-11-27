@@ -132,6 +132,23 @@ Nothing stored is counted differently. `dealStudy(input, borrower, credit, "mort
 
 Not reviewed by Mashhor: that the deal's own count stays the personal finance first (the cautious side for an office that pays before the bank does), and that the way is shown as a good one when it closes.
 
+### The wait after a paid default
+
+A lender does not take a client the day their default is paid. Mashhor stated the market's practice on 2026-11-27 as six months to a year, and chose how it enters a deal: every deal that pays a default or a court order shows it, the road and the yearly return are counted with it, and no deal is refused for it.
+
+Nothing stored is counted differently, and the verdict never reads it. `dealStudy` and its golden cases are as they were; the wait is counted beside the study in `src/domain/deal/wait.ts`:
+
+- `waitMonths` gives the months: the market's 6 to 12 (`MARKET_WAIT_MONTHS`) until the term of the deal's own lender (`settledDefaultWaitMonths`, with a source that holds today) says otherwise. A figure nobody confirmed never shortens the wait; a longer one lengthens it. With two lenders the longest counts. `holdsOf` finds the lenders from the deal's `targetBank` and `personalLender`.
+- `dealWait` adds what the wait does: the road in days (`roadDays`: the wait runs from the payment, beside the clearances and the record's update, and the stage after them starts when both are done), the yearly return on that road (the study's own count, `roi × 365 ÷ days`, lowest on the longest wait), and `exposed`, what the office pays for defaults and court orders.
+- `dealTimeline` and `portfolio` take a `Hold` (`holdOf`: the shortest wait, from `paidAtOf`, the day the deal first went past the settlement). The stage after the record's update (`holdingStage`: the mortgage payoff, or the submission to the lender where there is no property) stands still until the wait ends, so the home map does not call it late and does not count its capital back within the month.
+- A deal the office took on past that stage went on without waiting (`waitAhead`, `waitOnRoad`): its dates and its road are counted as it goes, and its page keeps the note until the longest wait has ended.
+
+On a deal's routes a lender's wait is a condition and no longer a refusal (`recordChecks(product, record, "delays")`): such a route can be put on the deal, and the wait then stands as that lender's confirmed months. The credit analysis still asks who takes the client today, where a lender that waits refuses.
+
+The deal page says the wait among its notes (`waitText`), shows the road and the yearly return with it, and says when the wait ends once the defaults were paid. The client's study message says the road in months (`ClientFacts.months`, rounded up), and nothing of the return or of the office's money. The internal summary says the road in days.
+
+Not reviewed by Mashhor one by one: that the wait is counted from the payment and runs beside the clearances; that the mortgage payoff is the stage that waits (the larger part of the capital stays in until then, while the yearly return is still counted as if all of it were out for the whole road, which understates it); that the timeline counts the shortest wait and the page shows both ends; that an unconfirmed figure never shortens the wait; that a deal past the waiting stage is counted without it. Not covered: a client whose record shows a default paid before the deal, with nothing in the deal that pays one (the routes and the opportunities say each lender's wait, the deal's road does not count it), and the credit analysis's own figures (`CREDIT_RULES` reads 12 months at a bank after a bank default, 24 after a finance company's, and 6 at a finance company).
+
 Item labels use the pattern `title — party`. The long dash is a separator the code splits on (`src/domain/deal/labels.ts`).
 
 ## Credit record
@@ -224,7 +241,7 @@ The calculator is `/lenders/calculator`. Anyone who works in the office may open
 
 - A route is one lender's product for each part the deal's structure has: a mortgage, a personal finance, or both. With both, each mortgage product is paired with the personal product that serves it best, and never with a second lender that also wants the salary.
 - Acceptance comes from the eligibility engine's conditions on the person (salary, sector, nationality, age, service, salary transfer). Amounts and the verdict come from the deal engine run on the lender's own terms, so a route's numbers are the deal's numbers.
-- The credit record is read as it will stand after the settlement: `recordAfterSettlement` (an open default, a default paid and how long ago, recent late payments, or no report). Each product says how long it waits after a paid default in `settledDefaultWaitMonths`: 0 takes the client at once, a number of months refuses until they pass, and null means nobody has confirmed it, which is a condition and not a refusal.
+- The credit record is read as it will stand after the settlement: `recordAfterSettlement` (an open default, a default paid and how long ago, recent late payments, or no report). Each product says how long it waits after a paid default in `settledDefaultWaitMonths`: 0 takes the client at once, a number of months is time the deal waits (a condition on a deal's route since 2026-11-27, see "The wait after a paid default"; still a refusal where the question is who takes the client today), and null means nobody has confirmed it, which is a condition and not a refusal.
 - Routes rank by: a lender that would take the client, a deal that closes, what the client keeps, one lender over two, fewer conditions, the lower installment.
 - A lender's ceiling is part of the deal engine (`mortgageCeiling`, `personalCeiling` on the input): it holds an estimate and never an offer the lender actually gave. The ledger shows it as its own line.
 - `applyRoute` writes a route's terms on a deal in progress. It works the routes out again on the server, refuses a route the lender would turn down, and never replaces a recorded offer.

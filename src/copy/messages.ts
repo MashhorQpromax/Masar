@@ -7,12 +7,12 @@
  * company earns. The final offer adds `ClientOffer`: the office's fee in detail, as the owner decided
  * a client sees it, and still no capital and no return.
  */
-import { splitLabel, STATIONS, type DealInput, type DealStudy, type FeeTerms, type LenderKind, type Stage, type StationKey, type StationState } from "@/domain/deal";
+import { splitLabel, STATIONS, type DealInput, type DealStudy, type DealWait, type FeeTerms, type LenderKind, type Stage, type StationKey, type StationState } from "@/domain/deal";
 import type { ClientFacts, ClientOffer, GateReason, MessageKind, OfferCost, OfferFeeItem } from "@/domain/messages";
 import { LINK_DAYS } from "@/domain/messages";
 import { STRUCTURE } from "./deal";
 import { owedLines } from "./documents";
-import { counted, dayShort, plainMoney, type CountForms } from "./format";
+import { counted, dayShort, months, plainMoney, type CountForms } from "./format";
 
 /** The name the office signs with. */
 export const OFFICE_NAME = "مسار للحلول التمويلية";
@@ -167,7 +167,11 @@ export function studyText(facts: ClientFacts, x: MessageExtras): string {
   }
   if (ends.length) out.push(`*المتوقع لك*\n${ends.join("\n")}`);
 
-  out.push(`*المدة:* من ${facts.weeks.from} إلى ${counted(facts.weeks.to, WEEKS)} تقريباً.`);
+  // A deal that pays a default waits for its lender afterwards: the client is told the road with that wait in it.
+  const road = !facts.months
+    ? `من ${facts.weeks.from} إلى ${counted(facts.weeks.to, WEEKS)} تقريباً.`
+    : `${facts.months.from === facts.months.to ? `نحو ${months(facts.months.to)}` : `من ${facts.months.from} إلى ${months(facts.months.to)} تقريباً`}. منها مدة تنتظرها جهات التمويل بعد سداد المتعثرات قبل أي تمويل جديد.`;
+  out.push(`*المدة:* ${road}`);
   if (x.owed.length) out.push(`*${opening ? "المطلوب لتثبيت العرض" : "المطلوب منك الآن"}*\n${owedLines(x.owed.slice(0, 8)).join("\n")}`);
   if (hasEstimate(facts)) out.push(`_${ESTIMATE_NOTE}_`);
   out.push(closing(x));
@@ -319,8 +323,9 @@ const pct = (value: number): string => {
  * The deal in the company's own numbers, for a partner or a funder. It carries the fee and the
  * capital, so it is never offered as a message to the client.
  */
-export function internalText(deal: { clientName: string; fileNo: string; input: DealInput; study: DealStudy }): string {
+export function internalText(deal: { clientName: string; fileNo: string; input: DealInput; study: DealStudy; wait?: DealWait | null }): string {
   const { study, input } = deal;
+  const waits = deal.wait && deal.wait.months.to > 0 ? deal.wait : null;
   const sum = study.summary;
   const n = plainMoney;
   const out = [`*ملخص صفقة، داخلي*\n${deal.clientName} · ${deal.fileNo}\nالهيكل: ${STRUCTURE[study.structure]}`];
@@ -347,7 +352,11 @@ export function internalText(deal: { clientName: string; fileNo: string; input: 
 
   out.push(`*5) النتيجة*\n${sum.net >= 0 ? `*يبقى للعميل ${n(sum.net)} ريال* بعد أتعابنا.` : `*عجز ${n(-sum.net)} ريال.*`}`);
 
-  const tail = [`رأس المال الذي ندفعه مؤقتاً: ${n(study.capital)}`, `المدة نحو ${counted(study.days, { one: "يوم واحد", two: "يومين", few: "أيام", many: "يوماً" })}`];
+  const DAYS = { one: "يوم واحد", two: "يومين", few: "أيام", many: "يوماً" };
+  const road = !waits
+    ? `المدة نحو ${counted(study.days, DAYS)}`
+    : `المدة ${waits.days.from === waits.days.to ? `نحو ${counted(waits.days.to, DAYS)}` : `من ${waits.days.from} إلى ${counted(waits.days.to, DAYS)}`} بمهلة ما بعد سداد التعثر`;
+  const tail = [`رأس المال الذي ندفعه مؤقتاً: ${n(study.capital)}`, road];
   if (study.cover) tail.push(`تغطية الضمان ${study.cover}x`);
   out.push(tail.join(" · "));
   if (sum.keptExecutions > 0) out.push(`تنبيه: قرارات تنفيذ خارج الصفقة بمبلغ ${n(sum.keptExecutions)}. الإيقاف لا يرتفع إلا بسدادها كلها.`);

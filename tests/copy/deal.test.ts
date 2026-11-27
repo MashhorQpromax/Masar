@@ -1,8 +1,8 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { alternativeText, ledgerText, mortgageFirstText, NEXT_STEP, riskText, STAGE } from "@/copy/deal";
+import { AFTER_WAIT, alternativeText, glance, ledgerText, mortgageFirstText, NEXT_STEP, riskText, roadText, STAGE, waitText, withinRoad, yearlyText } from "@/copy/deal";
 import { counted, countedInWords, dueIn, inDays, money, percent } from "@/copy/format";
-import { dealAlternatives, dealStudy, mortgageFirst, STAGES } from "@/domain/deal";
+import { dealAlternatives, dealStudy, dealWait, mortgageFirst, STAGES, type DealWait } from "@/domain/deal";
 
 const golden = JSON.parse(readFileSync(new URL("../golden/deal.json", import.meta.url), "utf8"));
 const cases: { input: never; borrower: never; credit: never }[] = golden.cases;
@@ -107,5 +107,92 @@ describe("numbers and counts in Arabic", () => {
     expect(dueIn(1)).toBe("خلال يوم");
     expect(dueIn(0)).toBe("اليوم");
     expect(dueIn(-3)).toBe("متأخر 3 أيام");
+  });
+});
+
+/**
+ * The wait after a paid default, as a deal's page says it: how long and on whose word, what it does to
+ * the road, the money out through it, and when it ends.
+ */
+describe("the wording of the wait after a paid default", () => {
+  const wait = (over: Partial<DealWait> = {}): DealWait => ({
+    months: { from: 6, to: 12 },
+    basis: "market",
+    lenders: [],
+    days: { from: 230, to: 412 },
+    annualized: { low: 17.7, high: 31.7 },
+    exposed: 140000,
+    ...over,
+  });
+  const ends = { from: new Date("2027-04-09T09:00:00Z"), to: new Date("2027-10-08T09:00:00Z") };
+
+  it("says a road as one figure or as its shortest and longest", () => {
+    expect(strip(roadText({ from: 62, to: 62 }))).toBe("62 يوماً");
+    expect(strip(roadText({ from: 230, to: 412 }))).toBe("من 230 إلى 412 يوماً");
+    expect(strip(withinRoad({ from: 62, to: 62 }))).toBe("في 62 يوماً");
+    expect(strip(withinRoad({ from: 230, to: 412 }))).toBe("خلال 230 إلى 412 يوماً");
+    expect(strip(yearlyText({ low: 31.7, high: 31.7 }))).toBe("سنوياً 31.7%");
+    expect(strip(yearlyText({ low: 17.7, high: 31.7 }))).toBe("سنوياً من 17.7% إلى 31.7%");
+  });
+
+  it("says the market's practice, the longer road, the money out, and to ask the lender before paying", () => {
+    expect(strip(waitText(wait(), 62, null))).toBe(
+      "بعد سداد التعثر تنتظر جهات التمويل من 6 إلى 12 شهراً قبل أي تمويل جديد. تصير مدة الصفقة من 230 إلى 412 يوماً بدل 62، ويبقى ما ندفعه للتعثرات وقرارات التنفيذ (140,000 ريال) خارجاً طوالها. مهلة جهة هذه الصفقة لم تُؤكد: اسألها قبل السداد.",
+    );
+  });
+
+  it("says when the wait ends once the defaults were paid", () => {
+    const text = strip(waitText(wait(), 62, ends));
+    expect(text).toContain("تنتهي المهلة بين 9 أبريل 2027 و8 أكتوبر 2027.");
+    // Paid already: nothing is left to ask before paying.
+    expect(text.endsWith("مهلة جهة هذه الصفقة لم تُؤكد.")).toBe(true);
+    expect(text).not.toContain("قبل السداد");
+  });
+
+  it("names the lender and its months when its own term is confirmed", () => {
+    const year = wait({ months: { from: 12, to: 12 }, basis: "lender", lenders: ["المثال للتمويل"], days: { from: 412, to: 412 }, exposed: 0 });
+    expect(strip(waitText(year, 62, null))).toBe("مهلة المثال للتمويل بعد سداد التعثر 12 شهراً، وهي مؤكدة. تصير مدة الصفقة 412 يوماً بدل 62.");
+    expect(strip(waitText(year, 62, { from: ends.to, to: ends.to }))).toContain("تنتهي المهلة 8 أكتوبر 2027.");
+    const two = wait({ months: { from: 3, to: 3 }, basis: "lender", lenders: ["بنك أ", "شركة ب"], days: { from: 138, to: 138 } });
+    expect(strip(waitText(two, 62, null))).toContain("مهلة بنك أ وشركة ب بعد سداد التعثر 3 أشهر، وهي مؤكدة.");
+  });
+
+  it("says there is nothing to wait for when the lender confirmed it takes the client at once", () => {
+    const none = wait({ months: { from: 0, to: 0 }, basis: "lender", lenders: ["بنك المثال"], days: { from: 62, to: 62 } });
+    expect(waitText(none, 62, null)).toBe("بنك المثال: القبول بعد سداد التعثر مباشرة، وهذا مؤكد. لا مهلة تُضاف إلى مدة الصفقة.");
+  });
+
+  it("says a deal that went on before the wait ended is counted without it", () => {
+    const text = strip(waitText(wait(), 62, ends, true));
+    expect(text).toBe(
+      "بعد سداد التعثر تنتظر جهات التمويل من 6 إلى 12 شهراً قبل أي تمويل جديد. الصفقة مضت في طريقها قبل انتهاء المهلة، فمدتها محسوبة دونها. تنتهي المهلة بين 9 أبريل 2027 و8 أكتوبر 2027. مهلة جهة هذه الصفقة لم تُؤكد.",
+    );
+  });
+
+  it("says on the road that a step waits, where a deal stands still until the wait ends", () => {
+    const deal = { stage: "payoff" as const, verdict: "go" as const, clientNet: 400000, daysToDisbursement: 196, stageDueInDays: 169 };
+    expect(strip(glance(deal, false).text)).toBe("خطاب المخالصة، خلال 169 يوماً");
+    expect(strip(glance({ ...deal, held: true }, false).text)).toBe("خطاب المخالصة بعد المهلة، خلال 169 يوماً");
+    expect(glance({ ...deal, held: true }, false).tone).toBe("plain");
+    // What is louder stays louder: a deal that does not close is said as that.
+    expect(glance({ ...deal, held: true, verdict: "short", clientNet: -5000 }, false).tone).toBe("bad");
+    expect(AFTER_WAIT).toBe("بعد انتهاء مهلة ما بعد سداد التعثر");
+  });
+
+  it("is a whole sentence for every deal of the golden set that pays a default", () => {
+    let seen = 0;
+    for (const c of cases) {
+      const study = dealStudy(c.input, c.borrower, c.credit);
+      const found = dealWait(c.input, study);
+      if (!found) continue;
+      seen += 1;
+      for (const text of [waitText(found, study.days, null), waitText(found, study.days, ends), waitText(found, study.days, ends, true)]) {
+        expect(text).not.toMatch(broken);
+        expect(text).not.toMatch(/—|–/);
+        expect(text.endsWith(".")).toBe(true);
+      }
+      if (found.annualized) expect(yearlyText(found.annualized)).not.toMatch(broken);
+    }
+    expect(seen).toBeGreaterThan(100);
   });
 });

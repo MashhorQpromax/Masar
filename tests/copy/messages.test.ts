@@ -28,7 +28,7 @@ import {
   waRuns,
   type MessageExtras,
 } from "@/copy/messages";
-import { dealStudy, defaultDealInput, feePlan, STAGES, stationsFor, type DealInput } from "@/domain/deal";
+import { dealStudy, dealWait, defaultDealInput, feePlan, STAGES, stationsFor, type DealInput } from "@/domain/deal";
 import { clientFacts, clientOffer, LINK_DAYS, MESSAGE_KINDS } from "@/domain/messages";
 
 const golden = JSON.parse(readFileSync(new URL("../golden/deal.json", import.meta.url), "utf8"));
@@ -83,6 +83,52 @@ describe("the messages for the client", () => {
       if (study.fee > 0) withFee += 1;
     }
     expect(withFee).toBeGreaterThan(200);
+  });
+
+  it("say the road in months when the deal waits after a paid default, and still carry no number of the office's", () => {
+    let waiting = 0;
+    for (const c of cases) {
+      const study = dealStudy(c.input, c.borrower, c.credit);
+      const wait = dealWait(c.input, study);
+      if (!wait) continue;
+      waiting += 1;
+      const facts = clientFacts({ stage: "study", input: c.input, study, wait });
+      expect(facts.months).not.toBeNull();
+      const text = studyText(facts, extras);
+      expect(text).not.toMatch(broken);
+      expect(text).toContain(`*المدة:* من ${facts.months!.from} إلى ${facts.months!.to} شهراً تقريباً. منها مدة تنتظرها جهات التمويل بعد سداد المتعثرات قبل أي تمويل جديد.`);
+      expect(text).not.toContain("أسابيع");
+      const total = facts.financing.reduce((sum, part) => sum + part.amount, 0);
+      const allowed = new Set<string>([
+        ...[facts.settles, facts.payoff, facts.keeps, total, ...facts.financing.map((part) => part.amount)].flatMap((amount) => numbers(about(amount))),
+        ...[...facts.financing.filter((part) => part.certainty === "confirmed").map((part) => part.amount), ...(facts.keepsCertainty === "confirmed" ? [facts.keeps] : [])].flatMap((amount) => numbers(plainMoney(amount))),
+        String(facts.months!.from),
+        String(facts.months!.to),
+        String(LINK_DAYS),
+        ...Array.from({ length: 9 }, (_, index) => String(index + 1)),
+        ...extras.owed.flatMap((paper) => numbers(paper.label)),
+        ...facts.payoffAt.flatMap(numbers),
+        ...facts.financing.flatMap((part) => numbers(part.lender ?? "")),
+      ]);
+      const body = text.replace(extras.link!, "");
+      // Neither the days of the road, nor the yearly return on it, nor the money the office has out through the wait.
+      for (const found of numbers(body)) expect(allowed.has(found.replace(/\.$/, "")), `${found} in:\n${body}`).toBe(true);
+      expect(body).not.toMatch(/أتعاب|رأس المال|عمولة|ربح|هامش|عائد|سنوي/);
+    }
+    expect(waiting).toBeGreaterThan(100);
+  });
+
+  it("say one figure when the lender's own months are confirmed, and the weeks when it takes the client at once", () => {
+    const c = cases.find((one) => dealWait(one.input, dealStudy(one.input, one.borrower, one.credit)))!;
+    const study = dealStudy(c.input, c.borrower, c.credit);
+    const year = dealWait(c.input, study, [{ lender: "شركة ب", months: 12, confirmed: true }])!;
+    const told = clientFacts({ stage: "study", input: c.input, study, wait: year });
+    expect(told.months!.from).toBe(told.months!.to);
+    expect(studyText(told, extras)).toContain(`*المدة:* نحو ${told.months!.to} شهراً. منها مدة`);
+    const none = dealWait(c.input, study, [{ lender: "بنك أ", months: 0, confirmed: true }])!;
+    const plain = clientFacts({ stage: "study", input: c.input, study });
+    expect(clientFacts({ stage: "study", input: c.input, study, wait: none })).toEqual(plain);
+    expect(studyText(plain, extras)).toContain(`*المدة:* من ${plain.weeks.from} إلى`);
   });
 
   it("carry the fee only in the final offer, where every number is the client's own and none is the office's capital or return", () => {
@@ -279,6 +325,22 @@ describe("the internal summary", () => {
       expect(text).toContain(`رأس المال الذي ندفعه مؤقتاً: ${plainMoney(study.capital)}`);
       expect(text).toContain(study.summary.net >= 0 ? `*يبقى للعميل ${plainMoney(study.summary.net)} ريال*` : `*عجز ${plainMoney(-study.summary.net)} ريال.*`);
     }
+  });
+});
+
+describe("the internal summary of a deal that waits after a paid default", () => {
+  it("says the road with the wait in it", () => {
+    const c = cases.find((one) => dealWait(one.input, dealStudy(one.input, one.borrower, one.credit)) && one.input.structure !== "settle_personal")!;
+    const study = dealStudy(c.input, c.borrower, c.credit);
+    const plain = internalText({ clientName: "سالم بن فهد", fileNo: "C-014", input: c.input, study });
+    const waiting = internalText({ clientName: "سالم بن فهد", fileNo: "C-014", input: c.input, study, wait: dealWait(c.input, study) });
+    expect(waiting).not.toMatch(broken);
+    expect(waiting).toContain("المدة من 230 إلى 412 يوماً بمهلة ما بعد سداد التعثر");
+    expect(plain).not.toContain("مهلة");
+    const year = internalText({ clientName: "سالم بن فهد", fileNo: "C-014", input: c.input, study, wait: dealWait(c.input, study, [{ lender: "شركة ب", months: 12, confirmed: true }]) });
+    expect(year).toContain("المدة نحو 412 يوماً بمهلة ما بعد سداد التعثر");
+    // A lender confirmed to take the client at once: the summary reads as it always did.
+    expect(internalText({ clientName: "سالم بن فهد", fileNo: "C-014", input: c.input, study, wait: dealWait(c.input, study, [{ lender: "بنك أ", months: 0, confirmed: true }]) })).toBe(plain);
   });
 });
 

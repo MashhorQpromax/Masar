@@ -98,11 +98,10 @@ describe("the class of an opportunity", () => {
     expect(before.class).toBe("theoretical");
     expect(before.reasons[0]).toMatchObject({ code: "REFUSED_BEFORE" });
 
-    // The lender waits six months after a default is paid, and says so in writing: not now.
-    const waits = one(args([product("p1", "a", { settledDefaultWaitMonths: 6 })]));
-    expect(waits.class).toBe("not_viable");
-    expect(waits.reasons[0]).toEqual({ code: "BLOCKED", count: 1 });
-    expect(waits.settlement?.waits[0]).toMatchObject({ months: 6, left: 6, confirmed: true });
+    // The lender says in writing that it takes the military only, and the client works for the government.
+    const blocked = one(args([product("p1", "a", { sectors: ["military"] })]));
+    expect(blocked.class).toBe("not_viable");
+    expect(blocked.reasons[0]).toEqual({ code: "BLOCKED", count: 1 });
 
     // 300,000 approved against 140,000 settled and the office's fee: anything short of the settlement is a deficit.
     const short = one(args([product("p1", "a")], { replies: [reply({ amount: 100000 })] }));
@@ -112,8 +111,18 @@ describe("the class of an opportunity", () => {
   });
 
   it("never lets a written yes pass over a confirmed condition that refuses", () => {
-    const o = one(args([product("p1", "a", { settledDefaultWaitMonths: 6 })], { replies: [reply()] }));
+    const o = one(args([product("p1", "a", { sectors: ["military"] })], { replies: [reply()] }));
     expect(o.class).toBe("not_viable");
+  });
+
+  it("stays an opportunity when the lender waits after a paid default: the wait is time to pass, said with its months", () => {
+    // Six months after the default is paid, in writing. Nothing refuses: it is the one thing left to do.
+    const waits = one(args([product("p1", "a", { settledDefaultWaitMonths: 6 })]));
+    expect(waits.class).toBe("ready");
+    expect(waits.reasons).toEqual([{ code: "ACTIONS", count: 1 }]);
+    expect(waits.route.blockers).toEqual([]);
+    expect(waits.settlement?.waits[0]).toMatchObject({ months: 6, left: 6, confirmed: true });
+    expect(speakable(waits)).toBe(true);
   });
 });
 
@@ -171,7 +180,7 @@ describe("the figures of an opportunity", () => {
 
 describe("the opportunities of a deal", () => {
   it("are ranked by class, then in the order the routes come", () => {
-    const products = [product("p1", "a", { terms: terms("lender_document", ["special"]) }), product("p2", "b"), product("p3", "c", { settledDefaultWaitMonths: 12 })];
+    const products = [product("p1", "a", { terms: terms("lender_document", ["special"]) }), product("p2", "b"), product("p3", "c", { sectors: ["military"] })];
     const list = opportunities(args(products, { replies: [reply({ lenderId: "b" })] }));
     expect(list.map((o) => [o.route.personal?.product.lenderId, o.class])).toEqual([
       ["b", "confirmed"],
