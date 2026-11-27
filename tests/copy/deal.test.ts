@@ -1,8 +1,8 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { alternativeText, ledgerText, NEXT_STEP, riskText, STAGE } from "@/copy/deal";
+import { alternativeText, ledgerText, mortgageFirstText, NEXT_STEP, riskText, STAGE } from "@/copy/deal";
 import { counted, countedInWords, dueIn, inDays, money, percent } from "@/copy/format";
-import { dealAlternatives, dealStudy, STAGES } from "@/domain/deal";
+import { dealAlternatives, dealStudy, mortgageFirst, STAGES } from "@/domain/deal";
 
 const golden = JSON.parse(readFileSync(new URL("../golden/deal.json", import.meta.url), "utf8"));
 const cases: { input: never; borrower: never; credit: never }[] = golden.cases;
@@ -43,6 +43,32 @@ describe("deal wording", () => {
       }
     }
     expect(seen.size).toBeGreaterThanOrEqual(8);
+  });
+
+  it("says the mortgage first as a way, with what it raises and that a bank must write it", () => {
+    const closes = mortgageFirstText({ closes: true, mortgage: 1350000, personal: 110035, mortgageNow: 825127, personalNow: 278243, clientNet: 248931, installment: 8291, installmentPct: 52 });
+    expect(closes.title).toBe("العقاري أولاً يغلقها");
+    expect(strip(closes.detail)).toBe(
+      "عقاري 1,350,000 وشخصي 110,035 بدل 825,127 و278,243. يبقى للعميل 248,931 ريال، وقسط العقاري 52% من الراتب. تقدير حتى يكتبه البنك: اطلب منه هذا التقسيم وسجّل عرضه.",
+    );
+    const short = mortgageFirstText({ closes: false, mortgage: 1350000, personal: 110035, mortgageNow: 825127, personalNow: 278243, clientNet: -351069, installment: 8291, installmentPct: 52 });
+    expect(short.title).toBe("العقاري أولاً يقلّص العجز ولا يغلقها");
+    expect(strip(short.detail)).toBe("عقاري 1,350,000 وشخصي 110,035 بدل 825,127 و278,243. يبقى عجز 351,069 ريال.");
+
+    let ways = 0;
+    for (const c of cases) {
+      const way = mortgageFirst(c.input, c.borrower, c.credit);
+      if (!way) continue;
+      ways += 1;
+      const { title, detail } = mortgageFirstText(way);
+      expect(`${title} ${detail}`).not.toMatch(broken);
+      // Its own ledger explains the order it was counted in.
+      const lines = dealStudy(c.input, c.borrower, c.credit, "mortgage").ledger.map((line) => ({ key: `${line.section}.${line.key}`, ...ledgerText(line) }));
+      expect(lines.find((line) => line.key === "mortgage.available_installment")?.how).toContain("العقاري أولاً");
+      expect(lines.find((line) => line.key === "personal.max_installment")?.how).toContain("بعد القسط العقاري");
+      for (const line of lines) expect(`${line.label} ${line.how ?? ""}`, line.key).not.toMatch(broken);
+    }
+    expect(ways).toBeGreaterThan(0);
   });
 
   it("names every stage and its next step", () => {

@@ -1,12 +1,13 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { draftLabel } from "@/copy/credit";
-import { dealTimeline, fundsFlow, pendingDrafts, recordDifferences, reportDrafts, stationTimeline } from "@/domain/deal";
+import { dealTimeline, fundsFlow, mortgageFirst, pendingDrafts, recordDifferences, reportDrafts, stationTimeline } from "@/domain/deal";
 import { approvalsOf } from "@/server/analysis/approval";
 import { getAnalysis } from "@/server/analysis/service";
 import { getAsked } from "@/server/clients/conditions";
 import { getClientCard, listClients } from "@/server/clients/directory";
 import { getCredit } from "@/server/credit/service";
 import type { Connection } from "@/server/db/client";
+import { borrowerOf } from "@/server/deals/mapping";
 import { getDeal } from "@/server/deals/service";
 import { roadView } from "@/server/deals/views";
 import { DEMO_ANSWERED, DEMO_BANK, DEMO_COMPANY, DEMO_PAPER, DEMO_REPLY_TEXT, DEMO_WORD, seedDemoLenders, seedDemoReplies } from "@/server/demo/lenders";
@@ -94,6 +95,21 @@ describe("demo data on the road", () => {
     expect(flow.deficit).toBe(-view.study.clientNet);
     expect(flow.parts.some((p) => p.key === "client")).toBe(false);
     expect(flow.parts.reduce((sum, p) => sum + p.amount, 0)).toBe(flow.total + flow.deficit);
+  });
+
+  it("shows the mortgage first as a way out of that deal, and leaves its own count short", async () => {
+    const { deals } = await roadView(c.db, now);
+    const reem = deals.find((d) => d.clientName === "ريم")!;
+    const view = (await getDeal(c.db, { dealId: reem.dealId, now }))!;
+    const way = mortgageFirst(view.input, borrowerOf(view.client, now), view.creditFlags)!;
+    expect(view.study.verdict).toBe("short");
+    expect(view.study.clientNet).toBe(-63019);
+    expect(way).toMatchObject({ closes: true, mortgage: 648000, mortgageNow: 497486, personalNow: 245217, clientNet: 29491, installmentPct: 28 });
+    // A deal that closes as it is counted says nothing of it.
+    for (const name of ["فهد", "سالم", "نورة"]) {
+      const other = (await getDeal(c.db, { dealId: deals.find((d) => d.clientName === name)!.dealId, now }))!;
+      expect(mortgageFirst(other.input, borrowerOf(other.client, now), other.creditFlags), name).toBeNull();
+    }
   });
 });
 

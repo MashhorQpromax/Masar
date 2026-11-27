@@ -7,6 +7,7 @@ import {
   FLOW_PART,
   LEDGER_SECTION,
   ledgerText,
+  mortgageFirstText,
   NEXT_STEP,
   riskText,
   STAGE,
@@ -26,6 +27,7 @@ import {
   dealAlternatives,
   dealTimeline,
   fundsFlow,
+  mortgageFirst,
   NET_INCOME,
   policyTerms,
   readTerms,
@@ -90,7 +92,13 @@ export default async function DealPage({ params }: { params: Promise<{ id: strin
     study.verdict === "short"
       ? dealAlternatives(input, borrowerOf(client, now), view.creditFlags).sort((a, b) => TONE_ORDER[a.tone] - TONE_ORDER[b.tone])
       : [];
-  const bestWay = alternatives.find((a) => a.tone === "good") ?? alternatives.find((a) => a.tone === "maybe");
+  // The mortgage first stands beside the ways the engine has always given: it changes no figure of the deal.
+  const first = study.verdict === "short" ? mortgageFirst(input, borrowerOf(client, now), view.creditFlags) : null;
+  const ways = [
+    ...alternatives.map((alt) => ({ key: alt.code, tone: alt.tone, ...alternativeText(alt) })),
+    ...(first ? [{ key: "mortgage-first", tone: first.closes ? ("good" as const) : ("no" as const), ...mortgageFirstText(first) }] : []),
+  ].sort((a, b) => TONE_ORDER[a.tone] - TONE_ORDER[b.tone]);
+  const bestWay = ways.find((way) => way.tone === "good") ?? ways.find((way) => way.tone === "maybe");
 
   // The fee plan is held against the deal as it stands: an approval stands only while its numbers print the same.
   const mayApprovePlan = can(me.role, "fee.approve");
@@ -249,8 +257,8 @@ export default async function DealPage({ params }: { params: Promise<{ id: strin
                 </>
               ) : bestWay ? (
                 <>
-                  <h2>{alternativeText(bestWay).title}</h2>
-                  <p className="due">{alternativeText(bestWay).detail}</p>
+                  <h2>{bestWay.title}</h2>
+                  <p className="due">{bestWay.detail}</p>
                 </>
               ) : (
                 <>
@@ -396,19 +404,16 @@ export default async function DealPage({ params }: { params: Promise<{ id: strin
           )}
         </section>
 
-        {alternatives.length > 0 && (
+        {ways.length > 0 && (
           <section className="tile tile--wide">
             <p className="label">الحلول الممكنة</p>
             <div className="ways">
-              {alternatives.map((alt) => {
-                const { title, detail } = alternativeText(alt);
-                return (
-                  <div key={alt.code + title} className="way" data-tone={alt.tone}>
-                    <b>{title}</b>
-                    <p>{detail}</p>
-                  </div>
-                );
-              })}
+              {ways.map((way) => (
+                <div key={way.key + way.title} className="way" data-tone={way.tone}>
+                  <b>{way.title}</b>
+                  <p>{way.detail}</p>
+                </div>
+              ))}
             </div>
           </section>
         )}

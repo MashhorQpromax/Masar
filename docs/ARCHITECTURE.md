@@ -122,6 +122,16 @@ One screen opens a client's file with their first deal (`/deals/new`) and revise
 
 `dealAlternatives` proposes ways to close a deal that is short: another structure, a settlement discount, a lower fee, a higher valuation, a co-borrower.
 
+### The mortgage first
+
+The estimate gives the monthly room to the personal finance first: its third of the salary, and the mortgage has what is left of the total cap. That is how the old engine counted, and `tests/golden/deal.json` locks it. A riyal of installment raises about three times as much on a 25-year mortgage as on five years of personal finance, so where the property's value leaves the mortgage room, this order understates what the client can raise and can call a deal short that would close.
+
+Nothing stored is counted differently. `dealStudy(input, borrower, credit, "mortgage")` works the same deal out the other way: the mortgage takes the installment that reaches what holds it (the property's value at the loan-to-value share, a lender's ceiling, a bank's offer) or all of the room when the income falls short of that, and the personal finance has what is left within its third. The installment is found by halving on the engine's own formula, so the step at retirement is counted the same way.
+
+`mortgageFirst(input, borrower, credit)` (`src/domain/deal/mortgage-first.ts`) is what the deal page shows among the ways out, apart from `dealAlternatives` so the lock on the old answers stays whole. It speaks only when the deal is short on its net, the structure has both parts, the property has a value, no bank has answered for either part, and the client's net rises. It says whether the deal then closes, the two parts beside what the deal counts now, what the client keeps, and the mortgage's installment as a share of the salary. The wording (`mortgageFirstText`) says it is an estimate until a bank writes it. The deal's verdict, its messages and its plan stay on the deal's own count until the office records the bank's offer.
+
+Not reviewed by Mashhor: that the deal's own count stays the personal finance first (the cautious side for an office that pays before the bank does), and that the way is shown as a good one when it closes.
+
 Item labels use the pattern `title — party`. The long dash is a separator the code splits on (`src/domain/deal/labels.ts`).
 
 ## Credit record

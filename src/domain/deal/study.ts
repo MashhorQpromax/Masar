@@ -30,6 +30,16 @@ export const NEAR_RETIREMENT_MONTHS = 120;
 
 type StructureFlags = { mortgage: boolean; personal: boolean };
 
+/**
+ * Which financing takes its share of the monthly room first.
+ *
+ * The office has always counted the personal finance first: its third of the salary, and the mortgage
+ * has what is left of the cap. A riyal of installment raises far more on a long mortgage than on five
+ * years of personal finance, so where the property's value leaves room, the mortgage first raises more.
+ * Every stored figure is counted the first way. The second is worked out beside it, never instead of it.
+ */
+export type Fill = "personal" | "mortgage";
+
 const isSettled = (i: DealItem) => i.kind === "execution" || i.kind === "default";
 const isPayoff = (i: DealItem) => i.kind === "mortgage_payoff" || i.kind === "personal_payoff";
 
@@ -43,6 +53,7 @@ function expectedFinancing(
   st: StructureFlags,
   propertyValue: number,
   keptMonthly: number,
+  fill: Fill,
 ): Financing & { salary: number } {
   const salary = b.totalSalary ?? b.basicSalary ?? 0;
   const age = b.age;
@@ -55,37 +66,60 @@ function expectedFinancing(
   const totalCap = salary <= SAMA.lowBracket ? SAMA.totalCapLow : SAMA.totalCapMid;
   const room = Math.max(0, salary * totalCap - keptMonthly);
 
-  const personalInstallment = st.personal ? round0(Math.min(salary * SAMA.salaryDeductionEmployee, room)) : 0;
   const personalMonths = Math.min(
     x.personalMonths || 60,
     SAMA.consumerMaxTenor,
     monthsToRetire && monthsToRetire > 0 ? Math.max(12, monthsToRetire) : 60,
   );
-  const personalEstimate = round0(principalFrom(personalInstallment, personalMonths, x.personalFlat, "flat"));
-
-  const mortgagePre = st.mortgage ? Math.max(0, round0(room - personalInstallment)) : 0;
   const mortgageMonths = st.mortgage
     ? Math.min(x.mortgageMaxMonths || 300, age != null ? Math.max(0, (x.mortgageMaxAge - age) * 12) : 300)
     : 0;
-  let mortgageByIncome = 0;
-  let mortgagePost = 0;
-  if (!st.mortgage) {
-    // No new mortgage in this structure.
-  } else if (monthsToRetire != null && monthsToRetire < mortgageMonths) {
-    // Stepped installment: full before retirement, then within the pension's cap.
-    const pensionCap = pension != null && pension <= SAMA.lowBracket ? SAMA.totalCapLow : SAMA.totalCapMid;
-    mortgagePost = Math.min(mortgagePre, round0((pension ?? 0) * pensionCap));
-    const r = x.mortgageApr / 100 / 12;
-    const beforeRetirement = principalFrom(mortgagePre, monthsToRetire, x.mortgageApr, "reducing");
-    const afterRetirement =
-      principalFrom(mortgagePost, mortgageMonths - monthsToRetire, x.mortgageApr, "reducing") *
-      Math.pow(1 + r, -monthsToRetire);
-    mortgageByIncome = round0(beforeRetirement + afterRetirement);
-  } else {
-    mortgagePost = mortgagePre;
-    mortgageByIncome = round0(principalFrom(mortgagePre, mortgageMonths, x.mortgageApr, "reducing"));
-  }
+  /** What a mortgage raises on a monthly installment of `pre` before retirement, and the installment after it. */
+  const raisedOn = (pre: number): { amount: number; post: number } => {
+    if (!st.mortgage) return { amount: 0, post: 0 };
+    if (monthsToRetire != null && monthsToRetire < mortgageMonths) {
+      // Stepped installment: full before retirement, then within the pension's cap.
+      const pensionCap = pension != null && pension <= SAMA.lowBracket ? SAMA.totalCapLow : SAMA.totalCapMid;
+      const post = Math.min(pre, round0((pension ?? 0) * pensionCap));
+      const r = x.mortgageApr / 100 / 12;
+      const beforeRetirement = principalFrom(pre, monthsToRetire, x.mortgageApr, "reducing");
+      const afterRetirement =
+        principalFrom(post, mortgageMonths - monthsToRetire, x.mortgageApr, "reducing") * Math.pow(1 + r, -monthsToRetire);
+      return { amount: round0(beforeRetirement + afterRetirement), post };
+    }
+    return { amount: round0(principalFrom(pre, mortgageMonths, x.mortgageApr, "reducing")), post: pre };
+  };
   const mortgageByLtv = st.mortgage && propertyValue ? round0((propertyValue * x.ltvPct) / 100) : null;
+
+  let personalInstallment: number;
+  let mortgagePre: number;
+  if (fill === "mortgage" && st.mortgage && st.personal) {
+    // The mortgage first: the installment that reaches what holds it (the property's value, the lender's
+    // ceiling or the bank's own offer), or all of the room when the income falls short of that. The
+    // personal finance has what is left, within its third of the salary.
+    const all = Math.floor(room);
+    const limit = Math.min(mortgageByLtv ?? Infinity, x.bankMortgage ?? x.mortgageCeiling ?? Infinity);
+    mortgagePre = all;
+    if (raisedOn(all).amount > limit) {
+      let low = 0;
+      let high = all;
+      while (high - low > 1) {
+        const middle = Math.floor((low + high) / 2);
+        if (raisedOn(middle).amount >= limit) high = middle;
+        else low = middle;
+      }
+      mortgagePre = high;
+    }
+    personalInstallment = Math.max(0, Math.floor(Math.min(salary * SAMA.salaryDeductionEmployee, room - mortgagePre)));
+  } else {
+    personalInstallment = st.personal ? round0(Math.min(salary * SAMA.salaryDeductionEmployee, room)) : 0;
+    mortgagePre = st.mortgage ? Math.max(0, round0(room - personalInstallment)) : 0;
+  }
+  const personalEstimate = round0(principalFrom(personalInstallment, personalMonths, x.personalFlat, "flat"));
+
+  // What the income alone carries: on the installment the mortgage is left with, or on all of the room when it goes first.
+  const mortgagePost = raisedOn(mortgagePre).post;
+  const mortgageByIncome = fill === "mortgage" && st.mortgage && st.personal ? raisedOn(Math.floor(room)).amount : raisedOn(mortgagePre).amount;
   const mortgageEstimate = mortgageByLtv != null ? Math.min(mortgageByIncome, mortgageByLtv) : mortgageByIncome;
   // A lender's ceiling holds an estimate. A bank's actual offer stands as it is.
   const held = (estimate: number, offer: number | null, ceiling: number | null | undefined) =>
@@ -139,7 +173,11 @@ function settlementBase(active: DealItem[], fee: Fee): number {
   );
 }
 
-export function dealStudy(x: DealInput, b: Borrower, credit?: CreditFlags | null): DealStudy {
+/**
+ * The study of a deal. `fill` says which financing takes its share of the monthly room first; left out,
+ * it is the personal finance, the way every stored figure is counted.
+ */
+export function dealStudy(x: DealInput, b: Borrower, credit?: CreditFlags | null, fill: Fill = "personal"): DealStudy {
   const structure = structureOf(x);
   const st = STRUCTURES[structure];
   const { active, kept } = splitItems(x);
@@ -157,7 +195,7 @@ export function dealStudy(x: DealInput, b: Borrower, credit?: CreditFlags | null
   const fixedCosts = st.mortgage ? x.fixedCosts || 0 : 0;
   const capital = round0(paidByCompany + transferTax + fixedCosts);
 
-  const f = expectedFinancing(x, b, st, propertyValue, keptMonthly);
+  const f = expectedFinancing(x, b, st, propertyValue, keptMonthly, fill);
   const { salary, monthsToRetire, pension, totalCap, personalInstallment, personalMonths, personal, mortgage } = f;
 
   // Where the financing goes.
@@ -315,6 +353,7 @@ export function dealStudy(x: DealInput, b: Borrower, credit?: CreditFlags | null
         rule: SAMA.salaryDeductionEmployee,
         salary,
         keptMonthly,
+        ...(fill === "mortgage" && st.mortgage ? { mortgageFirst: true, mortgageInstallment: f.mortgagePre } : {}),
       },
     });
     ledger.push({
@@ -352,7 +391,7 @@ export function dealStudy(x: DealInput, b: Borrower, credit?: CreditFlags | null
       section,
       key: "available_installment",
       value: f.mortgagePre,
-      params: { salary, totalCap, personalInstallment, keptMonthly },
+      params: { salary, totalCap, personalInstallment, keptMonthly, ...(fill === "mortgage" && st.personal ? { mortgageFirst: true } : {}) },
     });
     if (f.mortgagePost !== f.mortgagePre) {
       ledger.push({ section, key: "post_retirement_installment", value: f.mortgagePost, params: { pension: pension ?? 0 } });

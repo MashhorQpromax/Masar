@@ -8,6 +8,7 @@ import type {
   FlowPart,
   LedgerLine,
   LedgerSection,
+  MortgageFirst,
   Risk,
   Stage,
   StationKey,
@@ -216,6 +217,24 @@ export function alternativeText(alt: Alternative): { title: string; detail: stri
   }
 }
 
+/**
+ * The mortgage first, for a deal that is short: what it would raise, and that it stands only once a
+ * bank writes it. Said as a way among the ways, in their shape.
+ */
+export function mortgageFirstText(way: MortgageFirst): { title: string; detail: string } {
+  const parts = `عقاري ${money(way.mortgage)} وشخصي ${money(way.personal)} بدل ${money(way.mortgageNow)} و${money(way.personalNow)}`;
+  const installment = way.installmentPct != null ? `، وقسط العقاري ${percent(way.installmentPct)} من الراتب` : "";
+  return way.closes
+    ? {
+        title: "العقاري أولاً يغلقها",
+        detail: `${parts}. يبقى للعميل ${money(way.clientNet)} ريال${installment}. تقدير حتى يكتبه البنك: اطلب منه هذا التقسيم وسجّل عرضه.`,
+      }
+    : {
+        title: "العقاري أولاً يقلّص العجز ولا يغلقها",
+        detail: `${parts}. يبقى عجز ${money(-way.clientNet)} ريال.`,
+      };
+}
+
 export const LEDGER_SECTION: Record<LedgerSection, string> = {
   personal: "التمويل الشخصي الجديد",
   mortgage: "التمويل العقاري الجديد",
@@ -233,6 +252,12 @@ export function ledgerText(line: LedgerLine): { label: string; how?: string } {
     case "personal.salary":
       return { label: "الراتب الإجمالي" };
     case "personal.max_installment":
+      if (p.mortgageFirst) {
+        return {
+          label: "أقصى قسط شخصي",
+          how: `ما بقي من سقف الاستقطاع ${share(p.totalCap)} بعد القسط العقاري ${money(num(p.mortgageInstallment))}${num(p.keptMonthly) ? " والأقساط القائمة" : ""}، ولا يتجاوز ${share(p.rule)} من الراتب`,
+        };
+      }
       return p.limitedByTotalCap
         ? {
             label: "أقصى قسط شخصي",
@@ -258,6 +283,12 @@ export function ledgerText(line: LedgerLine): { label: string; how?: string } {
     case "personal.net_to_client":
       return { label: "صافي يستلمه العميل" };
     case "mortgage.available_installment":
+      if (p.mortgageFirst) {
+        return {
+          label: "القسط العقاري",
+          how: `العقاري أولاً من سقف الاستقطاع ${share(p.totalCap)}${num(p.keptMonthly) ? " بعد الأقساط القائمة" : ""}، بقدر ما يبلغ حدّه`,
+        };
+      }
       return {
         label: "القسط العقاري المتاح",
         how: `سقف الاستقطاع ${share(p.totalCap)} ناقص القسط الشخصي${num(p.keptMonthly) ? " والأقساط القائمة" : ""}`,
