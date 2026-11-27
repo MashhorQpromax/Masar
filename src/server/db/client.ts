@@ -1,6 +1,7 @@
 import "server-only";
 import path from "node:path";
 import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
+import { applicationSecret, liveDatabaseUrl } from "../site";
 import * as schema from "./schema";
 
 export type Schema = typeof schema;
@@ -54,24 +55,26 @@ export async function connect(url: string): Promise<Connection> {
 /**
  * Where the running app gets its data.
  *
- * - `live`: the Postgres database named by MASAR_DATABASE_URL.
+ * - `live`: the Postgres database named by MASAR_DATABASE_URL, or on the production site the one the
+ *   hosting already names for it (`liveDatabaseUrl` in `src/server/site.ts`).
  * - `demo`: no database is configured, so the app runs on an in-memory Postgres filled with
  *   fictional deals. Nothing is stored and nothing real is shown. Never allowed in production.
  *
- * The rebuild reads its own variable on purpose. It never falls back to DATABASE_URL or POSTGRES_URL,
- * so a preview deployment cannot attach itself to the live database by accident.
+ * Outside the production site the rebuild reads its own variable only. It never falls back to
+ * DATABASE_URL or POSTGRES_URL there, so a preview deployment cannot attach itself to the live database
+ * by accident.
  */
 export type DataMode = "live" | "demo";
 
 export function dataMode(): DataMode {
-  if (process.env.MASAR_DATABASE_URL) return "live";
-  if (process.env.VERCEL_ENV === "production") throw new Error("MASAR_DATABASE_URL is not set");
+  if (liveDatabaseUrl()) return "live";
+  if (process.env.VERCEL_ENV === "production") throw new Error("the production site has no database: none of MASAR_DATABASE_URL, DATABASE_URL and POSTGRES_URL is set");
   return "demo";
 }
 
 /** The configured database. Used by the migration script, which must never run on demo data. */
 export function databaseUrl(): string {
-  const url = process.env.MASAR_DATABASE_URL;
+  const url = liveDatabaseUrl();
   if (!url) throw new Error("MASAR_DATABASE_URL is not set");
   return url;
 }
@@ -79,7 +82,7 @@ export function databaseUrl(): string {
 async function open(): Promise<Connection> {
   if (dataMode() === "live") {
     // Real accounts need the application secret. Refuse to start without it, instead of failing at the first sign-in that uses it.
-    if ((process.env.MASAR_SECRET ?? "").length < 16) throw new Error("MASAR_SECRET is not set");
+    if (!applicationSecret()) throw new Error("MASAR_SECRET is not set");
     return connect(databaseUrl());
   }
   const connection = await connect("pglite:");

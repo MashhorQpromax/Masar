@@ -2,6 +2,7 @@ import "server-only";
 import { cache } from "react";
 import { cookies, headers } from "next/headers";
 import { getDb } from "../db/client";
+import { siteOrigins } from "../site";
 import { partyFrom, type RelyingParty } from "./passkeys";
 import { readSession, type OpenSession } from "./sessions";
 import type { Origin } from "./signin";
@@ -38,12 +39,12 @@ export async function requestOrigin(): Promise<Origin> {
 }
 
 /**
- * The site passkeys are bound to, from `MASAR_ORIGINS`. A production build that was not told its own
- * address has no passkeys: taking the address from the request would let a forged host name choose it.
- * In development the address is the one the browser is on.
+ * The site passkeys are bound to: `MASAR_ORIGINS`, or the production site's own addresses
+ * (`src/server/site.ts`). The address is never taken from a production request: a forged host name
+ * could then choose it. In development the address is the one the browser is on.
  */
 export async function relyingParty(): Promise<RelyingParty | null> {
-  const told = partyFrom(process.env.MASAR_ORIGINS);
+  const told = partyFrom(siteOrigins() ?? undefined);
   if (told || secure) return told;
   const host = (await headers()).get("host") ?? "localhost";
   return partyFrom(`http://${host}`);

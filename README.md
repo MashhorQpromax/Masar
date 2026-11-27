@@ -23,7 +23,7 @@ npm run user:create -- --name "..." --email someone@example.com --role admin
 
 The password is asked for on the terminal and never echoed.
 
-On Vercel none of this is typed: a production build applies the migrations itself and will not go live without those three variables or without an account. The old system's data, accounts included, comes over as a step of the first production deployment. The steps, the rehearsal and the way back are in [docs/MIGRATION.md](docs/MIGRATION.md).
+On Vercel none of this is typed, and the production site needs none of the three set: it takes the database the hosting already names for it, its own two addresses, and a secret worked out from the database's address (`src/server/site.ts`). A production build applies the migrations itself and will not go live without a database or without an account. The old system's data, accounts included, comes over as a step of the first production deployment. The steps, the rehearsal and the way back are in [docs/MIGRATION.md](docs/MIGRATION.md).
 
 Tests run on an in-process Postgres. To run them on a Postgres server through the driver the live site uses: `MASAR_TEST_DATABASE_URL=postgres://postgres@127.0.0.1:5432/postgres npm test`.
 

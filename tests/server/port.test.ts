@@ -617,18 +617,20 @@ describe("what a deployment does", () => {
     expect(planRelease("before", { VERCEL_ENV: "preview", VERCEL_GIT_COMMIT_REF: "rehearsal" }).refuse).toMatch(/no database to read/);
   });
 
-  it("holds a production build back until the settings a live site needs are there", () => {
-    expect(planRelease("before", { VERCEL_ENV: "production" }).refuse).toMatch(/MASAR_DATABASE_URL.*MASAR_SECRET.*MASAR_ORIGINS/);
-    expect(planRelease("after", { ...live, MASAR_SECRET: "short" }).refuse).toMatch(/^production is missing MASAR_SECRET/);
-    expect(planRelease("before", { ...live, MASAR_ORIGINS: "" }).refuse).toMatch(/^production is missing MASAR_ORIGINS/);
+  it("holds a production build back only when it has no database, and takes the one the hosting already names", () => {
+    expect(planRelease("before", { VERCEL_ENV: "production" }).refuse).toMatch(/^production has no database/);
+    expect(planRelease("after", { VERCEL_ENV: "production" }).refuse).toMatch(/^production has no database/);
     expect(planRelease("before", live)).toEqual({ steps: ["migrate"], refuse: null, legacyUrl: null });
+    // With none of its own settings, the production site runs on what the hosting holds for it.
+    expect(planRelease("before", { VERCEL_ENV: "production", POSTGRES_URL: "postgres://held" })).toEqual({ steps: ["migrate"], refuse: null, legacyUrl: null });
+    expect(planRelease("after", { VERCEL_ENV: "production", DATABASE_URL: "postgres://held", POSTGRES_URL: "postgres://other" })).toEqual({ steps: ["move", "accounts"], refuse: null, legacyUrl: "postgres://held" });
   });
 
-  it("moves the old data only when told to, and never lets a site with no account go live", () => {
-    expect(planRelease("after", live)).toEqual({ steps: ["accounts"], refuse: null, legacyUrl: null });
-    expect(planRelease("after", { ...live, MASAR_MOVE_OLD_DATA: "true" }).steps).toEqual(["accounts"]);
-    expect(planRelease("after", { ...live, MASAR_MOVE_OLD_DATA: "yes" })).toEqual({ steps: ["move", "accounts"], refuse: null, legacyUrl: "postgres://new" });
-    expect(planRelease("after", { ...live, MASAR_MOVE_OLD_DATA: "yes", LEGACY_DATABASE_URL: "postgres://elsewhere" }).legacyUrl).toBe("postgres://elsewhere");
+  it("moves the old data unless told not to, and never lets a site with no account go live", () => {
+    expect(planRelease("after", live)).toEqual({ steps: ["move", "accounts"], refuse: null, legacyUrl: "postgres://new" });
+    expect(planRelease("after", { ...live, MASAR_MOVE_OLD_DATA: "yes" }).steps).toEqual(["move", "accounts"]);
+    expect(planRelease("after", { ...live, MASAR_MOVE_OLD_DATA: "no" })).toEqual({ steps: ["accounts"], refuse: null, legacyUrl: null });
+    expect(planRelease("after", { ...live, LEGACY_DATABASE_URL: "postgres://elsewhere" }).legacyUrl).toBe("postgres://elsewhere");
   });
 
   it("goes live on a move that was made, and not on one that was not", async () => {

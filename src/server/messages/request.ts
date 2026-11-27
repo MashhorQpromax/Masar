@@ -3,6 +3,7 @@ import { headers } from "next/headers";
 import { appSecret } from "../auth/secret";
 import type { CodeSender } from "../auth/signin";
 import { dataMode } from "../db/client";
+import { siteOrigins } from "../site";
 import { cloud, cloudConfig, type Cloud } from "./cloud";
 import { DEMO_LINK_SECRET } from "./links";
 
@@ -12,12 +13,12 @@ export function linkSecret(): string {
 }
 
 /**
- * The address a client's link starts with. A real site is told its own address in `MASAR_ORIGINS`
- * and uses nothing else: a link built from the request's host name would go wherever a forged host
+ * The address a client's link starts with. A real site takes its own address from `MASAR_ORIGINS`,
+ * or the production site's own (`src/server/site.ts`), and uses nothing else: a link built from the request's host name would go wherever a forged host
  * name points. The demo and a development machine use the address they are reached on.
  */
 export async function siteOrigin(): Promise<string | null> {
-  const told = (process.env.MASAR_ORIGINS ?? "").split(",")[0]?.trim().replace(/\/+$/, "");
+  const told = (siteOrigins() ?? "").split(",")[0]?.trim().replace(/\/+$/, "");
   if (told) return told;
   if (dataMode() !== "demo" && process.env.NODE_ENV === "production") return null;
   const h = await headers();

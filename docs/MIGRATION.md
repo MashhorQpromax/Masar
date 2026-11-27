@@ -2,7 +2,7 @@
 
 The old application and this one can live in the same Postgres database. The old one keeps its tables in the schema `public`, in the shapes SQLite gave them. This one keeps its own in the schema `masar`. The move reads the first and fills the second. It never changes an old table, so the old system stays whole beside the new one and is what the site falls back to.
 
-Nothing here has been run on the live database. Each step below that touches it waits for the owner's word.
+The owner approved the move on 2026-11-27. The rehearsal ran on the live database that day (read-only): every row came over, the one deal's figures were the same, and nothing stood in the way.
 
 ## What moves
 
@@ -52,6 +52,8 @@ To run it, push the branch to be released under the name `rehearsal`:
 git push origin revamp:rehearsal
 ```
 
+A preview is given no database on this project, and nobody here can set one for it. So on 2026-11-27 the rehearsal ran another way: the branch `rehearsal` carried one commit of its own whose build command was the rehearsal alone and always ended in failure, and that commit was deployed once with the production settings. It read the old database in read-only transactions, wrote its report to the build log, built no site and could not go live.
+
 The preview build of that branch reads the old database by the name the old system reads it by (`DATABASE_URL` or `POSTGRES_URL`, or `LEGACY_DATABASE_URL` when set for that branch). The preview itself still runs on invented data: it is never given `MASAR_DATABASE_URL`. Read the lines marked `[release]` in the build log:
 
 - `REHEARSED` and an empty "In the way" list: the move will go through.
@@ -64,14 +66,9 @@ Delete the branch afterwards. Rehearse again on the day of the switch, close to 
 
 Pick an hour when nobody is working, and tell the office to stay out of the old site until the new one is up.
 
-1. In Vercel, for Production only, set:
-   - `MASAR_DATABASE_URL`: the same connection string the old system uses.
-   - `MASAR_ORIGINS`: `https://masarfin.com,https://www.masarfin.com`. Passkeys are bound to the first address.
-   - `MASAR_MOVE_OLD_DATA`: `yes`.
-   - `MASAR_SECRET` is already there and must not change: it opens the authenticator secrets.
-   - The `WA_*` settings stay as they are.
+1. Nothing is set in Vercel. The production site takes the database the hosting already names for it (`DATABASE_URL` or `POSTGRES_URL`), its own two addresses, and, having no `MASAR_SECRET`, a secret worked out from the database's address (`src/server/site.ts`). The rehearsal found no usable `MASAR_SECRET` on the production site (the old system then makes a new secret at every deployment) and no account with an authenticator, so there was no old secret to keep. Each of the three can still be set by name, and `MASAR_MOVE_OLD_DATA=no` holds the move back.
 2. Merge the pull request into `main`. The production build then:
-   - refuses to go on if a setting above is missing,
+   - refuses to go on if it finds no database,
    - applies the migrations, which make the schema `masar`,
    - builds the site,
    - moves the data. If anything stands in the way the build fails, nothing is written, and the old site stays up.
@@ -86,7 +83,8 @@ The old tables are untouched and the previous deployment is still on Vercel. Pro
 
 ## Afterwards
 
-- Remove `MASAR_MOVE_OLD_DATA` once the switch is closed. Leaving it is harmless: a move that was made is not made again.
+- Every later production build says `ALREADY MOVED` and whether the old tables changed since. A move that was made is not made again.
+- Setting `MASAR_SECRET` is worth doing early, while no authenticator is enrolled and no client link is open: after it, the secret no longer depends on the database's address.
 - The old tables stay until the owner says otherwise. When they go, `legacy/`, `src/server/port`, `scripts/port-data.ts` and the move's steps in `scripts/release.ts` go with them.
 
 ## What the tests hold

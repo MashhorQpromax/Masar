@@ -1,15 +1,16 @@
 import "server-only";
 import crypto from "node:crypto";
+import { applicationSecret } from "../site";
 import { sameText } from "./totp";
 
 /**
  * The application secret. It seals authenticator secrets at rest and keys the hashes of one-time codes.
- * It must be the value the old system used for as long as accounts carried over from it keep their
- * authenticator. There is no fallback: without it, sign-in refuses to work.
+ * It is `MASAR_SECRET` when that is set; the production site that has none works one out
+ * (`src/server/site.ts`). Anywhere else there is no fallback: without it, sign-in refuses to work.
  */
 export function appSecret(): string {
-  const secret = process.env.MASAR_SECRET;
-  if (!secret || secret.length < 16) throw new Error("MASAR_SECRET is not set");
+  const secret = applicationSecret();
+  if (!secret) throw new Error("MASAR_SECRET is not set");
   return secret;
 }
 
